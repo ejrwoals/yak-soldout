@@ -91,10 +91,10 @@ def main():
     TIME_INTERVAL = None  # 실행 간격(time interval) 설정
     time_interval = None
 
-    # 파일 경로
-    desktop_path = r'C:\Users\USER\Videos\Desktop' # 바탕화면 경로
-    user_folder_path = r'C:\Users\USER' # user 폴더 경로
-    consulting_statistics_path = r'C:\@Pharm\EXCEL' # 유팜 컨설팅 통계에서 Excel로 내보내기 하면 저장되는 경로
+    # 파일 경로 : g50.py 스크립트와 같은 디렉토리에서 파일들을 찾도록 수정합니다.
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    desktop_path = script_path
+    consulting_statistics_path = os.path.join(script_path, 'data')
 
     # info.txt 파일 경로
     file_path = os.path.join(desktop_path,'info.txt')
