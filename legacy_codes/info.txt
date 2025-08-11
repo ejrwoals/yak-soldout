@@ -1,0 +1,8 @@
+반복실행간격(분)=5
+지오영아이디=your_geoyoug_id
+지오영비밀번호=your_geoyoug_pw
+백제아이디=your_backjae_id
+백제비밀번호=your_backjae_pw
+x대웅아이디=your_daewoong_id
+x대웅비밀번호=your_daewoong_pw
+재고발견이후알림제외기간(일) = 7
