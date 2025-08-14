@@ -1,0 +1,166 @@
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from enum import Enum
+
+
+class DistributorType(Enum):
+    GEOWEB = "지오영"
+    BAEKJE = "백제"
+
+
+@dataclass
+class Drug:
+    """약품 정보를 담는 데이터 클래스"""
+    name: str
+    insurance_code: str
+    distributor: DistributorType
+    main_stock: str
+    incheon_stock: str = "-"
+    notes: str = "-"
+    company: str = ""
+    is_excluded_from_alert: bool = False
+
+    def get_total_stock_int(self) -> int:
+        """총 재고를 정수로 반환 (품절인 경우 0)"""
+        try:
+            main = 0 if self.main_stock in ['품절', '0', '-'] else int(self.main_stock.replace(',', ''))
+            incheon = 0 if self.incheon_stock in ['품절', '0', '-'] else int(self.incheon_stock.replace(',', ''))
+            return main + incheon
+        except ValueError:
+            return 0
+
+    def has_stock(self) -> bool:
+        """재고가 있는지 확인"""
+        return self.get_total_stock_int() > 0
+
+
+@dataclass
+class PharmacyUsage:
+    """약국 월별 사용량 데이터"""
+    insurance_code: str
+    drug_name: str
+    current_stock: int
+    monthly_usage: Dict[str, float]  # '1월': 사용량, '2월': 사용량, ...
+    monthly_average: float = 0.0
+    stock_to_monthly_ratio: float = 0.0
+
+    def __post_init__(self):
+        """월평균과 재고비율 자동 계산"""
+        if self.monthly_usage:
+            valid_usage = [v for v in self.monthly_usage.values() if v > 0]
+            self.monthly_average = sum(valid_usage) / len(valid_usage) if valid_usage else 0.0
+            
+            if self.monthly_average > 0:
+                self.stock_to_monthly_ratio = self.current_stock / self.monthly_average
+            else:
+                self.stock_to_monthly_ratio = float('inf')
+        else:
+            # 빈 딕셔너리인 경우
+            self.monthly_average = 0.0
+            self.stock_to_monthly_ratio = float('inf')
+
+
+@dataclass
+class SearchResult:
+    """검색 결과를 담는 데이터 클래스"""
+    timestamp: datetime
+    found_drugs: List[Drug]
+    soldout_drugs: List[Drug]
+    alert_exclusions: List[str]
+    search_duration: float = 0.0
+    errors: List[str] = None
+
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
+
+    def get_alert_drugs(self) -> List[Drug]:
+        """알림이 필요한 약품들만 반환"""
+        return [drug for drug in self.found_drugs if not drug.is_excluded_from_alert]
+
+    def has_alerts(self) -> bool:
+        """알림할 약품이 있는지 확인"""
+        return len(self.get_alert_drugs()) > 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """JSON 저장을 위한 딕셔너리 변환"""
+        return {
+            'timestamp': self.timestamp.isoformat(),
+            'found_drugs': [
+                {
+                    'name': drug.name,
+                    'insurance_code': drug.insurance_code,
+                    'distributor': drug.distributor.value,
+                    'main_stock': drug.main_stock,
+                    'incheon_stock': drug.incheon_stock,
+                    'notes': drug.notes,
+                    'company': drug.company,
+                    'is_excluded_from_alert': drug.is_excluded_from_alert
+                } for drug in self.found_drugs
+            ],
+            'soldout_drugs': [
+                {
+                    'name': drug.name,
+                    'insurance_code': drug.insurance_code,
+                    'distributor': drug.distributor.value,
+                    'main_stock': drug.main_stock,
+                    'incheon_stock': drug.incheon_stock,
+                    'notes': drug.notes,
+                    'company': drug.company,
+                    'is_excluded_from_alert': drug.is_excluded_from_alert
+                } for drug in self.soldout_drugs
+            ],
+            'alert_exclusions': self.alert_exclusions,
+            'search_duration': self.search_duration,
+            'errors': self.errors
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SearchResult':
+        """딕셔너리에서 SearchResult 생성"""
+        return cls(
+            timestamp=datetime.fromisoformat(data['timestamp']),
+            found_drugs=[
+                Drug(
+                    name=d['name'],
+                    insurance_code=d['insurance_code'],
+                    distributor=DistributorType(d['distributor']),
+                    main_stock=d['main_stock'],
+                    incheon_stock=d['incheon_stock'],
+                    notes=d['notes'],
+                    company=d['company'],
+                    is_excluded_from_alert=d['is_excluded_from_alert']
+                ) for d in data['found_drugs']
+            ],
+            soldout_drugs=[
+                Drug(
+                    name=d['name'],
+                    insurance_code=d['insurance_code'],
+                    distributor=DistributorType(d['distributor']),
+                    main_stock=d['main_stock'],
+                    incheon_stock=d['incheon_stock'],
+                    notes=d['notes'],
+                    company=d['company'],
+                    is_excluded_from_alert=d['is_excluded_from_alert']
+                ) for d in data['soldout_drugs']
+            ],
+            alert_exclusions=data['alert_exclusions'],
+            search_duration=data.get('search_duration', 0.0),
+            errors=data.get('errors', [])
+        )
+
+
+@dataclass 
+class AppConfig:
+    """애플리케이션 설정"""
+    geoweb_id: str
+    geoweb_password: str
+    baekje_id: Optional[str] = None
+    baekje_password: Optional[str] = None
+    repeat_interval_minutes: int = 30
+    alert_exclusion_days: int = 7
+    
+    def has_baekje_credentials(self) -> bool:
+        """백제 인증정보가 있는지 확인"""
+        return bool(self.baekje_id and self.baekje_password)

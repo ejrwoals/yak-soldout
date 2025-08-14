@@ -1,0 +1,115 @@
+import os
+import platform
+from typing import List, Dict, Any
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+
+
+class BrowserManager:
+    """크로스 플랫폼 브라우저 관리"""
+    
+    def __init__(self, headless: bool = None):
+        # 환경변수 HEADLESS가 설정되어 있으면 우선 적용
+        if headless is None:
+            env_headless = os.getenv('HEADLESS', 'true').lower()
+            self.headless = env_headless not in ('false', '0', 'no')
+        else:
+            self.headless = headless
+        self.playwright = None
+        self.browser = None
+        self.context = None
+    
+    def __enter__(self):
+        """Context manager 진입"""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager 종료"""
+        self.stop()
+    
+    def start(self):
+        """브라우저 시작"""
+        self.playwright = sync_playwright().start()
+        
+        # 플랫폼별 브라우저 설정
+        browser_args = self._get_browser_args()
+        
+        # Chromium 사용 (가장 안정적)
+        self.browser = self.playwright.chromium.launch(
+            headless=self.headless,
+            args=browser_args
+        )
+        
+        # 새 컨텍스트 생성 (쿠키, 세션 분리)
+        self.context = self.browser.new_context(
+            viewport={'width': 1280, 'height': 720},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
+    
+    def stop(self):
+        """브라우저 정리"""
+        if self.context:
+            self.context.close()
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+    
+    def new_page(self) -> Page:
+        """새 페이지 생성"""
+        if not self.context:
+            raise RuntimeError("브라우저가 시작되지 않았습니다. start() 메서드를 먼저 호출하세요.")
+        
+        page = self.context.new_page()
+        
+        # 기본 타임아웃 설정
+        page.set_default_timeout(30000)  # 30초
+        page.set_default_navigation_timeout(60000)  # 60초
+        
+        return page
+    
+    def _get_browser_args(self) -> List[str]:
+        """플랫폼별 브라우저 인수 반환"""
+        args = [
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-dev-shm-usage',
+            '--disable-extensions',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+        ]
+        
+        system = platform.system()
+        
+        if system == "Linux":
+            args.extend([
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+            ])
+        elif system == "Darwin":  # macOS
+            args.extend([
+                '--no-sandbox',
+            ])
+        
+        return args
+    
+    @staticmethod
+    def install_browsers():
+        """필요한 브라우저 설치 (처음 실행 시)"""
+        try:
+            from playwright._impl._driver import compute_driver_executable
+            import subprocess
+            import sys
+            
+            # Playwright 브라우저 설치
+            subprocess.run([
+                sys.executable, "-m", "playwright", "install", "chromium"
+            ], check=True)
+            
+            print("브라우저 설치가 완료되었습니다.")
+            return True
+            
+        except Exception as e:
+            print(f"브라우저 설치 실패: {e}")
+            return False

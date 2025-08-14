@@ -208,3 +208,10 @@ __marimo__/
 
 # data
 data/
+
+# claude
+.claude/
+CLAUDE.md
+
+# user_data
+info.txt
