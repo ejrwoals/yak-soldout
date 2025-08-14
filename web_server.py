@@ -160,18 +160,6 @@ async def get_status():
         drug_list = app_state.file_manager.read_drug_list()
         exclusion_list = app_state.file_manager.read_alert_exclusions()
         
-        # Excel 파일 확인
-        usage_df = app_state.file_manager.read_usage_excel()
-        usage_info = None
-        if usage_df is not None:
-            created_time = app_state.file_manager.get_usage_file_creation_time()
-            usage_info = {
-                "found": True,
-                "created_time": created_time,
-                "rows": len(usage_df)
-            }
-        else:
-            usage_info = {"found": False}
         
         # 실시간 검색 상태 (메모리에서)
         current_search = app_state.current_search.copy()
@@ -184,8 +172,9 @@ async def get_status():
             },
             "files": {
                 "drug_count": len(drug_list),
+                "drug_list": drug_list[:5],  # 최대 5개까지만 툴팁에 표시
                 "exclusion_count": len(exclusion_list),
-                "usage_excel": usage_info
+                "exclusion_list": exclusion_list[:5]  # 최대 5개까지만 툴팁에 표시
             },
             "current_search": current_search
         }

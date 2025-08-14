@@ -1,0 +1,141 @@
+/* 툴팁 관련 스타일 */
+
+/* 공통 status-card 툴팁 스타일 */
+.status-card {
+    position: relative;
+}
+
+.distributor-tooltip,
+.status-tooltip {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-100%);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    min-width: 240px;
+    max-width: 280px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+}
+
+.error-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    min-width: 240px;
+    max-width: 280px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+}
+
+.distributor-tooltip::after,
+.status-tooltip::after,
+.error-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--bg-primary);
+}
+
+.distributor-tooltip::before,
+.status-tooltip::before,
+.error-tooltip::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: var(--border-color);
+    margin-top: 1px;
+}
+
+.status-card:hover .distributor-tooltip,
+.status-card:hover .status-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-100%) translateY(-5px);
+}
+
+.summary-card:hover .error-tooltip,
+.summary-card.danger:hover .error-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-100%) translateY(-5px);
+}
+
+.tooltip-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    min-width: 0; /* flex item이 축소될 수 있도록 */
+}
+
+.tooltip-item:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3rem;
+    margin-bottom: 0.2rem;
+}
+
+.tooltip-item span {
+    font-weight: 500;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0; /* 말줄임을 위해 필요 */
+}
+
+.tooltip-item i {
+    flex-shrink: 0; /* 아이콘은 축소되지 않도록 */
+}
+
+.tooltip-more {
+    text-align: center;
+    padding: 0;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.2rem;
+    margin-top: 0;
+}
+
+/* 토스트 알림 스타일 */
+.toast {
+    font-family: var(--font-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: none;
+    backdrop-filter: blur(10px);
+}
+
+.toast-success {
+    background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+}
+
+.toast-error {
+    background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+}

@@ -1,16 +1,10 @@
 import os
 import json
 import chardet
-import pandas as pd
-import glob
-import warnings
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-# xlrd 관련 경고 숨기기
-warnings.filterwarnings("ignore", message=".*file size.*not 512.*")
-warnings.filterwarnings("ignore", message=".*OLE2 inconsistency.*")
 
 
 class FileManager:
@@ -84,95 +78,8 @@ class FileManager:
             for item in sorted_list:
                 file.write(f'{item}\n')
     
-    def find_latest_usage_file(self, pattern: str = "월별 약품사용량_*.xls") -> Optional[Path]:
-        """가장 최근의 월별 약품사용량 파일 찾기"""
-        search_path = self.data_directory / pattern
-        files = glob.glob(str(search_path))
-        
-        if not files:
-            return None
-        
-        # 생성 시간 기준으로 정렬하여 최신 파일 반환
-        latest_file = max(files, key=os.path.getctime)
-        return Path(latest_file)
     
-    def read_usage_excel(self, file_path: Optional[Path] = None) -> Optional[pd.DataFrame]:
-        """월별 약품사용량 Excel 파일 읽기"""
-        if file_path is None:
-            file_path = self.find_latest_usage_file()
-        
-        if file_path is None or not file_path.exists():
-            return None
-        
-        try:
-            # Legacy 코드와 동일한 방식으로 처리
-            for i in range(1, 10):
-                files = sorted(glob.glob(str(self.data_directory / "월별 약품사용량_*.xls")), 
-                             key=os.path.getctime)
-                if len(files) < i:
-                    break
-                    
-                current_file = Path(files[-i])
-                df = pd.read_excel(current_file, header=3)
-                
-                # 4월 데이터가 있는지 확인 (충분한 데이터 확보 여부)
-                if '4월' in df.columns and df['4월'].sum() > 0:
-                    # 컬럼명 정리 (△, ▽ 제거)
-                    df.columns = df.columns.str.replace('[△▽]', '', regex=True)
-                    
-                    # 필요한 컬럼만 추출
-                    required_columns = ['청구코드', '약품명', '현재고',
-                                      '1월', '2월', '3월', '4월', '5월', '6월',
-                                      '7월', '8월', '9월', '10월', '11월', '12월']
-                    
-                    available_columns = [col for col in required_columns if col in df.columns]
-                    df = df[available_columns]
-                    
-                    # 0을 NaN으로 변환 후, 전체가 NaN인 컬럼 제거
-                    df = df.replace(0, pd.NA)
-                    df = df.dropna(axis=1, how='all')
-                    df = df.fillna(0).infer_objects(copy=False)
-                    
-                    # 월별 사용량 컬럼들 (청구코드, 약품명, 현재고 제외)
-                    month_columns = [col for col in df.columns 
-                                   if col not in ['청구코드', '약품명', '현재고']]
-                    
-                    # 마지막 컬럼은 불완전할 수 있으므로 제외
-                    if month_columns:
-                        month_columns = month_columns[:-1]
-                    
-                    # 월평균 사용량 계산
-                    if month_columns:
-                        df['월평균 사용'] = df[month_columns].mean(axis=1)
-                        df['현재고/월평균'] = df['현재고'] / df['월평균 사용']
-                        df = df.sort_values(by='현재고/월평균', ascending=True, ignore_index=True)
-                    
-                    # 컬럼명 변경 (Legacy 코드와 호환)
-                    df.rename(columns={
-                        '청구코드': '보험코드',
-                        '약품명': '유팜 약품명',
-                        '현재고': '유팜 현재고',
-                        '월평균 사용': '유팜 월평균 사용량'
-                    }, inplace=True)
-                    
-                    return df
-            
-            return None
-            
-        except Exception as e:
-            print(f"Excel 파일 읽기 오류: {e}")
-            return None
     
-    def get_usage_file_creation_time(self, file_path: Optional[Path] = None) -> str:
-        """사용량 파일의 생성 시간 반환"""
-        if file_path is None:
-            file_path = self.find_latest_usage_file()
-        
-        if file_path is None or not file_path.exists():
-            return ""
-        
-        creation_time = os.path.getctime(file_path)
-        return datetime.fromtimestamp(creation_time).strftime('%Y년 %m월 %d일')
     
     def save_search_results(self, data: Dict[str, Any], filename: str = "search_results.json"):
         """검색 결과를 JSON으로 저장"""

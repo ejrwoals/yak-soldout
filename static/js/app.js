@@ -13,6 +13,7 @@ class ModernDrugSearchApp {
         
         // 상태
         this.currentTheme = localStorage.getItem('theme') || 'light';
+        this.errorDrugs = []; // 오류 발생한 약품 목록
         
         // 초기화
         this.init();
@@ -30,7 +31,7 @@ class ModernDrugSearchApp {
             
             // 상태 카드
             drugCount: document.getElementById('drugCount'),
-            excelStatus: document.getElementById('excelStatus'),
+            distributorStatus: document.getElementById('distributorStatus'),
             exclusionCount: document.getElementById('exclusionCount'),
             
             // 로그
@@ -287,6 +288,7 @@ class ModernDrugSearchApp {
             const data = await response.json();
             
             this.updateFileInfo(data.files);
+            this.updateDistributorStatus(data.config);
             this.updateSearchStatus(data.is_searching);
             
             // 최근 검색 결과 표시
@@ -304,21 +306,195 @@ class ModernDrugSearchApp {
         // 약품 목록 수
         if (this.elements.drugCount) {
             this.elements.drugCount.textContent = files.drug_count || '-';
-        }
-        
-        // Excel 파일 상태
-        if (this.elements.excelStatus) {
-            if (files.usage_excel?.found) {
-                this.elements.excelStatus.innerHTML = `<i class="bi bi-check-circle" style="color: var(--success)"></i>`;
-            } else {
-                this.elements.excelStatus.innerHTML = `<i class="bi bi-x-circle" style="color: var(--danger)"></i>`;
-            }
+            this.updateDrugListTooltip(files.drug_list || [], files.drug_count || 0);
         }
         
         // 알림 제외 수
         if (this.elements.exclusionCount) {
             this.elements.exclusionCount.textContent = files.exclusion_count || '-';
+            this.updateExclusionListTooltip(files.exclusion_list || [], files.exclusion_count || 0);
         }
+    }
+    
+    updateDistributorStatus(config) {
+        if (!this.elements.distributorStatus) return;
+        
+        const geoweb = config?.geoweb_configured || false;
+        const baekje = config?.baekje_configured || false;
+        
+        // 설정된 도매상 수 계산
+        let configuredCount = 0;
+        const distributors = [];
+        
+        if (geoweb) {
+            configuredCount++;
+            distributors.push('지오영');
+        }
+        if (baekje) {
+            configuredCount++;
+            distributors.push('백제약품');
+        }
+        
+        // 카드에는 숫자만 표시
+        this.elements.distributorStatus.textContent = configuredCount.toString();
+        
+        // 툴팁 업데이트
+        this.updateDistributorTooltip(distributors);
+    }
+    
+    updateDistributorTooltip(distributors) {
+        const statusCard = this.elements.distributorStatus.closest('.status-card');
+        if (!statusCard) return;
+        
+        // 기존 툴팁 제거
+        this.removeExistingTooltip(statusCard);
+        
+        // 새 툴팁 생성
+        const tooltip = document.createElement('div');
+        tooltip.className = 'distributor-tooltip';
+        
+        if (distributors.length === 0) {
+            tooltip.innerHTML = `
+                <div class="tooltip-item">
+                    <i class="bi bi-x-circle" style="color: var(--danger)"></i>
+                    <span>설정된 도매상 없음</span>
+                </div>
+            `;
+        } else {
+            tooltip.innerHTML = distributors.map(name => `
+                <div class="tooltip-item">
+                    <i class="bi bi-check-circle" style="color: var(--success)"></i>
+                    <span>${name}</span>
+                </div>
+            `).join('');
+        }
+        
+        statusCard.appendChild(tooltip);
+    }
+    
+    updateDrugListTooltip(drugList, totalCount) {
+        const statusCard = this.elements.drugCount.closest('.status-card');
+        if (!statusCard) return;
+        
+        // 기존 툴팁 제거
+        this.removeExistingTooltip(statusCard);
+        
+        // 새 툴팁 생성
+        const tooltip = document.createElement('div');
+        tooltip.className = 'status-tooltip';
+        
+        if (drugList.length === 0) {
+            tooltip.innerHTML = `
+                <div class="tooltip-item">
+                    <i class="bi bi-inbox" style="color: var(--text-muted)"></i>
+                    <span>검색 대상 약품이 없습니다</span>
+                </div>
+            `;
+        } else {
+            const items = drugList.map(drug => `
+                <div class="tooltip-item">
+                    <i class="bi bi-capsule" style="color: var(--primary)"></i>
+                    <span>${drug}</span>
+                </div>
+            `).join('');
+            
+            const moreItems = totalCount > drugList.length ? `
+                <div class="tooltip-more">
+                    <span>...</span>
+                </div>
+            ` : '';
+            
+            tooltip.innerHTML = items + moreItems;
+        }
+        
+        statusCard.appendChild(tooltip);
+    }
+    
+    updateExclusionListTooltip(exclusionList, totalCount) {
+        const statusCard = this.elements.exclusionCount.closest('.status-card');
+        if (!statusCard) return;
+        
+        // 기존 툴팁 제거
+        this.removeExistingTooltip(statusCard);
+        
+        // 새 툴팁 생성
+        const tooltip = document.createElement('div');
+        tooltip.className = 'status-tooltip';
+        
+        if (exclusionList.length === 0) {
+            tooltip.innerHTML = `
+                <div class="tooltip-item">
+                    <i class="bi bi-bell" style="color: var(--success)"></i>
+                    <span>모든 약품에 알림 활성화</span>
+                </div>
+            `;
+        } else {
+            const items = exclusionList.map(item => {
+                // 날짜@약품명 형식 파싱
+                const parts = item.split('@');
+                const displayText = parts.length > 1 ? parts[1].trim() : item;
+                
+                return `
+                    <div class="tooltip-item">
+                        <i class="bi bi-bell-slash" style="color: var(--warning)"></i>
+                        <span>${displayText}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            const moreItems = totalCount > exclusionList.length ? `
+                <div class="tooltip-more">
+                    <span>...</span>
+                </div>
+            ` : '';
+            
+            tooltip.innerHTML = items + moreItems;
+        }
+        
+        statusCard.appendChild(tooltip);
+    }
+    
+    updateErrorTooltip() {
+        const statusCard = this.elements.errorCount?.closest('.summary-card.danger');
+        if (!statusCard) return;
+        
+        // 기존 툴팁 제거
+        this.removeExistingTooltip(statusCard);
+        
+        // 새 툴팁 생성
+        const tooltip = document.createElement('div');
+        tooltip.className = 'error-tooltip';
+        
+        if (this.errorDrugs.length === 0) {
+            tooltip.innerHTML = `
+                <div class="tooltip-item">
+                    <i class="bi bi-check-circle" style="color: var(--success)"></i>
+                    <span>오류 없음</span>
+                </div>
+            `;
+        } else {
+            const items = this.errorDrugs.slice(0, 5).map(error => `
+                <div class="tooltip-item">
+                    <i class="bi bi-exclamation-triangle" style="color: var(--danger)"></i>
+                    <span title="${error.error}">${error.name}</span>
+                </div>
+            `).join('');
+            
+            const moreItems = this.errorDrugs.length > 5 ? `
+                <div class="tooltip-more">
+                    <span>외 ${this.errorDrugs.length - 5}개 더...</span>
+                </div>
+            ` : '';
+            
+            tooltip.innerHTML = items + moreItems;
+        }
+        
+        statusCard.appendChild(tooltip);
+    }
+    
+    removeExistingTooltip(statusCard) {
+        const existingTooltips = statusCard.querySelectorAll('.distributor-tooltip, .status-tooltip, .error-tooltip');
+        existingTooltips.forEach(tooltip => tooltip.remove());
     }
     
     updateSearchStatus(searching) {
@@ -383,6 +559,7 @@ class ModernDrugSearchApp {
         // 새 사이클 시작 - 화면 완전 초기화
         this.clearResults();
         this.clearCounters();
+        this.errorDrugs = []; // 오류 목록 초기화
     }
     
     onSearchStarted() {
@@ -501,10 +678,6 @@ class ModernDrugSearchApp {
                         <div class="col-header warning"><i class="bi bi-x-circle"></i> 품절</div>
                         <div class="col-body"></div>
                     </div>
-                    <div class="results-col" id="col-error">
-                        <div class="col-header danger"><i class="bi bi-exclamation-triangle"></i> 오류</div>
-                        <div class="col-body"></div>
-                    </div>
                 </div>
             `;
         }
@@ -579,30 +752,19 @@ class ModernDrugSearchApp {
     onDrugError(drug, progress) {
         // 진행률 갱신
         this.updateProgress(progress);
-        if (!this.elements.searchResults.querySelector('.results-columns')) {
-            this.clearResults();
-        }
-
-        // 오류 컬럼에 카드 추가
-        const col = document.querySelector('#col-error .col-body');
-        if (!col) return;
-        const card = document.createElement('div');
-        card.className = 'drug-result-card error fade-in';
-        card.innerHTML = `
-            <div class="drug-header">
-                <i class="bi bi-exclamation-triangle text-danger"></i>
-                <h5>${drug.name}</h5>
-            </div>
-            <div class="drug-stock">
-                <span class="stock-item">${drug.error || '오류 발생'}</span>
-            </div>
-        `;
-        col.appendChild(card);
-        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        
+        // 오류 약품을 목록에 추가
+        this.errorDrugs.push({
+            name: drug.name,
+            error: drug.error || '오류 발생'
+        });
 
         // 에러 카운터 증가
         const currentErr = parseInt(this.elements.errorCount?.textContent || '0');
         this.elements.errorCount.textContent = currentErr + 1;
+        
+        // 오류 툴팁 업데이트
+        this.updateErrorTooltip();
     }
     
     displaySearchResults(searchData) {
@@ -702,98 +864,6 @@ class ModernDrugSearchApp {
     }
 }
 
-// 추가 CSS 스타일을 동적으로 추가
-const additionalStyles = `
-    .drugs-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1rem;
-        margin-top: 1rem;
-    }
-    
-    .drug-card {
-        background: var(--bg-tertiary);
-        border-radius: 8px;
-        padding: 1rem;
-        border-left: 4px solid var(--success);
-    }
-    
-    .drug-card h5 {
-        margin: 0 0 0.5rem 0;
-        color: var(--text-primary);
-        font-weight: 600;
-    }
-    
-    .drug-info {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-    
-    .stock-badge {
-        background: var(--primary);
-        color: white;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-    }
-    
-    .stock-info {
-        color: var(--text-secondary);
-        font-size: 0.875rem;
-    }
-    
-    .alert-success {
-        background: rgba(16, 185, 129, 0.1);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        border-radius: 8px;
-        padding: 1rem;
-        color: var(--success);
-    }
-    
-    .alert-success h4 {
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
-    .more-drugs {
-        background: var(--bg-secondary);
-        border: 2px dashed var(--border-color);
-        border-radius: 8px;
-        padding: 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--text-secondary);
-        font-style: italic;
-    }
-    
-    .summary-card.highlight {
-        animation: highlight 2s ease-in-out;
-    }
-    
-    @keyframes highlight {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-    }
-    
-    .control-btn.searching {
-        background: var(--gradient-warning) !important;
-        animation: searching-pulse 1.5s ease-in-out infinite;
-    }
-    
-    @keyframes searching-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-    }
-`;
-
-// 스타일 추가
-const styleSheet = document.createElement('style');
-styleSheet.textContent = additionalStyles;
-document.head.appendChild(styleSheet);
 
 // DOM 로드 완료 시 앱 초기화
 document.addEventListener('DOMContentLoaded', () => {

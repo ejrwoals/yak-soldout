@@ -35,31 +35,6 @@ class Drug:
         return self.get_total_stock_int() > 0
 
 
-@dataclass
-class PharmacyUsage:
-    """약국 월별 사용량 데이터"""
-    insurance_code: str
-    drug_name: str
-    current_stock: int
-    monthly_usage: Dict[str, float]  # '1월': 사용량, '2월': 사용량, ...
-    monthly_average: float = 0.0
-    stock_to_monthly_ratio: float = 0.0
-
-    def __post_init__(self):
-        """월평균과 재고비율 자동 계산"""
-        if self.monthly_usage:
-            valid_usage = [v for v in self.monthly_usage.values() if v > 0]
-            self.monthly_average = sum(valid_usage) / len(valid_usage) if valid_usage else 0.0
-            
-            if self.monthly_average > 0:
-                self.stock_to_monthly_ratio = self.current_stock / self.monthly_average
-            else:
-                self.stock_to_monthly_ratio = float('inf')
-        else:
-            # 빈 딕셔너리인 경우
-            self.monthly_average = 0.0
-            self.stock_to_monthly_ratio = float('inf')
-
 
 @dataclass
 class SearchResult:
