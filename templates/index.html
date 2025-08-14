@@ -65,7 +65,7 @@
                     </div>
                 </div>
                 
-                <div class="status-card">
+                <div class="status-card" id="distributorCard" style="cursor: pointer;">
                     <div class="status-icon">
                         <i class="bi bi-shield-check"></i>
                     </div>
@@ -168,7 +168,29 @@
         </div>
     </footer>
 
+    <!-- 도매상 설정 모달 -->
+    <div id="distributorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-shield-check"></i> 도매상 설정</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="distributorForm">
+                    <div id="distributorList" class="distributor-list">
+                        <!-- 동적으로 생성될 도매상 설정 폼들 -->
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" id="cancelBtn">취소</button>
+                        <button type="submit" class="btn-save">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom JS -->
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/distributor-modal.js"></script>
 </body>
 </html>

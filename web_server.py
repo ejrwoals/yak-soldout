@@ -167,8 +167,10 @@ async def get_status():
         return {
             "is_searching": app_state.is_searching,
             "config": {
-                "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id),
-                "baekje_configured": bool(app_state.config and app_state.config.has_baekje_credentials())
+                "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id and 
+                                        app_state.file_manager.read_config_file().get('지오영활성화', 'true').lower() == 'true'),
+                "baekje_configured": bool(app_state.config and app_state.config.has_baekje_credentials() and
+                                        app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true')
             },
             "files": {
                 "drug_count": len(drug_list),
@@ -187,8 +189,16 @@ async def start_search():
     if app_state.is_searching:
         raise HTTPException(status_code=400, detail="이미 검색 중입니다")
     
+    # 활성화된 도매상이 있는지 확인
+    config_file = app_state.file_manager.read_config_file()
+    geoweb_active = config_file.get('지오영활성화', 'true').lower() == 'true'
+    baekje_active = config_file.get('백제활성화', 'false').lower() == 'true'
+    
     if not app_state.config or not app_state.config.geoweb_id:
         raise HTTPException(status_code=400, detail="지오영 계정 정보가 설정되지 않았습니다")
+        
+    if not geoweb_active and not baekje_active:
+        raise HTTPException(status_code=400, detail="활성화된 도매상이 없습니다. 도매상 설정에서 최소 하나를 활성화해주세요")
     
     # 검색 데이터 초기화 (새 사이클 시작)
     app_state.reset_search_data()
@@ -232,6 +242,114 @@ async def stop_search():
     }))
     
     return {"message": "검색을 중단했습니다"}
+
+@app.get("/api/distributor-settings")
+async def get_distributor_settings():
+    """도매상 설정 정보 조회"""
+    try:
+        # info.txt 파일에서 설정 읽기
+        config_data = app_state.file_manager.read_config_file()
+        
+        # 동적으로 도매상 리스트 생성
+        distributors = []
+        
+        # 지오영 정보 (항상 표시)
+        distributors.append({
+            "id": "geoweb",
+            "name": "지오영",
+            "enabled": config_data.get('지오영활성화', 'true').lower() == 'true',
+            "username": config_data.get('지오영아이디', ''),
+            "password": config_data.get('지오영비밀번호', '')
+        })
+        
+        # 백제약품 정보 (항상 표시)
+        distributors.append({
+            "id": "baekje", 
+            "name": "백제약품",
+            "enabled": config_data.get('백제활성화', 'false').lower() == 'true',
+            "username": config_data.get('백제아이디', ''),
+            "password": config_data.get('백제비밀번호', '')
+        })
+        
+        # info.txt에서 새로운 도매상 자동 감지 (아이디/비밀번호 패턴)
+        for key, value in config_data.items():
+            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디']:
+                distributor_name = key.replace('아이디', '')
+                password_key = distributor_name + '비밀번호'
+                active_key = distributor_name + '활성화'
+                
+                distributors.append({
+                    "id": distributor_name.lower(),
+                    "name": distributor_name,
+                    "enabled": config_data.get(active_key, 'false').lower() == 'true',
+                    "username": value or '',
+                    "password": config_data.get(password_key, '')
+                })
+        
+        return {"distributors": distributors}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"설정 읽기 실패: {str(e)}")
+
+@app.put("/api/distributor-settings")
+async def update_distributor_settings(settings: dict):
+    """도매상 설정 정보 업데이트"""
+    try:
+        # 유효성 검사
+        distributors = settings.get('distributors', [])
+        for dist in distributors:
+            if dist.get('enabled', False):
+                if not dist.get('username') or not dist.get('password'):
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"{dist.get('name', '알수없는 도매상')}의 아이디와 비밀번호를 입력해주세요"
+                    )
+        
+        # 기존 설정 읽기
+        config_data = app_state.file_manager.read_config_file()
+        
+        # 도매상 설정 업데이트
+        for dist in distributors:
+            dist_name = dist['name']
+            enabled = dist.get('enabled', False)
+            username = dist.get('username', '')
+            password = dist.get('password', '')
+            
+            # 한국어 이름을 키로 사용
+            if dist_name == "지오영":
+                config_data['지오영활성화'] = 'true' if enabled else 'false'
+                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
+                if enabled:
+                    config_data['지오영아이디'] = username
+                    config_data['지오영비밀번호'] = password
+                    
+            elif dist_name == "백제약품":
+                config_data['백제활성화'] = 'true' if enabled else 'false'
+                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
+                if enabled:
+                    config_data['백제아이디'] = username
+                    config_data['백제비밀번호'] = password
+                    
+            else:
+                # 새로운 도매상
+                config_data[f'{dist_name}활성화'] = 'true' if enabled else 'false'
+                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
+                if enabled:
+                    config_data[f'{dist_name}아이디'] = username
+                    config_data[f'{dist_name}비밀번호'] = password
+        
+        # info.txt 파일 저장
+        app_state.file_manager.write_config_file(config_data)
+        
+        # 앱 설정 다시 로드
+        app_state.config = app_state.config_manager.load_config()
+        
+        return {"message": "설정이 저장되었습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"설정 저장 실패: {str(e)}")
 
 async def broadcast_log(message: str):
     """로그 메시지를 WebSocket으로 브로드캐스트"""
@@ -362,16 +480,26 @@ def execute_search_sync(progress_queue=None):
         all_drugs = []
         errors = []
         
-        # 지오영 검색 (동기)
-        log_message("🌐 지오영 검색 시작...")
-        geoweb_drugs, geoweb_errors = search_geoweb_sync(drug_list, excluded_names, progress_queue)
-        all_drugs.extend(geoweb_drugs)
-        errors.extend(geoweb_errors)
+        # 활성화 플래그 확인
+        config_file = app_state.file_manager.read_config_file()
+        geoweb_active = config_file.get('지오영활성화', 'true').lower() == 'true'
+        baekje_active = config_file.get('백제활성화', 'false').lower() == 'true'
         
-        # 백제 검색 (설정된 경우)
-        if app_state.config.has_baekje_credentials():
+        # 지오영 검색 (활성화된 경우)
+        if geoweb_active and app_state.config.geoweb_id:
+            log_message("🌐 지오영 검색 시작...")
+            geoweb_drugs, geoweb_errors = search_geoweb_sync(drug_list, excluded_names, progress_queue)
+            all_drugs.extend(geoweb_drugs)
+            errors.extend(geoweb_errors)
+        else:
+            log_message("⚠️ 지오영이 비활성화되어 있습니다")
+        
+        # 백제 검색 (활성화된 경우)
+        if baekje_active and app_state.config.has_baekje_credentials():
             log_message("🏢 백제약품 검색 시작...")
             log_message("⚠️ 백제약품 검색은 아직 구현되지 않았습니다")
+        elif baekje_active:
+            log_message("⚠️ 백제약품이 활성화되어 있지만 계정 정보가 없습니다")
         
         # 결과 분류
         found_drugs, soldout_drugs = app_state.data_processor.categorize_drugs(all_drugs, cleaned_exclusions)

@@ -862,10 +862,14 @@ class ModernDrugSearchApp {
             }, 300);
         }, 3000);
     }
+    
 }
 
 
 // DOM 로드 완료 시 앱 초기화
 document.addEventListener('DOMContentLoaded', () => {
     window.modernDrugApp = new ModernDrugSearchApp();
+    
+    // 도매상 모달 초기화
+    window.distributorModal = new DistributorModal(window.modernDrugApp);
 });

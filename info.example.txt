@@ -2,10 +2,12 @@
 # 각 항목에 실제 계정 정보를 입력하세요
 
 # 지오영(Geoweb) 계정 정보
+지오영활성화=true
 지오영아이디=your_geoweb_username
 지오영비밀번호=your_geoweb_password
 
-# 백제약품(Baekje) 계정 정보 (선택사항)
+# 백제약품(Baekje) 계정 정보
+백제활성화=false
 백제아이디=your_baekje_username
 백제비밀번호=your_baekje_password
 
