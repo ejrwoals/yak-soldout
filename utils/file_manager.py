@@ -78,6 +78,50 @@ class FileManager:
             for item in sorted_list:
                 file.write(f'{item}\n')
     
+    def read_alert_exclusions_json(self, filename: str = "알림 제외.json") -> List[Dict[str, Any]]:
+        """JSON 형식의 알림 제외 목록 파일 읽기"""
+        file_path = self.app_directory / filename
+        
+        if not file_path.exists():
+            # 파일이 없으면 빈 배열로 초기화
+            self.write_alert_exclusions_json([], filename)
+            return []
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"JSON 파일 읽기 오류: {e}")
+            return []
+    
+    def write_alert_exclusions_json(self, exclusion_list: List[Dict[str, Any]], filename: str = "알림 제외.json"):
+        """JSON 형식의 알림 제외 목록 파일 쓰기"""
+        file_path = self.app_directory / filename
+        
+        # 정렬: 비핀 항목(상단) -> 핀 항목(하단), 각각 날짜 최신순
+        def sort_key(item):
+            is_pinned = item.get('isPinned', False)
+            date_str = item.get('date', '1970-01-01T00:00:00')
+            try:
+                # ISO 형식 날짜를 파싱하여 정렬 키로 사용
+                from datetime import datetime
+                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                # 핀된 항목은 나중에 오도록 (1), 비핀 항목은 먼저 오도록 (0)
+                # 날짜는 최신순이므로 음수로 변환
+                return (1 if is_pinned else 0, -date_obj.timestamp())
+            except:
+                # 날짜 파싱 실패 시 기본값
+                return (1 if is_pinned else 0, 0)
+        
+        sorted_list = sorted(exclusion_list, key=sort_key)
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(sorted_list, file, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"JSON 파일 쓰기 오류: {e}")
+    
     def read_config_file(self, filename: str = "info.txt") -> Dict[str, str]:
         """info.txt 설정 파일 읽기"""
         file_path = self.app_directory / filename

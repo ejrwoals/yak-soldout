@@ -158,11 +158,18 @@ async def get_status():
     try:
         # 기본 정보
         drug_list = app_state.file_manager.read_drug_list()
-        exclusion_list = app_state.file_manager.read_alert_exclusions()
+        
+        # JSON 형식의 알림 제외 목록 읽기
+        exclusion_json_data = app_state.file_manager.read_alert_exclusions_json()
+        exclusion_list = [item.get('drugName', '') for item in exclusion_json_data]  # 약품명만 추출
         
         
         # 실시간 검색 상태 (메모리에서)
         current_search = app_state.current_search.copy()
+        
+        # 설정 파일에서 alert_exclusion_days 값 읽기
+        config_file = app_state.file_manager.read_config_file()
+        alert_exclusion_days = int(config_file.get('alert_exclusion_days', '7'))
         
         return {
             "is_searching": app_state.is_searching,
@@ -170,7 +177,8 @@ async def get_status():
                 "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id and 
                                         app_state.file_manager.read_config_file().get('지오영활성화', 'true').lower() == 'true'),
                 "baekje_configured": bool(app_state.config and app_state.config.has_baekje_credentials() and
-                                        app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true')
+                                        app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true'),
+                "alert_exclusion_days": alert_exclusion_days
             },
             "files": {
                 "drug_count": len(drug_list),
@@ -386,6 +394,45 @@ async def update_drug_list(data: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"약품 목록 저장 실패: {str(e)}")
+
+@app.get("/api/exclusion-list")
+async def get_exclusion_list():
+    """알림 제외 목록 조회 (JSON 형식)"""
+    try:
+        exclusion_list = app_state.file_manager.read_alert_exclusions_json()
+        return {"exclusions": exclusion_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"알림 제외 목록 읽기 실패: {str(e)}")
+
+@app.put("/api/exclusion-list")
+async def update_exclusion_list(data: dict):
+    """알림 제외 목록 업데이트 (JSON 형식)"""
+    try:
+        exclusions = data.get('exclusions', [])
+        
+        # 유효성 검사
+        if not isinstance(exclusions, list):
+            raise HTTPException(status_code=400, detail="알림 제외 목록은 배열이어야 합니다")
+        
+        # 각 항목의 필수 필드 검증
+        for item in exclusions:
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=400, detail="각 항목은 객체여야 합니다")
+            
+            required_fields = ['date', 'distributor', 'drugName', 'isPinned']
+            for field in required_fields:
+                if field not in item:
+                    raise HTTPException(status_code=400, detail=f"필수 필드 '{field}'가 없습니다")
+        
+        # 파일에 저장 (자동 정렬 포함)
+        app_state.file_manager.write_alert_exclusions_json(exclusions)
+        
+        return {"message": f"알림 제외 목록이 저장되었습니다 (총 {len(exclusions)}개)"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"알림 제외 목록 저장 실패: {str(e)}")
 
 async def broadcast_log(message: str):
     """로그 메시지를 WebSocket으로 브로드캐스트"""

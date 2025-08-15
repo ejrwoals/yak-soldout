@@ -646,4 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 약품 목록 모달 초기화
     window.drugListModal = new DrugListModal(window.modernDrugApp);
+    
+    // 알림 제외 목록 모달 초기화
+    window.exclusionListModal = new ExclusionListModal(window.modernDrugApp);
 });

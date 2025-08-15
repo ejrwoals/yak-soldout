@@ -1,0 +1,20 @@
+[
+  {
+    "date": "2025-08-13T15:10:22",
+    "distributor": "지오영",
+    "drugName": "라베톤정10mg 28T 안국",
+    "isPinned": false
+  },
+  {
+    "date": "2025-08-16T05:20:54",
+    "distributor": "지오영",
+    "drugName": "디카맥스1000정(PTP) 90T 다림바이오텍",
+    "isPinned": true
+  },
+  {
+    "date": "2025-08-16T05:20:13",
+    "distributor": "지오영",
+    "drugName": "레가론캅셀140mg(병) 30C 부광",
+    "isPinned": true
+  }
+]

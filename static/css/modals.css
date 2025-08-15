@@ -509,3 +509,224 @@
     flex-direction: column-reverse;
   }
 }
+
+/* ============= 알림 제외 모달 전용 스타일 ============= */
+
+/* 알림 제외 컨트롤 */
+.exclusion-list-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.controls-info {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+/* 알림 제외 목록 컨테이너 */
+.exclusion-list-container {
+  max-height: 500px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+/* 빈 목록 상태 */
+.empty-exclusion-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-exclusion-list i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+  color: var(--success);
+}
+
+.empty-exclusion-list p {
+  margin-bottom: 0.5rem;
+}
+
+.empty-exclusion-list .text-muted {
+  font-size: 0.875rem;
+}
+
+/* 알림 제외 목록 헤더 */
+.exclusion-list-header {
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+/* 섹션 구분 */
+.exclusion-section {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.exclusion-section:last-child {
+  border-bottom: none;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.section-title i {
+  font-size: 1rem;
+}
+
+.section-title small {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.pinned-section .section-title {
+  background: rgba(59, 130, 246, 0.05);
+  color: var(--primary);
+}
+
+/* 알림 제외 아이템들 */
+.exclusion-items {
+  padding: 0;
+}
+
+.exclusion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.exclusion-item:hover {
+  background: var(--bg-secondary);
+}
+
+.exclusion-item:last-child {
+  border-bottom: none;
+}
+
+.exclusion-item.pinned {
+  background: rgba(59, 130, 246, 0.02);
+}
+
+.exclusion-item.pinned:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.exclusion-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.exclusion-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pin-indicator {
+  color: var(--primary);
+  font-size: 0.875rem;
+}
+
+.exclusion-drug-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.exclusion-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.exclusion-distributor {
+  font-weight: 500;
+}
+
+.exclusion-separator {
+  opacity: 0.5;
+}
+
+.exclusion-date {
+  font-family: 'Courier New', monospace;
+}
+
+/* 알림 제외 액션 버튼들 */
+.exclusion-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.exclusion-pin-btn, .exclusion-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.exclusion-pin-btn {
+  color: var(--text-muted);
+}
+
+.exclusion-pin-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: scale(1.1);
+}
+
+.exclusion-pin-btn.pinned {
+  background: var(--primary);
+  color: white;
+}
+
+.exclusion-pin-btn.pinned:hover {
+  background: var(--text-muted);
+}
+
+.exclusion-remove-btn {
+  color: var(--text-muted);
+}
+
+.exclusion-remove-btn:hover {
+  background: var(--danger);
+  color: white;
+  transform: scale(1.1);
+}

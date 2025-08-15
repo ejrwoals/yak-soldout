@@ -76,7 +76,7 @@
                     </div>
                 </div>
                 
-                <div class="status-card">
+                <div class="status-card" id="exclusionListCard" style="cursor: pointer;">
                     <div class="status-icon">
                         <i class="bi bi-bell-slash"></i>
                     </div>
@@ -227,6 +227,31 @@
         </div>
     </div>
 
+    <!-- 알림 제외 목록 편집 모달 -->
+    <div id="exclusionListModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-bell-slash"></i> 알림 제외 목록 관리</h2>
+                <button class="modal-close" id="closeExclusionListModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="exclusion-list-controls">
+                    <div class="controls-left">
+                        <span class="controls-info" id="exclusionInfoText">고정하지 않은 항목은 일정 기간 후 다시 알림 대상이 됩니다</span>
+                    </div>
+                    <div class="controls-right">
+                        <button type="button" class="btn-cancel" id="cancelExclusionListBtn">취소</button>
+                        <button type="button" class="btn-save" id="saveExclusionListBtn">저장</button>
+                    </div>
+                </div>
+                
+                <div id="exclusionListContainer" class="exclusion-list-container">
+                    <!-- 동적으로 생성될 알림 제외 목록 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom JS -->
     <script src="/static/js/notification-manager.js"></script>
     <script src="/static/js/websocket-manager.js"></script>
@@ -234,5 +259,6 @@
     <script src="/static/js/main.js"></script>
     <script src="/static/js/distributor-modal.js"></script>
     <script src="/static/js/drug-list-modal.js"></script>
+    <script src="/static/js/exclusion-list-modal.js"></script>
 </body>
 </html>
