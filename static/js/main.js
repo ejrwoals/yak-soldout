@@ -142,7 +142,12 @@ class ModernDrugSearchApp {
                     break;
                     
                 case 'cycle_start':
-                    this.onCycleStart();
+                    this.onCycleStart(message);
+                    this.addLogMessage(message.message, 'info');
+                    break;
+                    
+                case 'cycle_countdown':
+                    this.onCycleCountdown(message);
                     this.addLogMessage(message.message, 'info');
                     break;
                     
@@ -365,11 +370,40 @@ class ModernDrugSearchApp {
 	}
 
     // =================== 검색 이벤트 핸들러 ===================
-    onCycleStart() {
+    onCycleStart(message) {
         // 새 사이클 시작 - 화면 완전 초기화
         this.clearResults();
         this.clearCounters();
         this.errorDrugs = []; // 오류 목록 초기화
+        
+        // 사이클 번호 표시 (있다면)
+        if (message && message.cycle_number) {
+            console.log(`🔄 사이클 #${message.cycle_number} 시작`);
+            // UI에 사이클 번호 표시 (선택적)
+            this.updateCycleInfo(message.cycle_number);
+        }
+    }
+    
+    onCycleCountdown(message) {
+        // 카운트다운 메시지 처리
+        if (message && message.remaining_minutes && message.next_cycle) {
+            console.log(`⏰ 다음 사이클(#${message.next_cycle})까지 ${message.remaining_minutes}분 남음`);
+            
+            // 버튼 텍스트 업데이트 (카운트다운 표시)
+            const btn = this.elements.actionBtn;
+            if (btn && message.remaining_minutes <= 5) {
+                const label = btn.querySelector('span');
+                if (label) {
+                    label.textContent = `다음 사이클까지 ${message.remaining_minutes}분`;
+                }
+            }
+        }
+    }
+    
+    updateCycleInfo(cycleNumber) {
+        // 사이클 정보를 UI에 표시 (선택적)
+        // 나중에 대시보드 헤더나 상태 표시에 활용 가능
+        console.log(`현재 사이클: #${cycleNumber}`);
     }
     
     onSearchStarted() {
@@ -413,14 +447,25 @@ class ModernDrugSearchApp {
             this.elements.lastUpdate.textContent = new Date().toLocaleString('ko-KR');
         }
         
-        this.addLogMessage(`🎉 검색 완료! 재고: ${data.found_count}개, 품절: ${data.soldout_count}개`, 'success');
+        // 사이클 정보 포함한 로그 메시지
+        const cycleInfo = data.cycle_number ? ` (사이클 #${data.cycle_number})` : '';
+        this.addLogMessage(`🎉 검색 완료${cycleInfo}! 재고: ${data.found_count}개, 품절: ${data.soldout_count}개`, 'success');
         
         // 최신 결과 다시 로드 (약간의 지연 후)
         setTimeout(() => this.loadStatus(), 1500);
         
-		// 완료 애니메이션 및 버튼 전환
-		this.elements.actionBtn?.classList.remove('searching');
-		this.updateActionButton(false);
+        // 완료 애니메이션 및 버튼 전환
+        this.elements.actionBtn?.classList.remove('searching');
+        this.updateActionButton(false);
+        
+        // 버튼 텍스트를 원래대로 복구 (카운트다운 텍스트가 있었다면)
+        const btn = this.elements.actionBtn;
+        if (btn) {
+            const label = btn.querySelector('span');
+            if (label && label.textContent.includes('다음 사이클까지')) {
+                label.textContent = '검색 중단';  // 계속 실행 중이므로 중단 버튼으로
+            }
+        }
     }
     
 	onSearchStopped() {
@@ -541,15 +586,25 @@ class ModernDrugSearchApp {
         const statusIcon = drug.has_stock ? 
             '<i class="bi bi-check-circle text-success"></i>' : 
             '<i class="bi bi-x-circle text-warning"></i>';
+
+        // 도매상 정보 추출 (company 필드 또는 이름에서 유추)
+        const company = drug.company || '';
+        const distributorBadge = company.includes('백제') ? 
+            '<span class="distributor-badge baekje">백제약품</span>' : 
+            '<span class="distributor-badge geoweb">지오영</span>';
             
         drugCard.innerHTML = `
             <div class="drug-header">
-                ${statusIcon}
-                <h5>${drug.name}</h5>
+                <div class="drug-title">
+                    ${statusIcon}
+                    <h5>${drug.name}</h5>
+                </div>
+                ${distributorBadge}
             </div>
             <div class="drug-stock">
                 <span class="stock-item">메인: ${drug.main_stock}</span>
-                <span class="stock-item">인천: ${drug.incheon_stock}</span>
+                ${!company.includes('백제') && drug.incheon_stock !== '-' ? 
+                    `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}
             </div>
         `;
         
@@ -589,16 +644,25 @@ class ModernDrugSearchApp {
                         <h4><i class="bi bi-check-circle"></i> 재고 발견된 약품 ${foundDrugs.length}개</h4>
                     </div>
                     <div class="drugs-grid">
-                        ${foundDrugs.slice(0, 6).map(drug => `
+                        ${foundDrugs.slice(0, 6).map(drug => {
+                            const company = drug.company || '';
+                            const distributorName = company.includes('백제') ? '백제약품' : '지오영';
+                            const distributorClass = company.includes('백제') ? 'baekje' : 'geoweb';
+                            
+                            return `
                             <div class="drug-card">
-                                <h5>${drug.name}</h5>
+                                <div class="drug-card-header">
+                                    <h5>${drug.name}</h5>
+                                    <span class="distributor-badge ${distributorClass}">${distributorName}</span>
+                                </div>
                                 <div class="drug-info">
-                                    <span class="stock-info">${drug.wholesale || '지오영'}</span>
                                     ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
-                                    ${drug.incheon_stock ? `<span class="stock-badge">인천: ${drug.incheon_stock}</span>` : ''}
+                                    ${!company.includes('백제') && drug.incheon_stock && drug.incheon_stock !== '-' ? 
+                                        `<span class="stock-badge">인천: ${drug.incheon_stock}</span>` : ''}
                                 </div>
                             </div>
-                        `).join('')}
+                        `;
+                        }).join('')}
                         ${foundDrugs.length > 6 ? `
                             <div class="more-drugs">
                                 <span>외 ${foundDrugs.length - 6}개 더...</span>

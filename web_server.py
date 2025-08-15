@@ -217,20 +217,7 @@ async def start_search():
     app_state.is_searching = True
     app_state.search_task = asyncio.create_task(execute_search())
     
-    # 사이클 시작 알림
-    await manager.broadcast_message(json.dumps({
-        "type": "cycle_start",
-        "message": "🔄 새로운 검색 사이클을 시작합니다",
-        "timestamp": datetime.now().isoformat()
-    }))
-    
-    await manager.broadcast_message(json.dumps({
-        "type": "search_started",
-        "message": "🔍 검색을 시작합니다...",
-        "timestamp": datetime.now().isoformat()
-    }))
-    
-    return {"message": "검색을 시작했습니다"}
+    return {"message": "반복 검색을 시작했습니다"}
 
 @app.post("/api/search/stop")
 async def stop_search():
@@ -443,87 +430,155 @@ async def broadcast_log(message: str):
     }))
 
 async def execute_search():
-    """검색 실행 (비동기)"""
+    """반복 검색 실행 (비동기)"""
+    cycle_count = 0
+    
     try:
-        await broadcast_log("🔍 검색 시작")
+        # repeat_interval_minutes 설정 읽기
+        config_file = app_state.file_manager.read_config_file()
+        repeat_interval = int(config_file.get('repeat_interval_minutes', '30'))
         
-        # 진행 상황 전달용 큐
-        progress_queue = queue.Queue()
+        await broadcast_log(f"🔄 반복 사이클 시작 (간격: {repeat_interval}분)")
         
-        # 동기 검색 함수를 별도 스레드에서 실행
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # 큐를 인자로 전달
-            search_task = loop.run_in_executor(executor, execute_search_sync, progress_queue)
+        while app_state.is_searching:  # 무한 루프 시작
+            cycle_count += 1
             
-            # 진행 상황 모니터링
-            while not search_task.done():
-                try:
-                    # 0.5초마다 큐 확인
-                    await asyncio.sleep(0.5)
-                    
-                    # 큐에서 메시지 가져오기 (비블로킹)
-                    try:
-                        while True:
-                            message = progress_queue.get_nowait()
-                            
-                            # 개별 약품 완료 메시지 처리
-                            if message.startswith("DRUG_FOUND:"):
-                                drug_data = json.loads(message[11:])  # "DRUG_FOUND:" 제거
-                                await manager.broadcast_message(json.dumps(drug_data))
-                            elif message.startswith("DRUG_SOLDOUT:"):
-                                soldout_data = json.loads(message[13:])
-                                await manager.broadcast_message(json.dumps(soldout_data))
-                            elif message.startswith("DRUG_ERROR:"):
-                                err_data = json.loads(message[11:])
-                                await manager.broadcast_message(json.dumps(err_data))
-                            else:
-                                # 일반 로그 메시지
-                                await broadcast_log(message)
-                    except queue.Empty:
-                        pass
+            # 사이클 시작 알림
+            await manager.broadcast_message(json.dumps({
+                "type": "cycle_start",
+                "message": f"🔄 사이클 #{cycle_count} 시작",
+                "cycle_number": cycle_count,
+                "timestamp": datetime.now().isoformat()
+            }))
+            
+            await broadcast_log(f"🔍 사이클 #{cycle_count} 검색 시작")
+            
+            # 검색 데이터 초기화 (각 사이클마다)
+            app_state.reset_search_data()
+            app_state.current_search["status"] = "searching"
+            app_state.current_search["timestamp"] = datetime.now().isoformat()
+            
+            # 진행 상황 전달용 큐
+            progress_queue = queue.Queue()
+            
+            # 동기 검색 함수를 별도 스레드에서 실행
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # 큐를 인자로 전달
+                search_task = loop.run_in_executor(executor, execute_search_sync, progress_queue)
+                
+                # 진행 상황 모니터링
+                while not search_task.done():
+                    if not app_state.is_searching:  # 중단 체크
+                        search_task.cancel()
+                        break
                         
-                except asyncio.CancelledError:
-                    break
+                    try:
+                        # 0.5초마다 큐 확인
+                        await asyncio.sleep(0.5)
+                        
+                        # 큐에서 메시지 가져오기 (비블로킹)
+                        try:
+                            while True:
+                                message = progress_queue.get_nowait()
+                                
+                                # 개별 약품 완료 메시지 처리
+                                if message.startswith("DRUG_FOUND:"):
+                                    drug_data = json.loads(message[11:])  # "DRUG_FOUND:" 제거
+                                    await manager.broadcast_message(json.dumps(drug_data))
+                                elif message.startswith("DRUG_SOLDOUT:"):
+                                    soldout_data = json.loads(message[13:])
+                                    await manager.broadcast_message(json.dumps(soldout_data))
+                                elif message.startswith("DRUG_ERROR:"):
+                                    err_data = json.loads(message[11:])
+                                    await manager.broadcast_message(json.dumps(err_data))
+                                else:
+                                    # 일반 로그 메시지
+                                    await broadcast_log(message)
+                        except queue.Empty:
+                            pass
+                            
+                    except asyncio.CancelledError:
+                        break
+                
+                # 최종 결과 가져오기
+                if not search_task.cancelled():
+                    result = await search_task
+                else:
+                    result = None
+                
+            # 중단 체크
+            if not app_state.is_searching:
+                await broadcast_log(f"🛑 사이클 #{cycle_count} 중단됨")
+                break
             
-            # 최종 결과 가져오기
-            result = await search_task
+            # 결과 처리
+            if result:
+                # execute_search_sync에서 추가한 카운트 사용
+                found_count = result.get('found_count', 0)
+                soldout_count = result.get('soldout_count', 0)
+                error_count = result.get('error_count', 0)
+                
+                await broadcast_log(f"✅ 사이클 #{cycle_count} 완료! 재고 발견: {found_count}개, 품절: {soldout_count}개")
+                
+                # 검색 완료 알림
+                await manager.broadcast_message(json.dumps({
+                    "type": "search_completed",
+                    "data": {
+                        "found_count": found_count,
+                        "soldout_count": soldout_count,
+                        "error_count": error_count,
+                        "cycle_number": cycle_count
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }))
+            else:
+                await broadcast_log(f"❌ 사이클 #{cycle_count} 검색 결과를 가져올 수 없었습니다")
+                
+                # 실패 알림도 전송
+                await manager.broadcast_message(json.dumps({
+                    "type": "search_completed",
+                    "data": {
+                        "found_count": 0,
+                        "soldout_count": 0,
+                        "error_count": 1,
+                        "cycle_number": cycle_count
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }))
             
-        # 결과 처리
-        if result:
-            # execute_search_sync에서 추가한 카운트 사용
-            found_count = result.get('found_count', 0)
-            soldout_count = result.get('soldout_count', 0)
-            error_count = result.get('error_count', 0)
-            
-            await broadcast_log(f"✅ 검색 완료! 재고 발견: {found_count}개, 품절: {soldout_count}개")
-            
-            # 검색 완료 알림
-            await manager.broadcast_message(json.dumps({
-                "type": "search_completed",
-                "data": {
-                    "found_count": found_count,
-                    "soldout_count": soldout_count,
-                    "error_count": error_count
-                },
-                "timestamp": datetime.now().isoformat()
-            }))
-        else:
-            await broadcast_log("❌ 검색 결과를 가져올 수 없었습니다")
-            
-            # 실패 알림도 전송
-            await manager.broadcast_message(json.dumps({
-                "type": "search_completed",
-                "data": {
-                    "found_count": 0,
-                    "soldout_count": 0,
-                    "error_count": 1
-                },
-                "timestamp": datetime.now().isoformat()
-            }))
+            # 다음 사이클까지 대기 (중단 체크와 함께)
+            if app_state.is_searching:
+                await broadcast_log(f"⏰ 다음 사이클까지 {repeat_interval}분 대기 중...")
+                
+                # 카운트다운과 함께 대기
+                for remaining_minutes in range(repeat_interval, 0, -1):
+                    if not app_state.is_searching:  # 대기 중에도 중단 체크
+                        break
+                    
+                    # 매분마다 카운트다운 메시지 (처음 1분, 마지막 5분만 표시)
+                    if remaining_minutes == repeat_interval or remaining_minutes <= 5:
+                        await manager.broadcast_message(json.dumps({
+                            "type": "cycle_countdown",
+                            "message": f"⏰ 다음 사이클까지 {remaining_minutes}분 남음",
+                            "remaining_minutes": remaining_minutes,
+                            "next_cycle": cycle_count + 1,
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                    
+                    # 1분 대기 (중단 체크와 함께)
+                    for _ in range(60):  # 60초를 1초씩 나눠서 중단 체크
+                        if not app_state.is_searching:
+                            break
+                        await asyncio.sleep(1)
+                    
+                    if not app_state.is_searching:
+                        break
+        
+        await broadcast_log(f"🏁 반복 사이클 종료 (총 {cycle_count}회 실행)")
         
     except Exception as e:
-        await broadcast_log(f"❌ 검색 중 오류: {e}")
+        await broadcast_log(f"❌ 반복 사이클 중 오류: {e}")
         await manager.broadcast_message(json.dumps({
             "type": "search_error",
             "message": str(e),
@@ -580,7 +635,22 @@ def execute_search_sync(progress_queue=None):
         # 백제 검색 (활성화된 경우)
         if baekje_active and app_state.config.has_baekje_credentials():
             log_message("🏢 백제약품 검색 시작...")
-            log_message("⚠️ 백제약품 검색은 아직 구현되지 않았습니다")
+            # 지오영에서 수집한 보험코드 사용
+            if hasattr(all_drugs, '__iter__') and len(all_drugs) > 0:
+                # 지오영 결과에서 보험코드 수집
+                insurance_codes = {}
+                for drug in all_drugs:
+                    if hasattr(drug, 'insurance_code') and drug.insurance_code:
+                        insurance_codes[drug.insurance_code] = drug.name
+                
+                if insurance_codes:
+                    baekje_drugs, baekje_errors = search_baekje_sync(insurance_codes, excluded_names, progress_queue)
+                    all_drugs.extend(baekje_drugs)
+                    errors.extend(baekje_errors)
+                else:
+                    log_message("⚠️ 지오영에서 보험코드를 수집하지 못했습니다")
+            else:
+                log_message("⚠️ 지오영 검색 결과가 없어 백제 검색을 건너뜁니다")
         elif baekje_active:
             log_message("⚠️ 백제약품이 활성화되어 있지만 계정 정보가 없습니다")
         
@@ -614,6 +684,96 @@ def execute_search_sync(progress_queue=None):
         app_state.current_search["status"] = "error"
         app_state.current_search["errors"].append(str(e))
         return None
+
+def search_baekje_sync(insurance_codes: Dict[str, str], excluded_names: List[str], progress_queue=None) -> tuple:
+    """백제약품 검색 (동기)"""
+    
+    def log_message(msg):
+        """로그 메시지를 터미널과 큐에 모두 전송"""
+        print(msg)
+        if progress_queue:
+            try:
+                progress_queue.put_nowait(msg)
+            except:
+                pass
+    
+    all_drugs = []
+    errors = []
+    
+    browser_mgr = BrowserManager()
+    browser_mgr.start()
+    
+    try:
+        scraper = BaekjeScraper()
+        page = browser_mgr.new_page()
+        
+        # 로그인
+        log_message("🤖 백제약품에 로그인하는 중입니다...")
+        if not scraper.login(page, app_state.config.baekje_id, app_state.config.baekje_password):
+            raise Exception("백제약품 로그인 실패")
+        
+        log_message("✓ 백제약품 로그인 성공")
+        
+        # 보험코드 기반 검색
+        log_message(f"📋 검색할 보험코드 수: {len(insurance_codes)}개")
+        
+        for i, (insurance_code, original_name) in enumerate(insurance_codes.items(), 1):
+            if not app_state.is_searching:  # 중단 확인
+                break
+                
+            try:
+                drugs = scraper._search_by_insurance_code(insurance_code)
+                for drug in drugs:
+                    drug.is_excluded_from_alert = drug.name in excluded_names
+                
+                # 검색 결과 로그
+                if drugs:
+                    drug = drugs[0]  # 첫 번째 결과 사용
+                    main_stock = drug.main_stock if drug.main_stock else "정보없음"
+                    
+                    # 재고 상황 표시
+                    main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
+                    
+                    log_message(f"🔍 백제 검색 완료 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - 재고: {main_display}")
+                    
+                    # 재고 발견 여부 확인
+                    has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")
+                    
+                    # 개별 약품 완료 메시지를 큐에 추가
+                    if progress_queue:
+                        try:
+                            drug_data = {
+                                "name": drug.name,
+                                "main_stock": main_stock,
+                                "incheon_stock": "-",
+                                "company": "백제약품",
+                                "has_stock": has_stock
+                            }
+                            
+                            drug_found_msg = {
+                                "type": "drug_found",
+                                "drug": drug_data,
+                                "progress": {"current": i, "total": len(insurance_codes)}
+                            }
+                            progress_queue.put_nowait(f"DRUG_FOUND:{json.dumps(drug_found_msg)}")
+                        except:
+                            pass
+                else:
+                    log_message(f"❌ 백제 검색 실패 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - 검색 결과 없음")
+                    errors.append(f"{original_name} ({insurance_code}): 검색 결과 없음")
+                
+                all_drugs.extend(drugs)
+            except Exception as e:
+                error_msg = f"{original_name} ({insurance_code}): {str(e)}"
+                errors.append(error_msg)
+                log_message(f"❌ {error_msg}")
+        
+        log_message(f"✓ 백제약품 검색 완료: {len(all_drugs)}개 약품")
+        
+    finally:
+        browser_mgr.stop()
+    
+    return all_drugs, errors
 
 def search_geoweb_sync(drug_list: List[str], excluded_names: List[str], progress_queue=None) -> tuple:
     """지오영 검색 (동기)"""
