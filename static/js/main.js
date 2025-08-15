@@ -643,4 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 도매상 모달 초기화
     window.distributorModal = new DistributorModal(window.modernDrugApp);
+    
+    // 약품 목록 모달 초기화
+    window.drugListModal = new DrugListModal(window.modernDrugApp);
 });

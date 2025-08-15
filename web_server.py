@@ -351,6 +351,42 @@ async def update_distributor_settings(settings: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"설정 저장 실패: {str(e)}")
 
+@app.get("/api/drug-list")
+async def get_drug_list():
+    """약품 목록 조회"""
+    try:
+        drug_list = app_state.file_manager.read_drug_list()
+        return {"drugs": drug_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"약품 목록 읽기 실패: {str(e)}")
+
+@app.put("/api/drug-list")
+async def update_drug_list(data: dict):
+    """약품 목록 업데이트"""
+    try:
+        drugs = data.get('drugs', [])
+        
+        # 유효성 검사
+        if not isinstance(drugs, list):
+            raise HTTPException(status_code=400, detail="약품 목록은 배열이어야 합니다")
+        
+        # 빈 약품명 제거 및 중복 제거
+        clean_drugs = []
+        for drug in drugs:
+            drug_name = str(drug).strip()
+            if drug_name and drug_name not in clean_drugs:
+                clean_drugs.append(drug_name)
+        
+        # 파일에 저장
+        app_state.file_manager.write_drug_list(clean_drugs)
+        
+        return {"message": f"약품 목록이 저장되었습니다 (총 {len(clean_drugs)}개)"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"약품 목록 저장 실패: {str(e)}")
+
 async def broadcast_log(message: str):
     """로그 메시지를 WebSocket으로 브로드캐스트"""
     await manager.broadcast_message(json.dumps({
