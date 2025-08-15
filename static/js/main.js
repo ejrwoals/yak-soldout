@@ -2,11 +2,8 @@
 
 class ModernDrugSearchApp {
     constructor() {
-        // WebSocket 관련
-        this.ws = null;
+        // 상태
         this.isSearching = false;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
         
         // DOM 요소들
         this.elements = this.initializeElements();
@@ -50,7 +47,7 @@ class ModernDrugSearchApp {
     init() {
         this.applyTheme();
         this.setupEventListeners();
-        this.connectWebSocket();
+        this.setupWebSocketManager();
         this.loadStatus();
         
         // 주기적 상태 업데이트
@@ -105,78 +102,39 @@ class ModernDrugSearchApp {
         }
     }
     
-    // =================== WebSocket 연결 ===================
-    connectWebSocket() {
-        try {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
-            this.ws = new WebSocket(wsUrl);
-            
-            this.ws.onopen = () => {
-                console.log('✅ WebSocket 연결 성공');
-                this.reconnectAttempts = 0;
-                this.updateConnectionStatus('connected');
-            };
-            
-            this.ws.onmessage = (event) => {
-                this.handleWebSocketMessage(event.data);
-            };
-            
-            this.ws.onclose = (event) => {
-                console.log('⚠️ WebSocket 연결 종료:', event.code);
-                this.updateConnectionStatus('disconnected');
-                this.attemptReconnect();
-            };
-            
-            this.ws.onerror = (error) => {
-                console.error('❌ WebSocket 오류:', error);
-                this.updateConnectionStatus('disconnected');
-            };
-            
-        } catch (error) {
-            console.error('❌ WebSocket 연결 실패:', error);
-            this.updateConnectionStatus('disconnected');
-        }
-    }
-    
-    attemptReconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-            
-            console.log(`🔄 WebSocket 재연결 시도 ${this.reconnectAttempts}/${this.maxReconnectAttempts} (${delay}ms 후)`);
-            
-            setTimeout(() => {
-                this.connectWebSocket();
-            }, delay);
-        } else {
-            console.error('💥 WebSocket 재연결 포기');
+    // =================== WebSocket 설정 ===================
+    setupWebSocketManager() {
+        // UI 요소 설정
+        window.webSocketManager.setUIElements({
+            connectionDot: this.elements.connectionDot,
+            connectionText: this.elements.connectionText
+        });
+        
+        // 이벤트 리스너 등록
+        window.webSocketManager.addEventListener('connected', () => {
+            console.log('✅ WebSocket 연결됨');
+        });
+        
+        window.webSocketManager.addEventListener('disconnected', () => {
+            console.log('⚠️ WebSocket 연결 해제됨');
+        });
+        
+        window.webSocketManager.addEventListener('reconnect-failed', () => {
             this.addLogMessage('실시간 연결이 끊어졌습니다. 페이지를 새로고침해주세요.', 'error');
-        }
-    }
-    
-    updateConnectionStatus(status) {
-        if (!this.elements.connectionDot || !this.elements.connectionText) return;
+        });
         
-        // 상태 점 업데이트
-        this.elements.connectionDot.className = 'status-dot';
-        this.elements.connectionDot.classList.add(status);
+        // 메시지 처리
+        window.webSocketManager.addEventListener('message', (event) => {
+            this.handleWebSocketMessage(event.detail.message);
+        });
         
-        // 상태 텍스트 업데이트
-        const statusTexts = {
-            connected: '연결됨',
-            disconnected: '연결 끊김',
-            searching: '검색 중'
-        };
-        
-        this.elements.connectionText.textContent = statusTexts[status] || '알 수 없음';
+        // 연결 시작
+        window.webSocketManager.connect();
     }
     
     // =================== WebSocket 메시지 처리 ===================
-    handleWebSocketMessage(data) {
+    handleWebSocketMessage(message) {
         try {
-            const message = JSON.parse(data);
             
             switch (message.type) {
                 case 'log':
@@ -306,13 +264,15 @@ class ModernDrugSearchApp {
         // 약품 목록 수
         if (this.elements.drugCount) {
             this.elements.drugCount.textContent = files.drug_count || '-';
-            this.updateDrugListTooltip(files.drug_list || [], files.drug_count || 0);
+            const statusCard = this.elements.drugCount.closest('.status-card');
+            window.tooltipManager.updateDrugListTooltip(statusCard, files.drug_list || [], files.drug_count || 0);
         }
         
         // 알림 제외 수
         if (this.elements.exclusionCount) {
             this.elements.exclusionCount.textContent = files.exclusion_count || '-';
-            this.updateExclusionListTooltip(files.exclusion_list || [], files.exclusion_count || 0);
+            const statusCard = this.elements.exclusionCount.closest('.status-card');
+            window.tooltipManager.updateExclusionListTooltip(statusCard, files.exclusion_list || [], files.exclusion_count || 0);
         }
     }
     
@@ -339,163 +299,13 @@ class ModernDrugSearchApp {
         this.elements.distributorStatus.textContent = configuredCount.toString();
         
         // 툴팁 업데이트
-        this.updateDistributorTooltip(distributors);
-    }
-    
-    updateDistributorTooltip(distributors) {
         const statusCard = this.elements.distributorStatus.closest('.status-card');
-        if (!statusCard) return;
-        
-        // 기존 툴팁 제거
-        this.removeExistingTooltip(statusCard);
-        
-        // 새 툴팁 생성
-        const tooltip = document.createElement('div');
-        tooltip.className = 'distributor-tooltip';
-        
-        if (distributors.length === 0) {
-            tooltip.innerHTML = `
-                <div class="tooltip-item">
-                    <i class="bi bi-x-circle" style="color: var(--danger)"></i>
-                    <span>설정된 도매상 없음</span>
-                </div>
-            `;
-        } else {
-            tooltip.innerHTML = distributors.map(name => `
-                <div class="tooltip-item">
-                    <i class="bi bi-check-circle" style="color: var(--success)"></i>
-                    <span>${name}</span>
-                </div>
-            `).join('');
-        }
-        
-        statusCard.appendChild(tooltip);
+        window.tooltipManager.updateDistributorTooltip(statusCard, distributors);
     }
-    
-    updateDrugListTooltip(drugList, totalCount) {
-        const statusCard = this.elements.drugCount.closest('.status-card');
-        if (!statusCard) return;
-        
-        // 기존 툴팁 제거
-        this.removeExistingTooltip(statusCard);
-        
-        // 새 툴팁 생성
-        const tooltip = document.createElement('div');
-        tooltip.className = 'status-tooltip';
-        
-        if (drugList.length === 0) {
-            tooltip.innerHTML = `
-                <div class="tooltip-item">
-                    <i class="bi bi-inbox" style="color: var(--text-muted)"></i>
-                    <span>검색 대상 약품이 없습니다</span>
-                </div>
-            `;
-        } else {
-            const items = drugList.map(drug => `
-                <div class="tooltip-item">
-                    <i class="bi bi-capsule" style="color: var(--primary)"></i>
-                    <span>${drug}</span>
-                </div>
-            `).join('');
-            
-            const moreItems = totalCount > drugList.length ? `
-                <div class="tooltip-more">
-                    <span>...</span>
-                </div>
-            ` : '';
-            
-            tooltip.innerHTML = items + moreItems;
-        }
-        
-        statusCard.appendChild(tooltip);
-    }
-    
-    updateExclusionListTooltip(exclusionList, totalCount) {
-        const statusCard = this.elements.exclusionCount.closest('.status-card');
-        if (!statusCard) return;
-        
-        // 기존 툴팁 제거
-        this.removeExistingTooltip(statusCard);
-        
-        // 새 툴팁 생성
-        const tooltip = document.createElement('div');
-        tooltip.className = 'status-tooltip';
-        
-        if (exclusionList.length === 0) {
-            tooltip.innerHTML = `
-                <div class="tooltip-item">
-                    <i class="bi bi-bell" style="color: var(--success)"></i>
-                    <span>모든 약품에 알림 활성화</span>
-                </div>
-            `;
-        } else {
-            const items = exclusionList.map(item => {
-                // 날짜@약품명 형식 파싱
-                const parts = item.split('@');
-                const displayText = parts.length > 1 ? parts[1].trim() : item;
-                
-                return `
-                    <div class="tooltip-item">
-                        <i class="bi bi-bell-slash" style="color: var(--warning)"></i>
-                        <span>${displayText}</span>
-                    </div>
-                `;
-            }).join('');
-            
-            const moreItems = totalCount > exclusionList.length ? `
-                <div class="tooltip-more">
-                    <span>...</span>
-                </div>
-            ` : '';
-            
-            tooltip.innerHTML = items + moreItems;
-        }
-        
-        statusCard.appendChild(tooltip);
-    }
-    
-    updateErrorTooltip() {
-        const statusCard = this.elements.errorCount?.closest('.summary-card.danger');
-        if (!statusCard) return;
-        
-        // 기존 툴팁 제거
-        this.removeExistingTooltip(statusCard);
-        
-        // 새 툴팁 생성
-        const tooltip = document.createElement('div');
-        tooltip.className = 'error-tooltip';
-        
-        if (this.errorDrugs.length === 0) {
-            tooltip.innerHTML = `
-                <div class="tooltip-item">
-                    <i class="bi bi-check-circle" style="color: var(--success)"></i>
-                    <span>오류 없음</span>
-                </div>
-            `;
-        } else {
-            const items = this.errorDrugs.slice(0, 5).map(error => `
-                <div class="tooltip-item">
-                    <i class="bi bi-exclamation-triangle" style="color: var(--danger)"></i>
-                    <span title="${error.error}">${error.name}</span>
-                </div>
-            `).join('');
-            
-            const moreItems = this.errorDrugs.length > 5 ? `
-                <div class="tooltip-more">
-                    <span>외 ${this.errorDrugs.length - 5}개 더...</span>
-                </div>
-            ` : '';
-            
-            tooltip.innerHTML = items + moreItems;
-        }
-        
-        statusCard.appendChild(tooltip);
-    }
-    
-    removeExistingTooltip(statusCard) {
-        const existingTooltips = statusCard.querySelectorAll('.distributor-tooltip, .status-tooltip, .error-tooltip');
-        existingTooltips.forEach(tooltip => tooltip.remove());
-    }
+
+
+
+
     
     updateSearchStatus(searching) {
         this.isSearching = searching;
@@ -505,9 +315,9 @@ class ModernDrugSearchApp {
         
         // 연결 상태 업데이트
         if (searching) {
-            this.updateConnectionStatus('searching');
-        } else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.updateConnectionStatus('connected');
+            window.webSocketManager.updateConnectionStatus('searching');
+        } else if (window.webSocketManager.isConnected()) {
+            window.webSocketManager.updateConnectionStatus('connected');
         }
     }
     
@@ -764,7 +574,8 @@ class ModernDrugSearchApp {
         this.elements.errorCount.textContent = currentErr + 1;
         
         // 오류 툴팁 업데이트
-        this.updateErrorTooltip();
+        const statusCard = this.elements.errorCount?.closest('.summary-card.danger');
+        window.tooltipManager.updateErrorTooltip(statusCard, this.errorDrugs);
     }
     
     displaySearchResults(searchData) {
@@ -819,48 +630,11 @@ class ModernDrugSearchApp {
     
     // =================== 알림 및 피드백 ===================
     showSuccess(message) {
-        this.showNotification(message, 'success');
+        window.notificationManager.showSuccess(message);
     }
     
     showError(message) {
-        this.showNotification(message, 'error');
-    }
-    
-    showNotification(message, type) {
-        // 간단한 토스트 알림 구현
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        
-        // 스타일 적용
-        Object.assign(toast.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            padding: '12px 20px',
-            borderRadius: '8px',
-            color: 'white',
-            background: type === 'success' ? 'var(--success)' : 'var(--danger)',
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: '1000',
-            transform: 'translateX(100%)',
-            transition: 'transform 0.3s ease'
-        });
-        
-        document.body.appendChild(toast);
-        
-        // 애니메이션
-        setTimeout(() => {
-            toast.style.transform = 'translateX(0)';
-        }, 100);
-        
-        // 자동 제거
-        setTimeout(() => {
-            toast.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                document.body.removeChild(toast);
-            }, 300);
-        }, 3000);
+        window.notificationManager.showError(message);
     }
     
 }

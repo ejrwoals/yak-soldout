@@ -91,6 +91,7 @@
     font-size: 0.875rem;
     color: var(--text-primary);
     min-width: 0; /* flex item이 축소될 수 있도록 */
+    text-align: left;
 }
 
 .tooltip-item:not(:last-child) {
