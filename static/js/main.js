@@ -554,9 +554,6 @@ class ModernDrugSearchApp {
         `;
         
         col.appendChild(drugCard);
-        
-        // 스크롤을 최신 결과로 이동
-        drugCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     onDrugError(drug, progress) {

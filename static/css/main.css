@@ -268,6 +268,9 @@ body {
   border-radius: 16px;
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 850px;
 }
 
 .log-header {
@@ -305,7 +308,7 @@ body {
 }
 
 .log-content {
-  height: 400px;
+  flex: 1;
   overflow-y: auto;
   background: #1a1a1a;
   color: #ffffff;
@@ -513,17 +516,6 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-.col-header {
-  padding: 0.75rem 1rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-bottom: 1px solid var(--border-color);
-}
-.col-header.success { color: var(--success); background: rgba(16,185,129,.06); }
-.col-header.warning { color: var(--warning); background: rgba(245,158,11,.06); }
-.col-header.danger { color: var(--danger); background: rgba(239,68,68,.06); }
 
 .col-body {
   padding: 0.75rem;
