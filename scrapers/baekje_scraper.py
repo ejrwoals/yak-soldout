@@ -55,29 +55,14 @@ class BaekjeScraper(BaseScraper):
                 except Exception:
                     continue
             
-            # 로그인 성공 여부 확인 (메인 페이지의 특징적 요소 찾기)
-            # 검색창 관련 요소들을 시도해보고, 하나라도 있으면 성공으로 간주
-            success_indicators = [
-                'input[placeholder*="검색"]',  # 검색 관련 입력 필드
-                'input[placeholder*="상품"]',  # 상품 검색 필드  
-                'input[placeholder*="약품"]',  # 약품 검색 필드
-                'select',  # 검색 모드 선택 드롭다운
-                'button:has-text("검색")',  # 검색 버튼
-                '.search',  # 검색 관련 클래스
-                '#search'   # 검색 관련 ID
-            ]
+            # 로그인 성공 여부 확인 (지오영 방식처럼 빠른 확인)
+            # 메인 검색창이 있는지만 확인 (가장 확실한 하나의 요소만)
+            main_search_selector = 'input[placeholder="품목명/보험코드 입력"]'
             
-            login_success = False
-            for indicator in success_indicators:
-                try:
-                    self.page.wait_for_selector(indicator, timeout=3000)
-                    print(f"로그인 성공 확인: {indicator} 요소 발견")
-                    login_success = True
-                    break
-                except PlaywrightTimeoutError:
-                    continue
-            
-            if not login_success:
+            try:
+                self.page.wait_for_selector(main_search_selector, timeout=2000, state='visible')
+                print("로그인 성공 확인: 메인 검색창 발견")
+            except PlaywrightTimeoutError:
                 raise Exception("로그인 후 메인 페이지 확인 실패")
             
             self.is_logged_in = True
