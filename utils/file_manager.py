@@ -25,30 +25,96 @@ class FileManager:
         except Exception:
             return 'utf-8'
     
-    def read_drug_list(self, filename: str = "지오영 품절 목록.txt") -> List[str]:
-        """품절 약품 목록 파일 읽기"""
+    def read_drug_list(self, filename: str = "geoweb-soldout-list.json") -> List[str]:
+        """품절 약품 목록 파일 읽기 (JSON 형식)"""
         file_path = self.app_directory / filename
         
         if not file_path.exists():
-            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file_path}")
+            # JSON 파일이 없으면 빈 파일 생성
+            self.write_drug_list([], filename)
+            return []
         
-        encoding = self._detect_encoding(file_path)
-        
-        with open(file_path, 'r', encoding=encoding) as file:
-            lines = file.readlines()
-        
-        return [line.strip() for line in lines if line.strip()]
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                if isinstance(data, list):
+                    # 객체 형태라면 drugName 추출, 문자열이라면 그대로 반환
+                    return [
+                        item.get('drugName', item) if isinstance(item, dict) else item 
+                        for item in data
+                    ]
+                return []
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"약품 목록 JSON 파일 읽기 오류: {e}")
+            return []
     
-    def write_drug_list(self, drug_list: List[str], filename: str = "지오영 품절 목록.txt"):
-        """품절 약품 목록 파일 쓰기"""
+    def read_drug_list_json(self, filename: str = "geoweb-soldout-list.json") -> List[Dict[str, Any]]:
+        """품절 약품 목록 파일 읽기 (전체 JSON 객체 반환)"""
         file_path = self.app_directory / filename
         
-        # 중복 제거 및 정렬
-        unique_drugs = sorted(list(set(drug_list)))
+        if not file_path.exists():
+            # JSON 파일이 없으면 빈 파일 생성
+            self.write_drug_list_json([], filename)
+            return []
         
-        with open(file_path, 'w', encoding='utf-8') as file:
-            for drug in unique_drugs:
-                file.write(f'{drug.strip()}\n')
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+                if isinstance(data, list):
+                    # 문자열 데이터를 객체로 변환
+                    result = []
+                    for item in data:
+                        if isinstance(item, str):
+                            result.append({
+                                "drugName": item,
+                                "isUrgent": False,
+                                "dateAdded": datetime.now().isoformat()[:19]
+                            })
+                        elif isinstance(item, dict):
+                            result.append(item)
+                    return result
+                return []
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"약품 목록 JSON 파일 읽기 오류: {e}")
+            return []
+    
+    def write_drug_list(self, drug_list: List[str], filename: str = "geoweb-soldout-list.json"):
+        """품절 약품 목록 파일 쓰기 (이전 버전 호환용)"""
+        # 문자열 리스트를 객체 리스트로 변환
+        drug_objects = []
+        for drug in drug_list:
+            if isinstance(drug, str):
+                drug_objects.append({
+                    "drugName": drug,
+                    "isUrgent": False,
+                    "dateAdded": datetime.now().isoformat()[:19]
+                })
+            else:
+                drug_objects.append(drug)
+        
+        self.write_drug_list_json(drug_objects, filename)
+    
+    def write_drug_list_json(self, drug_list: List[Dict[str, Any]], filename: str = "geoweb-soldout-list.json"):
+        """품절 약품 목록 파일 쓰기 (JSON 형식)"""
+        file_path = self.app_directory / filename
+        
+        # 중복 제거 및 정렬 (drugName 기준)
+        seen = set()
+        unique_drugs = []
+        for drug in drug_list:
+            drug_name = drug.get('drugName', '')
+            if drug_name and drug_name not in seen:
+                seen.add(drug_name)
+                unique_drugs.append(drug)
+        
+        # drugName으로 정렬
+        unique_drugs.sort(key=lambda x: x.get('drugName', ''))
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(unique_drugs, file, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"약품 목록 JSON 파일 쓰기 오류: {e}")
     
     def read_alert_exclusions(self, filename: str = "알림 제외.txt") -> List[str]:
         """알림 제외 목록 파일 읽기"""

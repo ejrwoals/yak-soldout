@@ -174,7 +174,7 @@ class BaseScraper(ABC):
         return text.strip()
     
     def create_drug(self, name: str, insurance_code: str, main_stock: str, 
-                   incheon_stock: str = "-", notes: str = "-", company: str = "") -> Drug:
+                   incheon_stock: str = "-", notes: str = "-", company: str = "", unit: str = "") -> Drug:
         """Drug 객체 생성"""
         return Drug(
             name=self.clean_drug_name(name),
@@ -184,6 +184,7 @@ class BaseScraper(ABC):
             incheon_stock=self.normalize_stock_value(incheon_stock),
             notes=notes,
             company=company,
+            unit=unit,
             is_excluded_from_alert=False
         )
     

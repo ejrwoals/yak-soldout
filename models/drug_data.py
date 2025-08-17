@@ -19,6 +19,7 @@ class Drug:
     incheon_stock: str = "-"
     notes: str = "-"
     company: str = ""
+    unit: str = ""  # 규격 정보 (예: 100T, 500T)
     is_excluded_from_alert: bool = False
 
     def get_total_stock_int(self) -> int:

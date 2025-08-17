@@ -178,6 +178,10 @@ class ModernDrugSearchApp {
                 case 'search_error':
                     this.onSearchError(message.message);
                     break;
+                
+                case 'urgent_alert':
+                    this.onUrgentAlert(message.drug);
+                    break;
                     
                 default:
                     console.log('🤔 알 수 없는 메시지:', message.type);
@@ -188,6 +192,7 @@ class ModernDrugSearchApp {
     }
     
     getLogType(message) {
+        if (message.includes('🚨') || message.includes('[긴급 알림]')) return 'urgent';
         if (message.includes('✅') || message.includes('완료')) return 'success';
         if (message.includes('❌') || message.includes('오류') || message.includes('실패')) return 'error';
         if (message.includes('⚠️') || message.includes('경고')) return 'warning';
@@ -526,7 +531,7 @@ class ModernDrugSearchApp {
             this.elements.searchResults.innerHTML = `
                 <div class="results-columns">
                     <div class="results-col" id="col-found">
-                        <div class="col-header success"><i class="bi bi-check-circle"></i> 재고 발견</div>
+                        <div class="col-header success"><i class="bi bi-check-circle"></i> 재고 있음</div>
                         <div class="col-body"></div>
                     </div>
                     <div class="results-col" id="col-soldout">
@@ -593,11 +598,14 @@ class ModernDrugSearchApp {
             '<span class="distributor-badge baekje">백제약품</span>' : 
             '<span class="distributor-badge geoweb">지오영</span>';
             
+        // 백제 결과인 경우 규격 정보 여부 확인
+        const unitInfo = drug.unit ? `<small class="text-muted">(규격: ${drug.unit})</small>` : '';
+        
         drugCard.innerHTML = `
             <div class="drug-header">
                 <div class="drug-title">
                     ${statusIcon}
-                    <h5>${drug.name}</h5>
+                    <h5>${drug.name} ${unitInfo}</h5>
                 </div>
                 ${distributorBadge}
             </div>
@@ -641,7 +649,7 @@ class ModernDrugSearchApp {
             const resultsHtml = `
                 <div class="results-content-active">
                     <div class="alert-success">
-                        <h4><i class="bi bi-check-circle"></i> 재고 발견된 약품 ${foundDrugs.length}개</h4>
+                        <h4><i class="bi bi-check-circle"></i> 재고가 있는 약품 ${foundDrugs.length}건</h4>
                     </div>
                     <div class="drugs-grid">
                         ${foundDrugs.slice(0, 6).map(drug => {
@@ -696,6 +704,169 @@ class ModernDrugSearchApp {
     
     showError(message) {
         window.notificationManager.showError(message);
+    }
+    
+    // =================== 긴급 알림 처리 ===================
+    onUrgentAlert(drug) {
+        // 브라우저 알림 API 확인 및 요청
+        if ('Notification' in window) {
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        this.showUrgentNotification(drug);
+                    }
+                });
+            } else if (Notification.permission === 'granted') {
+                this.showUrgentNotification(drug);
+            }
+        }
+        
+        // 페이지 내 팝업 알림도 표시
+        this.showUrgentPopup(drug);
+        
+        // 로그에도 긴급 알림 메시지 추가
+        const logDrugName = drug.name + (drug.unit ? ` [${drug.unit}]` : '');
+        this.addLogMessage(`🚨 [긴급 알림] ${logDrugName} 재고 발견! (${drug.distributor})`, 'urgent');
+    }
+    
+    showUrgentNotification(drug) {
+        // 브라우저 알림 생성
+        const drugDisplayName = drug.name + (drug.unit ? ` [${drug.unit}]` : '');
+        const notification = new Notification('🚨 긴급 재고 알림', {
+            body: `${drugDisplayName}\n재고: ${drug.main_stock}${drug.incheon_stock !== '-' ? ` / 인천: ${drug.incheon_stock}` : ''}\n도매상: ${drug.distributor}`,
+            icon: '/static/favicon.ico',
+            tag: `urgent-${drug.name}`, // 중복 알림 방지
+            requireInteraction: true // 사용자가 클릭할 때까지 유지
+        });
+        
+        notification.onclick = () => {
+            window.focus(); // 브라우저 창을 앞으로 가져오기
+            notification.close();
+        };
+        
+        // 10초 후 자동 닫기
+        setTimeout(() => notification.close(), 10000);
+    }
+    
+    showUrgentPopup(drug) {
+        // 모달 형태의 팝업 생성
+        const popup = document.createElement('div');
+        popup.className = 'urgent-alert-popup';
+        popup.innerHTML = `
+            <div class="urgent-alert-content">
+                <div class="urgent-alert-header">
+                    <i class="bi bi-bell-fill urgent-icon"></i>
+                    <h3>긴급 재고 알림</h3>
+                    <button class="urgent-close-btn" onclick="this.closest('.urgent-alert-popup').remove()">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="urgent-alert-body">
+                    <div class="urgent-drug-info">
+                        <h4>${drug.name}${drug.unit ? ` [${drug.unit}]` : ''}</h4>
+                        <div class="urgent-stock-info">
+                            <span class="stock-item">메인: ${drug.main_stock}</span>
+                            ${drug.incheon_stock !== '-' ? `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}
+                        </div>
+                        <div class="urgent-distributor">
+                            <span class="distributor-badge ${drug.distributor === '지오영' ? 'geoweb' : 'baekje'}">${drug.distributor}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="urgent-alert-footer">
+                    <div class="auto-close-countdown">
+                        <span class="countdown-text">30초 후 자동으로 닫힘</span>
+                    </div>
+                    <div class="urgent-question">
+                        앞으로 해당 약품의 긴급 알림 설정을 해제하시겠습니까?
+                    </div>
+                    <div class="urgent-buttons">
+                        <button class="btn-cancel">취소</button>
+                        <button class="btn-confirm">확인</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // 애니메이션 효과
+        setTimeout(() => popup.classList.add('show'), 10);
+        
+        // 카운트다운 기능
+        let countdownSeconds = 30;
+        const countdownElement = popup.querySelector('.countdown-text');
+        
+        const updateCountdown = () => {
+            if (countdownSeconds > 0) {
+                countdownElement.textContent = `${countdownSeconds}초 후 자동으로 닫힘`;
+                countdownSeconds--;
+                setTimeout(updateCountdown, 1000);
+            }
+        };
+        
+        // 카운트다운 시작 (1초 후부터)
+        setTimeout(updateCountdown, 1000);
+        
+        // 자동 제거 (30초 후)
+        const autoCloseTimeout = setTimeout(() => {
+            if (popup.parentNode) {
+                popup.classList.remove('show');
+                setTimeout(() => popup.remove(), 300);
+            }
+        }, 30000);
+        
+        // 버튼 이벤트 처리
+        const confirmBtn = popup.querySelector('.btn-confirm');
+        const cancelBtn = popup.querySelector('.btn-cancel');
+        const closeBtn = popup.querySelector('.urgent-close-btn');
+        
+        const manualClose = () => {
+            clearTimeout(autoCloseTimeout);
+            popup.classList.remove('show');
+            setTimeout(() => popup.remove(), 300);
+        };
+        
+        // 취소 버튼 - 단순히 팝업 닫기
+        cancelBtn.onclick = manualClose;
+        if (closeBtn) closeBtn.onclick = manualClose;
+        
+        // 확인 버튼 - 긴급 알림 해제 API 호출
+        confirmBtn.onclick = async () => {
+            try {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = '해제 중...';
+                
+                const response = await fetch('/api/drug-urgent-toggle', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        drugName: drug.original_drug_name || drug.name  // 백제인 경우 원래 약품명 사용
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('긴급 알림 해제 성공:', result.message);
+                    
+                    // 성공 메시지 표시 후 팝업 닫기
+                    confirmBtn.textContent = '해제됨';
+                    setTimeout(() => {
+                        manualClose();
+                    }, 1000);
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.detail || '해제 실패');
+                }
+            } catch (error) {
+                console.error('긴급 알림 해제 오류:', error);
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '확인';
+                alert(`긴급 알림 해제 실패: ${error.message}`);
+            }
+        };
     }
     
 }

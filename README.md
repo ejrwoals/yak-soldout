@@ -62,11 +62,20 @@ cp info.example.txt info.txt
 ```
 
 # 품절 약품 목록 
-지오영 품절 목록.txt 파일 안에 줄바꿈으로 구분하여 약품명 적기 (지오영에 써 있는 것 복붙)
-```
-디카맥스1000정(PTP) 90T 다림바이오텍
-디카맥스디정(PTP) 90T 다림바이오텍
-딜테란서방캅셀90mg 30C 근화
+geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
+```json
+[
+  {
+    "drugName": "디카맥스1000정(PTP) 90T 다림바이오텍",
+    "isUrgent": false,
+    "dateAdded": "2025-08-17T10:00:00"
+  },
+  {
+    "drugName": "디카맥스디정(PTP) 90T 다림바이오텍", 
+    "isUrgent": true,
+    "dateAdded": "2025-08-17T10:00:00"
+  }
+]
 ```
 
 # 알림 제외 목록 (선택사항)
@@ -118,7 +127,7 @@ set HEADLESS=false && python web_server.py
 ### 필수 파일
 
 1. **info.txt**: 도매상 로그인 정보
-2. **지오영 품절 목록.txt**: 모니터링할 약품 목록 (한 줄에 하나씩)
+2. **geoweb-soldout-list.json**: 모니터링할 약품 목록 (JSON 형식, 긴급 알림 설정 포함)
 
 ### 선택사항 파일
 

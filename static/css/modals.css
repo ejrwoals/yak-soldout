@@ -490,6 +490,69 @@
   font-size: 0.875rem;
 }
 
+/* 약품 액션 버튼들 */
+.drug-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drug-urgent-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.drug-urgent-btn:hover {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.1);
+  transform: scale(1.05);
+}
+
+.drug-urgent-btn.urgent {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.drug-urgent-btn.urgent:hover {
+  background: rgba(239, 68, 68, 0.2);
+  transform: scale(1.05);
+}
+
+.drug-urgent-btn i {
+  font-size: 0.875rem;
+}
+
+/* 긴급 알림 표시 */
+.drug-item.urgent {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%);
+  border-left: 4px solid var(--danger);
+}
+
+.drug-item.urgent:hover {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.08) 100%);
+}
+
+.urgent-indicator {
+  color: var(--danger);
+  font-size: 0.875rem;
+  margin-left: 0.5rem;
+  animation: urgentPulse 2s infinite;
+}
+
+@keyframes urgentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* ============= 반응형 모달 ============= */
 @media (max-width: 768px) {
   .modal-content {

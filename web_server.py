@@ -53,6 +53,7 @@ class AppState:
         self.is_searching = False
         self.search_task: Optional[asyncio.Task] = None
         self.connected_clients: List[WebSocket] = []
+        self.cycle_terminated = False  # 긴급 약품 발견으로 사이클 조기 종료 플래그
         
         # 실시간 검색 데이터 (메모리 기반)
         self.current_search = {
@@ -71,6 +72,7 @@ class AppState:
     
     def reset_search_data(self):
         """검색 데이터 초기화 (새 사이클 시작 시)"""
+        self.cycle_terminated = False  # 사이클 종료 플래그 초기화
         self.current_search = {
             "status": "idle",
             "timestamp": None,
@@ -158,6 +160,7 @@ async def get_status():
     try:
         # 기본 정보
         drug_list = app_state.file_manager.read_drug_list()
+        drug_list_json = app_state.file_manager.read_drug_list_json()
         
         # JSON 형식의 알림 제외 목록 읽기
         exclusion_json_data = app_state.file_manager.read_alert_exclusions_json()
@@ -182,7 +185,7 @@ async def get_status():
             },
             "files": {
                 "drug_count": len(drug_list),
-                "drug_list": drug_list[:5],  # 최대 5개까지만 툴팁에 표시
+                "drug_list": [item.get('drugName', item) if isinstance(item, dict) else item for item in drug_list_json[:5]],  # 최대 5개까지만 툴팁에 표시
                 "exclusion_count": len(exclusion_list),
                 "exclusion_list": exclusion_list[:5]  # 최대 5개까지만 툴팁에 표시
             },
@@ -350,7 +353,7 @@ async def update_distributor_settings(settings: dict):
 async def get_drug_list():
     """약품 목록 조회"""
     try:
-        drug_list = app_state.file_manager.read_drug_list()
+        drug_list = app_state.file_manager.read_drug_list_json()
         return {"drugs": drug_list}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"약품 목록 읽기 실패: {str(e)}")
@@ -365,15 +368,31 @@ async def update_drug_list(data: dict):
         if not isinstance(drugs, list):
             raise HTTPException(status_code=400, detail="약품 목록은 배열이어야 합니다")
         
-        # 빈 약품명 제거 및 중복 제거
+        # 데이터 정리 및 중복 제거
         clean_drugs = []
+        seen = set()
         for drug in drugs:
-            drug_name = str(drug).strip()
-            if drug_name and drug_name not in clean_drugs:
-                clean_drugs.append(drug_name)
+            if isinstance(drug, dict):
+                drug_name = drug.get('drugName', '').strip()
+                if drug_name and drug_name not in seen:
+                    clean_drugs.append({
+                        'drugName': drug_name,
+                        'isUrgent': drug.get('isUrgent', False),
+                        'dateAdded': drug.get('dateAdded', datetime.now().isoformat()[:19])
+                    })
+                    seen.add(drug_name)
+            elif isinstance(drug, str):
+                drug_name = drug.strip()
+                if drug_name and drug_name not in seen:
+                    clean_drugs.append({
+                        'drugName': drug_name,
+                        'isUrgent': False,
+                        'dateAdded': datetime.now().isoformat()[:19]
+                    })
+                    seen.add(drug_name)
         
         # 파일에 저장
-        app_state.file_manager.write_drug_list(clean_drugs)
+        app_state.file_manager.write_drug_list_json(clean_drugs)
         
         return {"message": f"약품 목록이 저장되었습니다 (총 {len(clean_drugs)}개)"}
         
@@ -420,6 +439,39 @@ async def update_exclusion_list(data: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"알림 제외 목록 저장 실패: {str(e)}")
+
+@app.put("/api/drug-urgent-toggle")
+async def toggle_drug_urgent(data: dict):
+    """특정 약품의 긴급 알림 상태 해제"""
+    try:
+        drug_name = data.get('drugName')
+        if not drug_name:
+            raise HTTPException(status_code=400, detail="약품명이 필요합니다")
+        
+        # 현재 약품 목록 로드
+        drug_list = app_state.file_manager.read_drug_list_json()
+        
+        # 해당 약품 찾기 및 긴급 상태 해제
+        found = False
+        for drug in drug_list:
+            if drug.get('drugName') == drug_name:
+                drug['isUrgent'] = False
+                drug['dateAdded'] = datetime.now().isoformat()[:19]  # 변경 시간 업데이트
+                found = True
+                break
+        
+        if not found:
+            raise HTTPException(status_code=404, detail="해당 약품을 찾을 수 없습니다")
+        
+        # 파일에 저장
+        app_state.file_manager.write_drug_list_json(drug_list)
+        
+        return {"message": f"'{drug_name}'의 긴급 알림이 해제되었습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"긴급 알림 해제 실패: {str(e)}")
 
 async def broadcast_log(message: str):
     """로그 메시지를 WebSocket으로 브로드캐스트"""
@@ -492,6 +544,9 @@ async def execute_search():
                                 elif message.startswith("DRUG_ERROR:"):
                                     err_data = json.loads(message[11:])
                                     await manager.broadcast_message(json.dumps(err_data))
+                                elif message.startswith("URGENT_ALERT:"):
+                                    urgent_data = json.loads(message[13:])  # "URGENT_ALERT:" 제거
+                                    await manager.broadcast_message(json.dumps(urgent_data))
                                 else:
                                     # 일반 로그 메시지
                                     await broadcast_log(message)
@@ -602,7 +657,19 @@ def execute_search_sync(progress_queue=None):
     try:
         # 데이터 로드
         drug_list = app_state.file_manager.read_drug_list()
+        drug_list_json = app_state.file_manager.read_drug_list_json()
         exclusion_list = app_state.file_manager.read_alert_exclusions()
+        
+        # 긴급 알림 약품 목록 생성 (약품명 기준)
+        urgent_drugs = {
+            drug['drugName'] for drug in drug_list_json 
+            if drug.get('isUrgent', False)
+        }
+        
+        # 지오영에서 수집된 보험코드 -> 약품명 매핑 (백제 긴급 알림용)
+        urgent_insurance_codes = set()
+        # 백제 검색에 사용된 보험코드 매핑 저장용
+        baekje_search_codes = {}
         
         # 진행률 설정
         app_state.current_search["progress"]["total"] = len(drug_list)
@@ -626,14 +693,23 @@ def execute_search_sync(progress_queue=None):
         # 지오영 검색 (활성화된 경우)
         if geoweb_active and app_state.config.geoweb_id:
             log_message("🌐 지오영 검색 시작...")
-            geoweb_drugs, geoweb_errors = search_geoweb_sync(drug_list, excluded_names, progress_queue)
+            geoweb_drugs, geoweb_errors = search_geoweb_sync(drug_list, excluded_names, progress_queue, urgent_drugs)
             all_drugs.extend(geoweb_drugs)
             errors.extend(geoweb_errors)
+            
+            # 긴급 알림 약품의 보험코드 수집
+            for drug in geoweb_drugs:
+                if hasattr(drug, 'name') and hasattr(drug, 'insurance_code'):
+                    if drug.name in urgent_drugs and drug.insurance_code:
+                        urgent_insurance_codes.add(drug.insurance_code)
+                        # log_message(f"📌 긴급 알림 약품 보험코드 수집: {drug.name} -> {drug.insurance_code}")
         else:
             log_message("⚠️ 지오영이 비활성화되어 있습니다")
         
-        # 백제 검색 (활성화된 경우)
-        if baekje_active and app_state.config.has_baekje_credentials():
+        # 백제 검색 (활성화된 경우) - 사이클 조기 종료 체크
+        if app_state.cycle_terminated:
+            log_message("🚨 긴급 재고 발견으로 백제 검색 건너뛰기 - 사이클 조기 종료")
+        elif baekje_active and app_state.config.has_baekje_credentials():
             log_message("🏢 백제약품 검색 시작...")
             # 지오영에서 수집한 보험코드 사용
             if hasattr(all_drugs, '__iter__') and len(all_drugs) > 0:
@@ -644,7 +720,10 @@ def execute_search_sync(progress_queue=None):
                         insurance_codes[drug.insurance_code] = drug.name
                 
                 if insurance_codes:
-                    baekje_drugs, baekje_errors = search_baekje_sync(insurance_codes, excluded_names, progress_queue)
+                    # 백제 검색용 매핑 저장 (긴급 알림 판단용)
+                    baekje_search_codes = insurance_codes.copy()
+                    
+                    baekje_drugs, baekje_errors = search_baekje_sync(insurance_codes, excluded_names, progress_queue, urgent_drugs)
                     all_drugs.extend(baekje_drugs)
                     errors.extend(baekje_errors)
                 else:
@@ -656,6 +735,8 @@ def execute_search_sync(progress_queue=None):
         
         # 결과 분류
         found_drugs, soldout_drugs = app_state.data_processor.categorize_drugs(all_drugs, cleaned_exclusions)
+        
+        # 긴급 알림은 이제 검색 중 즉시 처리됨 (위에서 조기 종료)
         
         # 메모리 상태 업데이트
         app_state.current_search["status"] = "completed"
@@ -685,7 +766,7 @@ def execute_search_sync(progress_queue=None):
         app_state.current_search["errors"].append(str(e))
         return None
 
-def search_baekje_sync(insurance_codes: Dict[str, str], excluded_names: List[str], progress_queue=None) -> tuple:
+def search_baekje_sync(insurance_codes: Dict[str, str], excluded_names: List[str], progress_queue=None, urgent_drugs=None) -> tuple:
     """백제약품 검색 (동기)"""
     
     def log_message(msg):
@@ -725,39 +806,81 @@ def search_baekje_sync(insurance_codes: Dict[str, str], excluded_names: List[str
                 drugs = scraper._search_by_insurance_code(insurance_code)
                 for drug in drugs:
                     drug.is_excluded_from_alert = drug.name in excluded_names
+                    # 검색에 사용된 보험코드와 원래 약품명 정보 추가
+                    drug.search_insurance_code = insurance_code
+                    drug.original_drug_name = original_name
+                    drug.distributor = "백제약품"  # 백제약품 검색 결과임을 명시
                 
                 # 검색 결과 로그
                 if drugs:
-                    drug = drugs[0]  # 첫 번째 결과 사용
-                    main_stock = drug.main_stock if drug.main_stock else "정보없음"
+                    log_message(f"🔍 백제 검색 완료 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - {len(drugs)}개 규격 발견")
                     
-                    # 재고 상황 표시
-                    main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
-                    
-                    log_message(f"🔍 백제 검색 완료 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - 재고: {main_display}")
-                    
-                    # 재고 발견 여부 확인
-                    has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")
-                    
-                    # 개별 약품 완료 메시지를 큐에 추가
-                    if progress_queue:
-                        try:
-                            drug_data = {
-                                "name": drug.name,
-                                "main_stock": main_stock,
-                                "incheon_stock": "-",
-                                "company": "백제약품",
-                                "has_stock": has_stock
-                            }
+                    # 모든 규격을 별도로 처리
+                    for drug_idx, drug in enumerate(drugs):
+                        main_stock = drug.main_stock if drug.main_stock else "정보없음"
+                        
+                        # 재고 상황 표시
+                        main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
+                        unit_display = f" [{drug.unit}]" if drug.unit else ""
+                        
+                        log_message(f"   - {drug.name}{unit_display}: {main_display}")
+                        
+                        # 각 규격별로 재고 발견 여부 확인
+                        has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")
+                        
+                        # 긴급 약품이면서 재고가 있는 경우 즉시 알림 및 사이클 종료
+                        if urgent_drugs and original_name in urgent_drugs and has_stock:
+                            # log_message(f"🚨 긴급 재고 발견! {original_name} (백제: {drug.name}) - 즉시 알림 전송 후 사이클 조기 종료")
                             
-                            drug_found_msg = {
-                                "type": "drug_found",
-                                "drug": drug_data,
-                                "progress": {"current": i, "total": len(insurance_codes)}
+                            # 사이클 종료 플래그 설정
+                            app_state.cycle_terminated = True
+                            
+                            # 즉시 긴급 알림 전송
+                            urgent_alert_msg = {
+                                "type": "urgent_alert",
+                                "drug": {
+                                    "name": drug.name,
+                                    "main_stock": main_stock,
+                                    "incheon_stock": "-",
+                                    "company": "백제약품",
+                                    "distributor": "백제약품",
+                                    "original_drug_name": original_name,  # 지오영 원래 약품명 추가
+                                    "unit": drug.unit  # 규격 정보 추가
+                                },
+                                "timestamp": datetime.now().isoformat()
                             }
-                            progress_queue.put_nowait(f"DRUG_FOUND:{json.dumps(drug_found_msg)}")
-                        except:
-                            pass
+                            if progress_queue:
+                                try:
+                                    progress_queue.put_nowait(f"URGENT_ALERT:{json.dumps(urgent_alert_msg)}")
+                                except:
+                                    pass
+                            
+                            # 현재 약품을 결과에 추가 후 즉시 종료
+                            all_drugs.extend(drugs)
+                            return all_drugs, errors
+                        
+                        # 메모리 상태에 개별 결과 추가 (각 규격별로)
+                        drug_data = {
+                            "name": f"{drug.name}{unit_display}",  # 약품명 + 규격 표시
+                            "main_stock": main_stock,
+                            "incheon_stock": "-",
+                            "company": "백제약품",
+                            "has_stock": has_stock,
+                            "unit": drug.unit  # 규격 정보
+                        }
+                        app_state.add_drug_result(drug_data, has_stock)
+                        
+                        # 개별 약품 완료 메시지를 큐에 추가 (WebSocket 전송용)
+                        if progress_queue:
+                            try:
+                                drug_found_msg = {
+                                    "type": "drug_found",
+                                    "drug": drug_data,
+                                    "progress": {"current": i, "total": len(insurance_codes)}
+                                }
+                                progress_queue.put_nowait(f"DRUG_FOUND:{json.dumps(drug_found_msg)}")
+                            except:
+                                pass
                 else:
                     log_message(f"❌ 백제 검색 실패 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - 검색 결과 없음")
                     errors.append(f"{original_name} ({insurance_code}): 검색 결과 없음")
@@ -775,7 +898,7 @@ def search_baekje_sync(insurance_codes: Dict[str, str], excluded_names: List[str
     
     return all_drugs, errors
 
-def search_geoweb_sync(drug_list: List[str], excluded_names: List[str], progress_queue=None) -> tuple:
+def search_geoweb_sync(drug_list: List[str], excluded_names: List[str], progress_queue=None, urgent_drugs=None) -> tuple:
     """지오영 검색 (동기)"""
     
     def log_message(msg):
@@ -813,6 +936,7 @@ def search_geoweb_sync(drug_list: List[str], excluded_names: List[str], progress
                 drugs = scraper.search_drug(drug_name)
                 for drug in drugs:
                     drug.is_excluded_from_alert = drug.name in excluded_names
+                    drug.distributor = "지오영"  # 지오영 검색 결과임을 명시
                 
                 # 재고 상황 로그 추가 및 실시간 상태 업데이트
                 if drugs:
@@ -829,6 +953,35 @@ def search_geoweb_sync(drug_list: List[str], excluded_names: List[str], progress
                     
                     # 재고 발견 여부 확인
                     has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")
+                    
+                    # 긴급 약품이면서 재고가 있는 경우 즉시 알림 및 사이클 종료
+                    if urgent_drugs and drug.name in urgent_drugs and has_stock:
+                        # log_message(f"🚨 긴급 재고 발견! {drug.name} - 즉시 알림 전송 후 사이클 조기 종료")
+                        
+                        # 사이클 종료 플래그 설정
+                        app_state.cycle_terminated = True
+                        
+                        # 즉시 긴급 알림 전송
+                        urgent_alert_msg = {
+                            "type": "urgent_alert",
+                            "drug": {
+                                "name": drug.name,
+                                "main_stock": main_stock,
+                                "incheon_stock": incheon_stock,
+                                "company": getattr(drug, 'company', ''),
+                                "distributor": "지오영"
+                            },
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        if progress_queue:
+                            try:
+                                progress_queue.put_nowait(f"URGENT_ALERT:{json.dumps(urgent_alert_msg)}")
+                            except:
+                                pass
+                        
+                        # 현재 약품을 결과에 추가 후 즉시 종료
+                        all_drugs.extend(drugs)
+                        return all_drugs, errors
                     
                     # 메모리 상태에 개별 결과 추가
                     drug_data = {

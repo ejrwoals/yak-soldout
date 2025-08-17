@@ -59,9 +59,10 @@ class DrugListModal {
             if (!response.ok) throw new Error('약품 목록 로드 실패');
             
             const data = await response.json();
-            this.currentDrugs = [...data.drugs]; // 복사본 생성
-            this.originalDrugs = [...data.drugs]; // 원본 저장
+            this.currentDrugs = JSON.parse(JSON.stringify(data.drugs)); // 깊은 복사
+            this.originalDrugs = JSON.parse(JSON.stringify(data.drugs)); // 원본도 깊은 복사
             this.newlyAddedDrugs.clear(); // 새로 추가된 약품 목록 초기화
+            this.sortDrugs(); // 로드 후 정렬
             this.renderDrugList();
             this.updateSaveButtonState(); // 초기 저장 버튼 상태 설정
             
@@ -101,15 +102,25 @@ class DrugListModal {
             return;
         }
         
-        // 중복 검사
-        if (this.currentDrugs.includes(drugName)) {
+        // 중복 검사 (문자열과 객체 모두 처리)
+        const isDuplicate = this.currentDrugs.some(drug => 
+            typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
+        );
+        if (isDuplicate) {
             this.app.showError('이미 등록된 약품입니다');
             return;
         }
         
-        // 약품 추가 (배열 맨 앞에 추가)
-        this.currentDrugs.unshift(drugName);
+        // 약품 추가 (배열 맨 앞에 추가) - 새 약품은 객체 형태로 추가
+        const kstDate = new Date(Date.now() + (9 * 60 * 60 * 1000)); // UTC + 9시간
+        const newDrug = {
+            drugName: drugName,
+            isUrgent: false,
+            dateAdded: kstDate.toISOString().slice(0, 19)
+        };
+        this.currentDrugs.unshift(newDrug);
         this.newlyAddedDrugs.add(drugName); // 새로 추가된 약품으로 표시
+        this.sortDrugs(); // 추가 후 정렬
         this.renderDrugList();
         this.hideAddForm();
         this.clearAddForm();
@@ -119,14 +130,69 @@ class DrugListModal {
     }
     
     removeDrug(drugName) {
-        const index = this.currentDrugs.indexOf(drugName);
+        const index = this.currentDrugs.findIndex(drug => 
+            typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
+        );
         if (index > -1) {
             this.currentDrugs.splice(index, 1);
             this.newlyAddedDrugs.delete(drugName); // 새로 추가된 약품 목록에서도 제거
+            this.sortDrugs(); // 삭제 후 정렬
             this.renderDrugList();
             this.updateSaveButtonState(); // 저장 버튼 상태 업데이트
             this.app.showSuccess(`'${drugName}'이(가) 삭제되었습니다`);
         }
+    }
+    
+    toggleUrgent(drugName) {
+        const index = this.currentDrugs.findIndex(drug => 
+            typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
+        );
+        if (index > -1) {
+            // 문자열인 경우 객체로 변환
+            if (typeof this.currentDrugs[index] === 'string') {
+                const kstDate = new Date(Date.now() + (9 * 60 * 60 * 1000)); // UTC + 9시간
+                this.currentDrugs[index] = {
+                    drugName: this.currentDrugs[index],
+                    isUrgent: false,
+                    dateAdded: kstDate.toISOString().slice(0, 19)
+                };
+            }
+            
+            const drug = this.currentDrugs[index];
+            drug.isUrgent = !drug.isUrgent;
+            
+            // 긴급 상태 변경 시 현재 날짜로 업데이트 (한국 표준시간)
+            const kstDate = new Date(Date.now() + (9 * 60 * 60 * 1000)); // UTC + 9시간
+            drug.dateAdded = kstDate.toISOString().slice(0, 19); // YYYY-MM-DDTHH:mm:ss 형식
+            
+            // 긴급 상태 변경 시 목록 다시 정렬
+            this.sortDrugs();
+            this.renderDrugList();
+            this.updateSaveButtonState();
+            
+            const status = drug.isUrgent ? '긴급 알림' : '일반 알림';
+            this.app.showSuccess(`'${drug.drugName}'이(가) ${status}으로 설정되었습니다`);
+        }
+    }
+    
+    sortDrugs() {
+        // 긴급 항목(상단) -> 일반 항목(하단), 각각 dateAdded 최신순
+        this.currentDrugs.sort((a, b) => {
+            const aName = typeof a === 'string' ? a : a.drugName;
+            const bName = typeof b === 'string' ? b : b.drugName;
+            const aUrgent = typeof a === 'object' ? a.isUrgent : false;
+            const bUrgent = typeof b === 'object' ? b.isUrgent : false;
+            
+            // 먼저 긴급 상태로 분류
+            if (aUrgent !== bUrgent) {
+                return aUrgent ? -1 : 1; // 긴급 항목이 먼저 (상단)
+            }
+            
+            // 같은 긴급 상태 내에서는 dateAdded 최신순
+            const aDate = typeof a === 'object' ? new Date(a.dateAdded) : new Date(0);
+            const bDate = typeof b === 'object' ? new Date(b.dateAdded) : new Date(0);
+            return bDate - aDate; // 최신 날짜가 먼저 (상단)
+        });
     }
     
     renderDrugList() {
@@ -149,17 +215,28 @@ class DrugListModal {
             </div>
             <div class="drug-items">
                 ${this.currentDrugs.map((drug, index) => {
-                    const isNewlyAdded = this.newlyAddedDrugs.has(drug);
+                    const drugName = typeof drug === 'string' ? drug : drug.drugName;
+                    const isUrgent = typeof drug === 'object' ? drug.isUrgent : false;
+                    const isNewlyAdded = this.newlyAddedDrugs.has(drugName);
                     const drugNumber = this.currentDrugs.length - index; // 내림차순 넘버링
+                    
                     return `
-                    <div class="drug-item ${isNewlyAdded ? 'newly-added' : ''}" data-drug="${drug}">
+                    <div class="drug-item ${isNewlyAdded ? 'newly-added' : ''} ${isUrgent ? 'urgent' : ''}" data-drug="${drugName}">
                         <div class="drug-info">
                             <span class="drug-number">${drugNumber}</span>
-                            <span class="drug-name">${drug}</span>
+                            <span class="drug-name">${drugName}</span>
+                            ${isUrgent ? '<i class="bi bi-bell-fill urgent-indicator" title="긴급 알림"></i>' : ''}
                         </div>
-                        <button class="drug-remove-btn" onclick="window.drugListModal.removeDrug('${drug.replace(/'/g, "\\'")}')">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
+                        <div class="drug-actions">
+                            <button class="drug-urgent-btn ${isUrgent ? 'urgent' : ''}" 
+                                    onclick="window.drugListModal.toggleUrgent('${drugName.replace(/'/g, "\\'")}')"
+                                    title="${isUrgent ? '일반 알림으로 변경' : '긴급 알림으로 변경'}">
+                                <i class="bi ${isUrgent ? 'bi-bell-fill' : 'bi-bell'}"></i>
+                            </button>
+                            <button class="drug-remove-btn" onclick="window.drugListModal.removeDrug('${drugName.replace(/'/g, "\\'")}')">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                     </div>
                 `;
                 }).join('')}
@@ -174,11 +251,37 @@ class DrugListModal {
             return true;
         }
         
-        // 정렬된 배열을 비교하여 내용이 다른지 확인
-        const currentSorted = [...this.currentDrugs].sort();
-        const originalSorted = [...this.originalDrugs].sort();
+        // 현재 약품 중 하나라도 원본과 다르거나 없으면 변경됨
+        const hasCurrentChanges = this.currentDrugs.some(current => {
+            const currentName = typeof current === 'string' ? current : current.drugName;
+            const currentUrgent = typeof current === 'object' ? current.isUrgent : false;
+            
+            const original = this.originalDrugs.find(orig => {
+                const origName = typeof orig === 'string' ? orig : orig.drugName;
+                return origName === currentName;
+            });
+            
+            if (!original) return true; // 원본에 없는 새 항목
+            
+            const originalUrgent = typeof original === 'object' ? original.isUrgent : false;
+            
+            // 긴급 상태가 다르면 변경됨
+            return currentUrgent !== originalUrgent;
+        });
         
-        return !currentSorted.every((drug, index) => drug === originalSorted[index]);
+        // 원본 약품 중 하나라도 현재에 없으면 변경됨 (삭제된 경우)
+        const hasOriginalChanges = this.originalDrugs.some(original => {
+            const originalName = typeof original === 'string' ? original : original.drugName;
+            
+            const current = this.currentDrugs.find(curr => {
+                const currentName = typeof curr === 'string' ? curr : curr.drugName;
+                return currentName === originalName;
+            });
+            
+            return !current;
+        });
+        
+        return hasCurrentChanges || hasOriginalChanges;
     }
     
     // 저장 버튼 상태 업데이트

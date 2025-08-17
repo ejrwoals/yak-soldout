@@ -38,41 +38,55 @@ class TestFileManager:
         encoding = file_manager._detect_encoding(test_file)
         assert encoding in ['utf-8', 'UTF-8']
     
-    def test_read_drug_list(self, file_manager, temp_dir):
-        """약품 목록 읽기 테스트"""
+    def test_read_drug_list_json(self, file_manager, temp_dir):
+        """약품 목록 읽기 테스트 (JSON 형식)"""
         # 테스트 파일 생성
-        drug_file = temp_dir / "지오영 품절 목록.txt"
-        drug_content = "타이레놀정\n애드빌정\n펜잘정\n"
-        drug_file.write_text(drug_content, encoding='utf-8')
+        drug_file = temp_dir / "geoweb-soldout-list.json"
+        drug_content = [
+            {"drugName": "타이레놀정", "isUrgent": False, "dateAdded": "2025-08-17T10:00:00"},
+            {"drugName": "애드빌정", "isUrgent": True, "dateAdded": "2025-08-17T10:00:00"},
+            {"drugName": "펜잘정", "isUrgent": False, "dateAdded": "2025-08-17T10:00:00"}
+        ]
+        drug_file.write_text(json.dumps(drug_content, ensure_ascii=False, indent=2), encoding='utf-8')
         
         drug_list = file_manager.read_drug_list()
+        drug_list_json = file_manager.read_drug_list_json()
         
         assert len(drug_list) == 3
         assert "타이레놀정" in drug_list
         assert "애드빌정" in drug_list
         assert "펜잘정" in drug_list
+        
+        assert len(drug_list_json) == 3
+        assert drug_list_json[1]["isUrgent"] == True  # 애드빌정이 긴급
     
     def test_read_drug_list_file_not_found(self, file_manager):
-        """약품 목록 파일이 없는 경우 테스트"""
-        with pytest.raises(FileNotFoundError):
-            file_manager.read_drug_list()
+        """약품 목록 파일이 없는 경우 테스트 (자동 생성)"""
+        drug_list = file_manager.read_drug_list()
+        assert drug_list == []
     
-    def test_write_drug_list(self, file_manager, temp_dir):
-        """약품 목록 쓰기 테스트"""
-        drug_list = ["타이레놀정", "애드빌정", "타이레놀정", "펜잘정"]  # 중복 포함
+    def test_write_drug_list_json(self, file_manager, temp_dir):
+        """약품 목록 쓰기 테스트 (JSON 형식)"""
+        drug_list = [
+            {"drugName": "타이레놀정", "isUrgent": False, "dateAdded": "2025-08-17T10:00:00"},
+            {"drugName": "애드빌정", "isUrgent": True, "dateAdded": "2025-08-17T10:00:00"},
+            {"drugName": "타이레놀정", "isUrgent": False, "dateAdded": "2025-08-17T10:00:00"},  # 중복
+            {"drugName": "펜잘정", "isUrgent": False, "dateAdded": "2025-08-17T10:00:00"}
+        ]
         
-        file_manager.write_drug_list(drug_list)
+        file_manager.write_drug_list_json(drug_list)
         
         # 파일이 생성되었는지 확인
-        drug_file = temp_dir / "지오영 품절 목록.txt"
+        drug_file = temp_dir / "geoweb-soldout-list.json"
         assert drug_file.exists()
         
         # 내용 확인 (중복 제거 및 정렬 확인)
-        content = drug_file.read_text(encoding='utf-8').strip()
-        lines = content.split('\n')
+        with open(drug_file, 'r', encoding='utf-8') as f:
+            content = json.load(f)
         
-        assert len(lines) == 3  # 중복 제거됨
-        assert lines == sorted(lines)  # 정렬됨
+        assert len(content) == 3  # 중복 제거됨
+        drug_names = [item["drugName"] for item in content]
+        assert drug_names == sorted(drug_names)  # 정렬됨
     
     def test_read_alert_exclusions(self, file_manager, temp_dir):
         """알림 제외 목록 읽기 테스트"""
