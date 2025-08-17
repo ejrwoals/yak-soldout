@@ -88,48 +88,6 @@ class TestFileManager:
         drug_names = [item["drugName"] for item in content]
         assert drug_names == sorted(drug_names)  # 정렬됨
     
-    def test_read_alert_exclusions(self, file_manager, temp_dir):
-        """알림 제외 목록 읽기 테스트"""
-        # 테스트 파일 생성
-        exclusion_file = temp_dir / "알림 제외.txt"
-        exclusion_content = "2024년 12월 15일 지오영 @ 타이레놀정\n2024년 12월 14일 백제 @ 애드빌정\n"
-        exclusion_file.write_text(exclusion_content, encoding='utf-8')
-        
-        exclusions = file_manager.read_alert_exclusions()
-        
-        assert len(exclusions) == 2
-        assert "2024년 12월 15일 지오영 @ 타이레놀정" in exclusions
-        assert "2024년 12월 14일 백제 @ 애드빌정" in exclusions
-    
-    def test_read_alert_exclusions_file_not_found(self, file_manager, temp_dir):
-        """알림 제외 파일이 없는 경우 테스트 (자동 생성)"""
-        exclusions = file_manager.read_alert_exclusions()
-        
-        assert exclusions == []
-        # 빈 파일이 생성되었는지 확인
-        exclusion_file = temp_dir / "알림 제외.txt"
-        assert exclusion_file.exists()
-    
-    def test_write_alert_exclusions(self, file_manager, temp_dir):
-        """알림 제외 목록 쓰기 테스트"""
-        exclusions = [
-            "2024년 12월 15일 지오영 @ 타이레놀정",
-            "2024년 12월 14일 백제 @ 애드빌정",
-            "2024년 12월 15일 지오영 @ 타이레놀정"  # 중복
-        ]
-        
-        file_manager.write_alert_exclusions(exclusions)
-        
-        # 파일 확인
-        exclusion_file = temp_dir / "알림 제외.txt"
-        assert exclusion_file.exists()
-        
-        # 중복 제거 및 정렬 확인
-        content = exclusion_file.read_text(encoding='utf-8').strip()
-        lines = content.split('\n')
-        
-        assert len(lines) == 2  # 중복 제거됨
-        assert lines == sorted(lines)  # 정렬됨
     
     @patch('glob.glob')
     @patch('os.path.getctime')

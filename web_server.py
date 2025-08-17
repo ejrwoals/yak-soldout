@@ -658,7 +658,7 @@ def execute_search_sync(progress_queue=None):
         # 데이터 로드
         drug_list = app_state.file_manager.read_drug_list()
         drug_list_json = app_state.file_manager.read_drug_list_json()
-        exclusion_list = app_state.file_manager.read_alert_exclusions()
+        exclusion_list = app_state.file_manager.read_alert_exclusions_json()
         
         # 긴급 알림 약품 목록 생성 (약품명 기준)
         urgent_drugs = {

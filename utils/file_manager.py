@@ -116,33 +116,6 @@ class FileManager:
         except Exception as e:
             print(f"약품 목록 JSON 파일 쓰기 오류: {e}")
     
-    def read_alert_exclusions(self, filename: str = "알림 제외.txt") -> List[str]:
-        """알림 제외 목록 파일 읽기"""
-        file_path = self.app_directory / filename
-        
-        if not file_path.exists():
-            # 파일이 없으면 빈 파일 생성
-            with open(file_path, 'w', encoding='utf-8') as file:
-                pass
-            return []
-        
-        encoding = self._detect_encoding(file_path)
-        
-        with open(file_path, 'r', encoding=encoding) as file:
-            lines = file.readlines()
-        
-        return [line.strip() for line in lines if line.strip()]
-    
-    def write_alert_exclusions(self, exclusion_list: List[str], filename: str = "알림 제외.txt"):
-        """알림 제외 목록 파일 쓰기"""
-        file_path = self.app_directory / filename
-        
-        # 정렬된 리스트로 저장
-        sorted_list = sorted(list(set(exclusion_list)))
-        
-        with open(file_path, 'w', encoding='utf-8') as file:
-            for item in sorted_list:
-                file.write(f'{item}\n')
     
     def read_alert_exclusions_json(self, filename: str = "알림 제외.json") -> List[Dict[str, Any]]:
         """JSON 형식의 알림 제외 목록 파일 읽기"""
