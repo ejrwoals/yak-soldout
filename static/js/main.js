@@ -605,7 +605,7 @@ class ModernDrugSearchApp {
             <div class="drug-header">
                 <div class="drug-title">
                     ${statusIcon}
-                    <h5>${drug.name} ${unitInfo}</h5>
+                    <h5>${drug.name}</h5>
                 </div>
                 ${distributorBadge}
             </div>
@@ -765,8 +765,13 @@ class ModernDrugSearchApp {
                     <div class="urgent-drug-info">
                         <h4>${drug.name}${drug.unit ? ` [${drug.unit}]` : ''}</h4>
                         <div class="urgent-stock-info">
-                            <span class="stock-item">메인: ${drug.main_stock}</span>
-                            ${drug.incheon_stock !== '-' ? `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}
+                            ${drug.specifications && drug.specifications.length > 0 ? 
+                                drug.specifications.map(spec => 
+                                    `<div class="stock-item">${spec.unit_display}: ${spec.main_display}</div>`
+                                ).join('') :
+                                `<span class="stock-item">메인: ${drug.main_stock}</span>
+                                ${drug.incheon_stock !== '-' ? `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}`
+                            }
                         </div>
                         <div class="urgent-distributor">
                             <span class="distributor-badge ${drug.distributor === '지오영' ? 'geoweb' : 'baekje'}">${drug.distributor}</span>
