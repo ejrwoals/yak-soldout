@@ -707,8 +707,76 @@ body {
 .drug-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: space-between;
     margin-bottom: 0.5rem;
+}
+
+.drug-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.drug-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-exclusion {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+}
+
+.btn-exclusion:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.btn-exclusion:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-exclusion.btn-exclusion-added {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.btn-exclusion.btn-exclusion-added:hover {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.empty-state-small {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-muted);
+}
+
+.empty-state-small i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    opacity: 0.6;
+}
+
+.empty-state-small p {
+    margin: 0;
+    font-size: 0.875rem;
 }
 
 .drug-header h5 {

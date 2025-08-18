@@ -278,7 +278,7 @@ class ModernDrugSearchApp {
             window.tooltipManager.updateDrugListTooltip(statusCard, files.drug_list || [], files.drug_count || 0);
         }
         
-        // 검색 제외 수
+        // 결과 표시 제외 수
         if (this.elements.exclusionCount) {
             this.elements.exclusionCount.textContent = files.exclusion_count || '-';
             const statusCard = this.elements.exclusionCount.closest('.status-card');
@@ -575,6 +575,11 @@ class ModernDrugSearchApp {
         // 실시간으로 개별 약품을 결과에 추가
         if (!this.elements.searchResults) return;
         
+        // exclusion 체크: 제외된 약품은 카드를 생성하지 않음
+        if (drug.is_excluded_from_alert) {
+            return;
+        }
+        
         // 컬럼 컨테이너가 없다면 초기화
         if (!this.elements.searchResults.querySelector('.results-columns')) {
             this.clearResults();
@@ -597,17 +602,19 @@ class ModernDrugSearchApp {
         const distributorBadge = company.includes('백제') ? 
             '<span class="distributor-badge baekje">백제약품</span>' : 
             '<span class="distributor-badge geoweb">지오영</span>';
-            
-        // 백제 결과인 경우 규격 정보 여부 확인
-        const unitInfo = drug.unit ? `<small class="text-muted">(규격: ${drug.unit})</small>` : '';
-        
+
         drugCard.innerHTML = `
             <div class="drug-header">
                 <div class="drug-title">
                     ${statusIcon}
                     <h5>${drug.name}</h5>
                 </div>
-                ${distributorBadge}
+                <div class="drug-actions">
+                    <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${drug.name}', '${company.includes('백제') ? '백제약품' : '지오영'}', this)" title="결과 표시 제외 목록에 추가">
+                        <i class="bi bi-eye-slash"></i>
+                    </button>
+                    ${distributorBadge}
+                </div>
             </div>
             <div class="drug-stock">
                 <span class="stock-item">메인: ${drug.main_stock}</span>
@@ -874,6 +881,180 @@ class ModernDrugSearchApp {
         };
     }
     
+    // =================== 결과 표시 제외 처리 ===================
+    async addToExclusion(drugName, distributor, buttonElement) {
+        try {
+            // 버튼 상태 변경 (로딩)
+            const originalHtml = buttonElement.innerHTML;
+            buttonElement.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+            buttonElement.disabled = true;
+            
+            const response = await fetch('/api/exclusion-add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    drugName: drugName,
+                    distributor: distributor
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                // 성공 시 버튼 상태 변경
+                buttonElement.innerHTML = '<i class="bi bi-check-circle"></i>';
+                buttonElement.classList.add('btn-exclusion-added');
+                buttonElement.title = '제외 목록에 추가됨';
+                
+                // 성공 메시지 표시
+                this.showSuccess(result.message);
+                
+                // exclusionCount 실시간 업데이트
+                this.updateExclusionCount();
+                
+                // 카드를 심플하게 제거
+                const card = buttonElement.closest('.drug-result-card');
+                if (card) {
+                    setTimeout(() => {
+                        // 페이드아웃과 살짝 위로 이동
+                        card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                        card.style.opacity = '0';
+                        card.style.transform = 'translateY(-10px)';
+                        
+                        // 페이드아웃 완료 후 높이 축소
+                        setTimeout(() => {
+                            card.style.transition = 'height 0.2s ease, margin 0.2s ease, padding 0.2s ease';
+                            card.style.height = '0';
+                            card.style.marginBottom = '0';
+                            card.style.paddingTop = '0';
+                            card.style.paddingBottom = '0';
+                            card.style.overflow = 'hidden';
+                            
+                            // 완전 제거
+                            setTimeout(() => {
+                                card.remove();
+                                this.updateFoundCount();
+                            }, 200);
+                        }, 300);
+                    }, 100);
+                }
+                
+            } else {
+                // 실패 시 원래 상태로 복원
+                buttonElement.innerHTML = originalHtml;
+                buttonElement.disabled = false;
+                this.showError(result.detail || '제외 목록 추가에 실패했습니다');
+            }
+            
+        } catch (error) {
+            // 오류 시 원래 상태로 복원
+            buttonElement.innerHTML = '<i class="bi bi-eye-slash"></i>';
+            buttonElement.disabled = false;
+            this.showError('제외 목록 추가 중 오류가 발생했습니다');
+            console.error('Exclusion add error:', error);
+        }
+    }
+    
+    // =================== 상태 실시간 업데이트 ===================
+    async updateExclusionCount() {
+        try {
+            const response = await fetch('/api/exclusion-list');
+            if (response.ok) {
+                const data = await response.json();
+                const exclusionCount = data.exclusions?.length || 0;
+                
+                // exclusionCount 업데이트
+                if (this.elements.exclusionCount) {
+                    this.elements.exclusionCount.textContent = exclusionCount;
+                }
+                
+                // 툴팁도 업데이트 (처음 5개만)
+                const statusCard = this.elements.exclusionCount?.closest('.summary-card.info');
+                if (statusCard && window.tooltipManager) {
+                    const excludedNames = data.exclusions.slice(0, 5).map(item => item.drugName || '');
+                    window.tooltipManager.updateExclusionTooltip(statusCard, excludedNames);
+                }
+                
+                // 현재 표시된 카드들 중 exclusion list에 있는 것들 실시간 제거
+                this.filterExcludedCards(data.exclusions);
+            }
+        } catch (error) {
+            console.error('Exclusion count update error:', error);
+        }
+    }
+    
+    filterExcludedCards(exclusions) {
+        // exclusion list에 있는 약품명들 추출
+        const excludedNames = exclusions.map(item => item.drugName);
+        
+        // 현재 표시된 모든 카드 확인
+        const allCards = document.querySelectorAll('.drug-result-card');
+        
+        allCards.forEach(card => {
+            const drugNameElement = card.querySelector('h5');
+            if (drugNameElement) {
+                const drugName = drugNameElement.textContent.trim();
+                
+                // exclusion list에 있는 약품이면 카드 제거
+                if (excludedNames.includes(drugName)) {
+                    card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(-10px)';
+                    
+                    setTimeout(() => {
+                        card.remove();
+                        this.updateFoundCount();
+                    }, 300);
+                }
+            }
+        });
+    }
+    
+    updateFoundCount() {
+        // 현재 표시되고 있는 카드 수 카운트
+        const foundCards = document.querySelectorAll('#col-found .drug-result-card');
+        const soldoutCards = document.querySelectorAll('#col-soldout .drug-result-card');
+        
+        const foundCount = foundCards.length;
+        const soldoutCount = soldoutCards.length;
+        
+        // 카운트 업데이트
+        if (this.elements.foundCount) {
+            this.elements.foundCount.textContent = foundCount;
+        }
+        if (this.elements.soldoutCount) {
+            this.elements.soldoutCount.textContent = soldoutCount;
+        }
+        
+        // 재고가 모두 사라진 경우 빈 상태 표시
+        if (foundCount === 0) {
+            const colFound = document.querySelector('#col-found .col-body');
+            if (colFound) {
+                colFound.innerHTML = `
+                    <div class="empty-state-small">
+                        <i class="bi bi-inbox"></i>
+                        <p>표시할 재고가 없습니다</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // 품절이 모두 사라진 경우 빈 상태 표시
+        if (soldoutCount === 0) {
+            const colSoldout = document.querySelector('#col-soldout .col-body');
+            if (colSoldout) {
+                colSoldout.innerHTML = `
+                    <div class="empty-state-small">
+                        <i class="bi bi-inbox"></i>
+                        <p>표시할 품절이 없습니다</p>
+                    </div>
+                `;
+            }
+        }
+    }
+    
 }
 
 
@@ -887,6 +1068,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 약품 목록 모달 초기화
     window.drugListModal = new DrugListModal(window.modernDrugApp);
     
-    // 검색 제외 목록 모달 초기화
+    // 결과 표시 제외 목록 모달 초기화
     window.exclusionListModal = new ExclusionListModal(window.modernDrugApp);
 });

@@ -72,9 +72,9 @@ async def get_status():
         drug_list = app_state.file_manager.read_drug_list()
         drug_list_json = app_state.file_manager.read_drug_list_json()
         
-        # JSON 형식의 알림 제외 목록 읽기
+        # JSON 형식의 결과 표시 제외 목록 읽기
         exclusion_json_data = app_state.file_manager.read_alert_exclusions_json()
-        exclusion_list = [item.get('drugName', '') for item in exclusion_json_data]  # 약품명만 추출
+        exclusion_list_names = [item.get('drugName', '') for item in exclusion_json_data]  # 약품명만 추출 (기존 호환성 유지)
         
         
         # 실시간 검색 상태 (메모리에서)
@@ -96,8 +96,8 @@ async def get_status():
             "files": {
                 "drug_count": len(drug_list),
                 "drug_list": drug_list_json,  # 전체 목록과 긴급 알림 정보 포함
-                "exclusion_count": len(exclusion_list),
-                "exclusion_list": exclusion_list[:5]  # 최대 5개까지만 툴팁에 표시
+                "exclusion_count": len(exclusion_list_names),
+                "exclusion_list": exclusion_json_data[:5]  # 도매상 정보 포함한 전체 객체를 툴팁에 전달 (최대 5개)
             },
             "current_search": current_search
         }
@@ -313,22 +313,22 @@ async def update_drug_list(data: dict):
 
 @app.get("/api/exclusion-list")
 async def get_exclusion_list():
-    """알림 제외 목록 조회 (JSON 형식)"""
+    """결과 표시 제외 목록 조회 (JSON 형식)"""
     try:
         exclusion_list = app_state.file_manager.read_alert_exclusions_json()
         return {"exclusions": exclusion_list}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"알림 제외 목록 읽기 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"결과 표시 제외 목록 읽기 실패: {str(e)}")
 
 @app.put("/api/exclusion-list")
 async def update_exclusion_list(data: dict):
-    """알림 제외 목록 업데이트 (JSON 형식)"""
+    """결과 표시 제외 목록 업데이트 (JSON 형식)"""
     try:
         exclusions = data.get('exclusions', [])
         
         # 유효성 검사
         if not isinstance(exclusions, list):
-            raise HTTPException(status_code=400, detail="알림 제외 목록은 배열이어야 합니다")
+            raise HTTPException(status_code=400, detail="결과 표시 제외 목록은 배열이어야 합니다")
         
         # 각 항목의 필수 필드 검증
         for item in exclusions:
@@ -343,12 +343,12 @@ async def update_exclusion_list(data: dict):
         # 파일에 저장 (자동 정렬 포함)
         app_state.file_manager.write_alert_exclusions_json(exclusions)
         
-        return {"message": f"알림 제외 목록이 저장되었습니다 (총 {len(exclusions)}개)"}
+        return {"message": f"결과 표시 제외 목록이 저장되었습니다 (총 {len(exclusions)}개)"}
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"알림 제외 목록 저장 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"결과 표시 제외 목록 저장 실패: {str(e)}")
 
 @app.put("/api/drug-urgent-toggle")
 async def toggle_drug_urgent(data: dict):
@@ -382,6 +382,44 @@ async def toggle_drug_urgent(data: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"긴급 알림 해제 실패: {str(e)}")
+
+@app.post("/api/exclusion-add")
+async def add_to_exclusion(data: dict):
+    """특정 약품을 결과 표시 제외 목록에 추가"""
+    try:
+        drug_name = data.get('drugName')
+        distributor = data.get('distributor', '')
+        
+        if not drug_name:
+            raise HTTPException(status_code=400, detail="약품명이 필요합니다")
+        
+        # 현재 제외 목록 로드
+        exclusion_list = app_state.file_manager.read_alert_exclusions_json()
+        
+        # 이미 목록에 있는지 확인 (약품명과 도매상 조합으로)
+        for item in exclusion_list:
+            if item.get('drugName') == drug_name and item.get('distributor') == distributor:
+                return {"message": f"'{drug_name}'은(는) 이미 결과 표시 제외 목록에 있습니다"}
+        
+        # 새 항목 추가
+        new_entry = {
+            "date": datetime.now().isoformat()[:19],
+            "distributor": distributor,
+            "drugName": drug_name,
+            "isPinned": False
+        }
+        
+        exclusion_list.append(new_entry)
+        
+        # 파일에 저장 (자동 정렬됨)
+        app_state.file_manager.write_alert_exclusions_json(exclusion_list)
+        
+        return {"message": f"'{drug_name}'을(를) 결과 표시 제외 목록에 추가했습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"결과 표시 제외 추가 실패: {str(e)}")
 
 
 if __name__ == "__main__":

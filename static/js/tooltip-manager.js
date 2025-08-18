@@ -57,7 +57,7 @@ class TooltipManager {
     }
     
     /**
-     * 검색 제외 목록 툴팁 업데이트
+     * 결과 표시 제외 목록 툴팁 업데이트
      * @param {HTMLElement} statusCard - 상태 카드 요소
      * @param {Array} exclusionList - 제외 목록
      * @param {number} totalCount - 전체 개수
@@ -216,30 +216,38 @@ class TooltipManager {
         }).join('');
         
         const moreItems = totalCount > maxShow ? 
-            this.createMoreItem(`외 ${totalCount - maxShow}개 더...`) : '';
+            this.createMoreItem(`...`) : '';
         
         return items + moreItems;
     }
     
     createEmptyExclusionContent() {
         return this.createTooltipItem(
-            'bi bi-bell',
-            '모든 약품에 알림 활성화',
+            'bi bi-eye',
+            '모든 약품이 결과에 표시됨',
             'var(--success)'
         );
     }
     
     createExclusionContent(exclusionList, totalCount) {
         const items = exclusionList.map(item => {
-            // 날짜@약품명 형식 파싱
-            const parts = item.split('@');
-            const displayText = parts.length > 1 ? parts[1].trim() : item;
-            
-            return this.createTooltipItem(
-                'bi bi-bell-slash',
-                displayText,
-                'var(--warning)'
-            );
+            // JSON 형식 처리
+            if (typeof item === 'object' && item.drugName && item.distributor) {
+                const displayText = `[${item.distributor}] ${item.drugName}`;
+                return this.createTooltipItem(
+                    'bi bi-eye-slash',
+                    displayText,
+                    'var(--warning)'
+                );
+            }
+            // 예외 처리
+            else {
+                return this.createTooltipItem(
+                    'bi bi-eye-slash',
+                    '알 수 없음',
+                    'var(--warning)'
+                );
+            }
         }).join('');
         
         const moreItems = totalCount > exclusionList.length ? 
@@ -268,7 +276,7 @@ class TooltipManager {
         ).join('');
         
         const moreItems = errorDrugs.length > maxShow ? 
-            this.createMoreItem(`외 ${errorDrugs.length - maxShow}개 더...`) : '';
+            this.createMoreItem(`외 ${errorDrugs.length - maxShow}개...`) : '';
         
         return items + moreItems;
     }

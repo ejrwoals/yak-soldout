@@ -206,10 +206,8 @@ class BaseScraper(ABC):
                 search_results = self.search_drug(drug_name)
                 
                 for drug in search_results:
-                    # 알림 제외 목록 확인
-                    drug.is_excluded_from_alert = self._is_in_exclusion_list(
-                        drug.name, exclusion_list
-                    )
+                    # 결과 표시 제외 목록 확인 (약품명 리스트로 진행)
+                    drug.is_excluded_from_alert = drug.name in exclusion_list
                     
                     # 재고 여부에 따라 분류
                     if drug.has_stock():
@@ -225,13 +223,5 @@ class BaseScraper(ABC):
         return found_drugs, soldout_drugs, errors
     
     def _is_in_exclusion_list(self, drug_name: str, exclusion_list: List[str]) -> bool:
-        """알림 제외 목록에 있는지 확인"""
-        for exclusion in exclusion_list:
-            if '@' in exclusion:
-                try:
-                    excluded_name = exclusion.split('@')[1].strip()
-                    if excluded_name == drug_name:
-                        return True
-                except IndexError:
-                    continue
-        return False
+        """결과 표시 제외 목록에 있는지 확인 (단순 비교)"""
+        return drug_name in exclusion_list

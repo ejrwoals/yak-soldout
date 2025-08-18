@@ -1,7 +1,7 @@
 import platform
 import subprocess
 import sys
-from typing import List
+from typing import List, Dict
 from models.drug_data import Drug
 
 
@@ -113,62 +113,23 @@ class CrossPlatformNotifier:
 
 
 class AlertManager:
-    """알림 제외 관리"""
+    """결과 표시 제외 관리"""
     
     def __init__(self, exclusion_days: int = 7):
         self.exclusion_days = exclusion_days
     
     def should_show_alert(self, drug_name: str, exclusion_list: List[str]) -> bool:
-        """해당 약품에 대해 알림을 표시해야 하는지 확인"""
-        from datetime import datetime, timedelta
-        
-        current_time = datetime.now()
-        
-        # 시간 제한 확인 (오후 4-6시에만 알림 제외 목록 정리)
-        if 16 <= current_time.hour < 18:
-            # 알림 제외 목록에서 오래된 항목 확인
-            for exclusion in exclusion_list:
-                if '@' in exclusion:
-                    try:
-                        date_part = exclusion.split('@')[0].strip()
-                        drug_part = exclusion.split('@')[1].strip()
-                        
-                        if drug_part == drug_name:
-                            # 날짜 파싱
-                            date_str = date_part.split('일')[0] + '일'
-                            exclusion_date = datetime.strptime(date_str, '%Y년 %m월 %d일')
-                            
-                            # 제외 기간 확인
-                            days_diff = (current_time - exclusion_date).days
-                            if days_diff <= self.exclusion_days:
-                                return False  # 알림 제외
-                    except Exception as e:
-                        print(f"알림 제외 날짜 파싱 오류: {e}")
-                        continue
-        else:
-            # 일반 시간대에는 단순히 이름만 확인
-            for exclusion in exclusion_list:
-                if '@' in exclusion:
-                    drug_part = exclusion.split('@')[1].strip()
-                    if drug_part == drug_name:
-                        return False  # 알림 제외
-        
-        return True  # 알림 표시
+        """해당 약품에 대해 알림을 표시해야 하는지 확인 (단순 비교)"""
+        # exclusion_list는 이미 약품명만 포함한 리스트
+        return drug_name not in exclusion_list
     
-    def add_to_exclusion_list(self, found_drugs: List[Drug], 
-                            existing_exclusions: List[str]) -> List[str]:
-        """발견된 약품을 알림 제외 목록에 추가"""
+    def create_exclusion_entry(self, drug_name: str, distributor: str) -> Dict:
+        """제외 목록에 추가할 JSON 항목 생성"""
         from datetime import datetime
         
-        current_time = datetime.now()
-        timestamp = current_time.strftime('%Y년 %m월 %d일 %X')
-        
-        new_exclusions = []
-        for drug in found_drugs:
-            if not drug.is_excluded_from_alert:
-                exclusion_entry = f"{timestamp} {drug.distributor.value} @ {drug.name}"
-                new_exclusions.append(exclusion_entry)
-        
-        # 기존 제외 목록과 합집합
-        all_exclusions = set(existing_exclusions).union(set(new_exclusions))
-        return sorted(list(all_exclusions))
+        return {
+            "date": datetime.now().isoformat()[:19],
+            "distributor": distributor,
+            "drugName": drug_name,
+            "isPinned": False
+        }

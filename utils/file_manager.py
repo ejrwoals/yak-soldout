@@ -117,8 +117,8 @@ class FileManager:
             print(f"약품 목록 JSON 파일 쓰기 오류: {e}")
     
     
-    def read_alert_exclusions_json(self, filename: str = "알림 제외.json") -> List[Dict[str, Any]]:
-        """JSON 형식의 알림 제외 목록 파일 읽기"""
+    def read_alert_exclusions_json(self, filename: str = "exclusion-list.json") -> List[Dict[str, Any]]:
+        """JSON 형식의 결과 표시 제외 목록 파일 읽기"""
         file_path = self.app_directory / filename
         
         if not file_path.exists():
@@ -134,8 +134,8 @@ class FileManager:
             print(f"JSON 파일 읽기 오류: {e}")
             return []
     
-    def write_alert_exclusions_json(self, exclusion_list: List[Dict[str, Any]], filename: str = "알림 제외.json"):
-        """JSON 형식의 알림 제외 목록 파일 쓰기"""
+    def write_alert_exclusions_json(self, exclusion_list: List[Dict[str, Any]], filename: str = "exclusion-list.json"):
+        """JSON 형식의 결과 표시 제외 목록 파일 쓰기"""
         file_path = self.app_directory / filename
         
         # 정렬: 비핀 항목(상단) -> 핀 항목(하단), 각각 날짜 최신순

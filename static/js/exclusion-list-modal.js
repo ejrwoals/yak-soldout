@@ -1,4 +1,4 @@
-// 검색 제외 목록 편집 모달 관리 클래스
+// 결과 표시 제외 목록 편집 모달 관리 클래스
 
 class ExclusionListModal {
     constructor(mainApp) {
@@ -7,9 +7,9 @@ class ExclusionListModal {
         this.exclusionListContainer = document.getElementById('exclusionListContainer');
         this.saveBtn = document.getElementById('saveExclusionListBtn');
         
-        // 현재 검색 제외 목록 (로컬 상태)
+        // 현재 결과 표시 제외 목록 (로컬 상태)
         this.currentExclusions = [];
-        // 원본 검색 제외 목록 (변경사항 추적용)
+        // 원본 결과 표시 제외 목록 (변경사항 추적용)
         this.originalExclusions = [];
         
         this.init();
@@ -39,9 +39,9 @@ class ExclusionListModal {
     
     async open() {
         try {
-            // 현재 검색 제외 목록 로드
+            // 현재 결과 표시 제외 목록 로드
             const response = await fetch('/api/exclusion-list');
-            if (!response.ok) throw new Error('검색 제외 목록 로드 실패');
+            if (!response.ok) throw new Error('결과 표시 제외 목록 로드 실패');
             
             const data = await response.json();
             this.currentExclusions = JSON.parse(JSON.stringify(data.exclusions)); // 깊은 복사
@@ -57,8 +57,8 @@ class ExclusionListModal {
             this.modal.classList.add('show');
             
         } catch (error) {
-            console.error('검색 제외 목록 로드 오류:', error);
-            this.app.showError('검색 제외 목록을 불러오는데 실패했습니다');
+            console.error('결과 표시 제외 목록 로드 오류:', error);
+            this.app.showError('결과 표시 제외 목록을 불러오는데 실패했습니다');
         }
     }
     
@@ -76,14 +76,14 @@ class ExclusionListModal {
             
             const infoTextElement = document.getElementById('exclusionInfoText');
             if (infoTextElement) {
-                infoTextElement.textContent = `고정하지 않은 항목은 ${alertExclusionDays}일 후 다시 알림 대상이 됩니다`;
+                infoTextElement.textContent = `고정하지 않은 항목은 ${alertExclusionDays}일 후 목록에서 삭제 됩니다`;
             }
         } catch (error) {
             console.error('설정 로드 오류:', error);
-            // 오류 시 기본값 7일 사용
+            // 오류 시 기본 메시지 사용
             const infoTextElement = document.getElementById('exclusionInfoText');
             if (infoTextElement) {
-                infoTextElement.textContent = `고정하지 않은 항목은 7일 후 다시 알림 대상이 됩니다`;
+                infoTextElement.textContent = `고정하지 않은 항목은 일정 기간 후 목록에서 삭제 됩니다`;
             }
         }
     }
@@ -112,8 +112,8 @@ class ExclusionListModal {
             this.renderExclusionList();
             this.updateSaveButtonState();
             
-            const status = exclusion.isPinned ? '고정 제외' : '기간 제외';
-            this.app.showSuccess(`'${exclusion.drugName}'이(가) ${status}로 변경되었습니다`);
+            const status = exclusion.isPinned ? '고정' : '결과 표시 제외 목록에 등록';
+            this.app.showSuccess(`'${exclusion.drugName}'이(가) ${status} 되었습니다`);
         }
     }
     
@@ -138,9 +138,9 @@ class ExclusionListModal {
         if (this.currentExclusions.length === 0) {
             this.exclusionListContainer.innerHTML = `
                 <div class="empty-exclusion-list">
-                    <i class="bi bi-bell"></i>
-                    <p>검색 제외된 약품이 없습니다</p>
-                    <p class="text-muted">모든 약품에 대해 검색하고 있습니다</p>
+                    <i class="bi bi-eye"></i>
+                    <p>결과 표시에서 제외된 약품이 없습니다</p>
+                    <p class="text-muted">모든 약품이 결과에 표시됩니다</p>
                 </div>
             `;
             return;
@@ -192,7 +192,7 @@ class ExclusionListModal {
                 <div class="exclusion-actions">
                     <button class="exclusion-pin-btn ${pinButtonClass}" 
                             onclick="window.exclusionListModal.togglePin(${index})"
-                            title="${isPinned ? '기간 제외로 변경' : '고정 제외로 변경'}">
+                            title="${isPinned ? '고정 해제' : '고정'}">
                         <i class="bi ${pinIcon}"></i>
                     </button>
                     <button class="exclusion-remove-btn" 
@@ -255,7 +255,7 @@ class ExclusionListModal {
     
     async save() {
         try {
-            // 서버로 업데이트된 검색 제외 목록 전송
+            // 서버로 업데이트된 결과 표시 제외 목록 전송
             const response = await fetch('/api/exclusion-list', {
                 method: 'PUT',
                 headers: {
@@ -269,7 +269,7 @@ class ExclusionListModal {
                 throw new Error(error.detail || '저장 실패');
             }
             
-            this.app.showSuccess('검색 제외 목록이 저장되었습니다');
+            this.app.showSuccess('결과 표시 제외 목록이 저장되었습니다');
             
             // 저장 성공 시 원본 데이터 업데이트 (깊은 복사)
             this.originalExclusions = JSON.parse(JSON.stringify(this.currentExclusions));
@@ -281,7 +281,7 @@ class ExclusionListModal {
             setTimeout(() => this.app.loadStatus(), 1000);
             
         } catch (error) {
-            console.error('검색 제외 목록 저장 오류:', error);
+            console.error('결과 표시 제외 목록 저장 오류:', error);
             this.app.showError(`저장 실패: ${error.message}`);
         }
     }
