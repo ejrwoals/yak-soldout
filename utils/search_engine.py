@@ -40,8 +40,6 @@ async def execute_search(app_state, manager):
                 "timestamp": datetime.now().isoformat()
             }))
             
-            await broadcast_log(manager, f"🔍 사이클 #{cycle_count} 검색 시작")
-            
             # 검색 데이터 초기화 (각 사이클마다)
             app_state.reset_search_data()
             app_state.current_search["status"] = "searching"
@@ -110,8 +108,6 @@ async def execute_search(app_state, manager):
                 found_count = result.get('found_count', 0)
                 soldout_count = result.get('soldout_count', 0)
                 error_count = result.get('error_count', 0)
-                
-                await broadcast_log(manager, f"✅ 사이클 #{cycle_count} 완료! 재고 발견: {found_count}개, 품절: {soldout_count}개")
                 
                 # 검색 완료 알림
                 await manager.broadcast_message(json.dumps({
@@ -245,7 +241,7 @@ def execute_search_sync(app_state, progress_queue=None):
         
         # 백제 검색 (활성화된 경우) - 사이클 조기 종료 체크
         if app_state.cycle_terminated:
-            log_message("🚨 긴급 재고 발견으로 백제 검색 건너뛰기 - 사이클 조기 종료")
+            log_message("🏢 긴급 재고 발견으로 백제 검색 건너 뜀")
         elif baekje_active and app_state.config.has_baekje_credentials():
             log_message("🏢 백제약품 검색 시작...")
             # 지오영에서 수집한 보험코드 사용
@@ -281,9 +277,7 @@ def execute_search_sync(app_state, progress_queue=None):
         # 메모리 상태 업데이트
         app_state.current_search["status"] = "completed"
         app_state.current_search["errors"] = errors
-        
-        log_message(f"✅ 검색 완료! 재고 발견: {len(found_drugs)}개, 품절: {len(soldout_drugs)}개")
-        
+         
         # 결과 딕셔너리 반환 (파일 저장 없이)
         result_dict = {
             'found_count': len(found_drugs),
@@ -337,7 +331,7 @@ def search_baekje_sync(app_state, insurance_codes: Dict[str, str], excluded_name
         log_message("✓ 백제약품 로그인 성공")
         
         # 보험코드 기반 검색
-        log_message(f"📋 검색할 보험코드 수: {len(insurance_codes)}개")
+        log_message(f"📋 검색할 약품 수: {len(insurance_codes)}개")
         
         for i, (insurance_code, original_name) in enumerate(insurance_codes.items(), 1):
             if not app_state.is_searching:  # 중단 확인

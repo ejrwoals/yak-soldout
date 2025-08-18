@@ -53,7 +53,7 @@ class ModernDrugSearchApp {
         // 주기적 상태 업데이트
         setInterval(() => this.loadStatus(), 15000);
         
-        console.log('🚀 모던 약품 재고 체커가 시작되었습니다');
+        console.log('🚀 품절 약품 체커가 시작되었습니다');
     }
     
     setupEventListeners() {
@@ -613,10 +613,10 @@ class ModernDrugSearchApp {
                     <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${drug.name}', '${company.includes('백제') ? '백제약품' : '지오영'}', this)" title="결과 표시 제외 목록에 추가">
                         <i class="bi bi-eye-slash"></i>
                     </button>
-                    ${distributorBadge}
                 </div>
             </div>
             <div class="drug-stock">
+                ${distributorBadge}
                 <span class="stock-item">메인: ${drug.main_stock}</span>
                 ${!company.includes('백제') && drug.incheon_stock !== '-' ? 
                     `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}
