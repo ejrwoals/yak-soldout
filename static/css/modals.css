@@ -513,7 +513,7 @@
 
 .drug-urgent-btn:hover {
   color: var(--warning);
-  background: rgba(245, 158, 11, 0.1);
+  background: rgba(139, 92, 246, 0.1);
   transform: scale(1.05);
 }
 

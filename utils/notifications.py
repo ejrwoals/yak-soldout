@@ -1,70 +1,64 @@
 import platform
-import subprocess
 import sys
 from typing import List, Dict
 from models.drug_data import Drug
 
+# Windows Toast 알림 라이브러리
+TOAST_AVAILABLE = False
+if platform.system() == "Windows":
+    try:
+        from win10toast import ToastNotifier
+        TOAST_AVAILABLE = True
+    except ImportError:
+        TOAST_AVAILABLE = False
+
 
 class CrossPlatformNotifier:
-    """크로스 플랫폼 알림 시스템"""
+    """Windows 전용 최적화된 알림 시스템"""
     
     @staticmethod
     def show_alert(title: str, message: str, sound: bool = True):
-        """플랫폼에 맞는 알림 표시"""
+        """Windows에서만 시스템 알림 표시, 다른 OS에서는 콘솔 출력"""
         system = platform.system()
         
-        try:
-            if system == "Windows":
-                CrossPlatformNotifier._show_windows_alert(title, message, sound)
-            elif system == "Darwin":  # macOS
-                CrossPlatformNotifier._show_macos_alert(title, message, sound)
-            else:  # Linux and others
-                CrossPlatformNotifier._show_linux_alert(title, message)
-        except Exception as e:
-            # 알림 실패 시 콘솔에 출력
-            print(f"알림 표시 실패: {e}")
+        if system == "Windows":
+            try:
+                if TOAST_AVAILABLE:
+                    CrossPlatformNotifier._show_windows_toast(title, message)
+                else:
+                    # fallback: 기본 Windows 메시지박스
+                    CrossPlatformNotifier._show_windows_messagebox(title, message, sound)
+            except Exception as e:
+                # Windows 알림 실패 시 콘솔 출력
+                print(f"Windows 알림 실패: {e}")
+                print(f"[{title}] {message}")
+        else:
+            # Windows가 아닌 경우 콘솔 출력만
             print(f"[{title}] {message}")
     
     @staticmethod
-    def _show_windows_alert(title: str, message: str, sound: bool = True):
-        """Windows 시스템 알림"""
-        try:
-            import ctypes
-            # 메시지박스 표시 (0x40: 정보 아이콘, 0x1: OK 버튼)
-            ctypes.windll.user32.MessageBoxW(0, message, title, 0x40 | 0x1)
-            
-            if sound:
-                # 시스템 사운드 재생
-                ctypes.windll.winmm.PlaySoundW("SystemAsterisk", 0x1)
-        except Exception as e:
-            print(f"Windows 알림 오류: {e}")
+    def _show_windows_toast(title: str, message: str):
+        """Windows Toast 알림 (Windows 10/11 알림 센터)"""
+        toaster = ToastNotifier()
+        toaster.show_toast(
+            title=title,
+            msg=message,
+            icon_path=None,  # 기본 아이콘 사용
+            duration=10,      # 10초간 표시
+            threaded=True     # 비블로킹 방식
+        )
     
     @staticmethod
-    def _show_macos_alert(title: str, message: str, sound: bool = True):
-        """macOS 시스템 알림"""
-        try:
-            sound_option = 'sound name "Glass"' if sound else ''
-            applescript = f'display notification "{message}" with title "{title}" {sound_option}'
-            
-            subprocess.run([
-                "osascript", "-e", applescript
-            ], check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            print(f"macOS 알림 오류: {e}")
-        except FileNotFoundError:
-            print("osascript를 찾을 수 없습니다. macOS에서만 사용 가능합니다.")
-    
-    @staticmethod
-    def _show_linux_alert(title: str, message: str):
-        """Linux 시스템 알림"""
-        try:
-            subprocess.run([
-                "notify-send", title, message
-            ], check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Linux 알림 오류: {e}")
-        except FileNotFoundError:
-            print("notify-send를 찾을 수 없습니다. libnotify-bin 패키지를 설치해주세요.")
+    def _show_windows_messagebox(title: str, message: str, sound: bool = True):
+        """Windows 메시지박스 (fallback)"""
+        import ctypes
+        
+        # 메시지박스 표시 (0x40: 정보 아이콘, 0x1: OK 버튼)
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x40 | 0x1)
+        
+        if sound:
+            # 시스템 사운드 재생
+            ctypes.windll.winmm.PlaySoundW("SystemAsterisk", 0x1)
     
     @staticmethod
     def notify_stock_found(found_drugs: List[Drug]):
@@ -87,29 +81,15 @@ class CrossPlatformNotifier:
     
     @staticmethod
     def is_notification_supported() -> bool:
-        """현재 플랫폼에서 알림이 지원되는지 확인"""
+        """현재 플랫폼에서 알림이 지원되는지 확인 (Windows만 지원)"""
         system = platform.system()
         
         if system == "Windows":
-            try:
-                import ctypes
-                return True
-            except ImportError:
-                return False
-        elif system == "Darwin":
-            try:
-                result = subprocess.run(["which", "osascript"], 
-                                      capture_output=True, text=True)
-                return result.returncode == 0
-            except Exception:
-                return False
-        else:  # Linux
-            try:
-                result = subprocess.run(["which", "notify-send"], 
-                                      capture_output=True, text=True)
-                return result.returncode == 0
-            except Exception:
-                return False
+            # Toast 알림 또는 메시지박스 지원 확인
+            return TOAST_AVAILABLE or True  # ctypes는 기본적으로 사용 가능
+        else:
+            # Windows가 아닌 경우 시스템 알림 미지원 (콘솔 출력만)
+            return False
 
 
 class AlertManager:

@@ -16,6 +16,7 @@ from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
 from utils.websocket_manager import broadcast_log
+from utils.notifications import CrossPlatformNotifier
 
 
 async def execute_search(app_state, manager):
@@ -82,6 +83,19 @@ async def execute_search(app_state, manager):
                                 elif message.startswith("URGENT_ALERT:"):
                                     urgent_data = json.loads(message[13:])  # "URGENT_ALERT:" 제거
                                     await manager.broadcast_message(json.dumps(urgent_data))
+                                    
+                                    # 시스템 알림 표시
+                                    try:
+                                        drug_info = urgent_data.get('drug', {})
+                                        drug_name = drug_info.get('name', '알 수 없는 약품')
+                                        distributor = drug_info.get('distributor', '알 수 없는 도매상')
+                                        
+                                        title = "🚨 긴급 재고 발견!"
+                                        message = f"{distributor}에서 {drug_name} 재고를 발견했습니다!"
+                                        
+                                        CrossPlatformNotifier.show_alert(title, message, sound=True)
+                                    except Exception as e:
+                                        print(f"시스템 알림 표시 실패: {e}")
                                 else:
                                     # 일반 로그 메시지
                                     await broadcast_log(manager, message)

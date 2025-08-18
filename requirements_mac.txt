@@ -1,3 +1,4 @@
+# macOS/Linux용 의존성 파일 (Windows 전용 라이브러리 제외)
 fastapi>=0.100.0
 uvicorn>=0.23.0
 websockets>=11.0.0
@@ -9,7 +10,6 @@ numpy>=1.21.0
 chardet>=5.0.0
 openpyxl>=3.0.0
 xlrd>=2.0.1
-win10toast>=0.9.0
 
 # Testing dependencies
 pytest>=7.0.0
