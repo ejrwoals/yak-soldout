@@ -573,9 +573,9 @@
   }
 }
 
-/* ============= 알림 제외 모달 전용 스타일 ============= */
+/* ============= 검색 제외 모달 전용 스타일 ============= */
 
-/* 알림 제외 컨트롤 */
+/* 검색 제외 컨트롤 */
 .exclusion-list-controls {
   display: flex;
   justify-content: space-between;
@@ -589,7 +589,7 @@
   font-style: italic;
 }
 
-/* 알림 제외 목록 컨테이너 */
+/* 검색 제외 목록 컨테이너 */
 .exclusion-list-container {
   max-height: 500px;
   overflow-y: auto;
@@ -624,7 +624,7 @@
   font-size: 0.875rem;
 }
 
-/* 알림 제외 목록 헤더 */
+/* 검색 제외 목록 헤더 */
 .exclusion-list-header {
   padding: 1rem;
   background: var(--bg-secondary);
@@ -670,7 +670,7 @@
   color: var(--primary);
 }
 
-/* 알림 제외 아이템들 */
+/* 검색 제외 아이템들 */
 .exclusion-items {
   padding: 0;
 }
@@ -744,7 +744,7 @@
   font-family: 'Courier New', monospace;
 }
 
-/* 알림 제외 액션 버튼들 */
+/* 검색 제외 액션 버튼들 */
 .exclusion-actions {
   display: flex;
   gap: 0.5rem;

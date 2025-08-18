@@ -95,7 +95,7 @@ async def get_status():
             },
             "files": {
                 "drug_count": len(drug_list),
-                "drug_list": [item.get('drugName', item) if isinstance(item, dict) else item for item in drug_list_json[:5]],  # 최대 5개까지만 툴팁에 표시
+                "drug_list": drug_list_json,  # 전체 목록과 긴급 알림 정보 포함
                 "exclusion_count": len(exclusion_list),
                 "exclusion_list": exclusion_list[:5]  # 최대 5개까지만 툴팁에 표시
             },

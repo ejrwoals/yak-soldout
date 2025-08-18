@@ -2,7 +2,7 @@
   {
     "drugName": "다이아벡스정500mg 30T 대웅",
     "isUrgent": false,
-    "dateAdded": "2025-08-18T12:26:28"
+    "dateAdded": "2025-08-18T20:03:16"
   },
   {
     "drugName": "디카맥스디정(PTP) 90T 다림바이오텍",
@@ -16,18 +16,18 @@
   },
   {
     "drugName": "라미나지액20ml 20P 태준",
-    "isUrgent": false,
-    "dateAdded": "2025-08-18T02:51:04"
+    "isUrgent": true,
+    "dateAdded": "2025-08-18T19:36:13"
   },
   {
     "drugName": "라베톤정10mg 28T 안국",
     "isUrgent": false,
-    "dateAdded": "2025-08-18T04:39:34"
+    "dateAdded": "2025-08-18T20:03:12"
   },
   {
     "drugName": "레가론캅셀140mg(병) 30C 부광",
     "isUrgent": false,
-    "dateAdded": "2025-08-18T01:41:23"
+    "dateAdded": "2025-08-18T20:03:31"
   },
   {
     "drugName": "레보테놀정25mg 30T 안국",
@@ -37,6 +37,6 @@
   {
     "drugName": "알마겔정500mg 100T 유한",
     "isUrgent": false,
-    "dateAdded": "2025-08-18T02:51:06"
+    "dateAdded": "2025-08-18T20:03:17"
   }
 ]

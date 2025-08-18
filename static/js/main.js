@@ -278,7 +278,7 @@ class ModernDrugSearchApp {
             window.tooltipManager.updateDrugListTooltip(statusCard, files.drug_list || [], files.drug_count || 0);
         }
         
-        // 알림 제외 수
+        // 검색 제외 수
         if (this.elements.exclusionCount) {
             this.elements.exclusionCount.textContent = files.exclusion_count || '-';
             const statusCard = this.elements.exclusionCount.closest('.status-card');
@@ -887,6 +887,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 약품 목록 모달 초기화
     window.drugListModal = new DrugListModal(window.modernDrugApp);
     
-    // 알림 제외 목록 모달 초기화
+    // 검색 제외 목록 모달 초기화
     window.exclusionListModal = new ExclusionListModal(window.modernDrugApp);
 });

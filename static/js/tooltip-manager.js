@@ -57,7 +57,7 @@ class TooltipManager {
     }
     
     /**
-     * 알림 제외 목록 툴팁 업데이트
+     * 검색 제외 목록 툴팁 업데이트
      * @param {HTMLElement} statusCard - 상태 카드 요소
      * @param {Array} exclusionList - 제외 목록
      * @param {number} totalCount - 전체 개수
@@ -186,16 +186,37 @@ class TooltipManager {
     }
     
     createDrugListContent(drugList, totalCount) {
-        const items = drugList.map(drug => 
-            this.createTooltipItem(
-                'bi bi-capsule',
-                drug,
-                'var(--primary)'
-            )
-        ).join('');
+        const maxShow = 5;
         
-        const moreItems = totalCount > drugList.length ? 
-            this.createMoreItem('...') : '';
+        // 1차: 긴급 알림 대상 우선, 2차: 최신 dateAdded 우선
+        const sortedDrugs = [...drugList].sort((a, b) => {
+            const aUrgent = typeof a === 'object' && a.isUrgent;
+            const bUrgent = typeof b === 'object' && b.isUrgent;
+            
+            // 1차 정렬: 긴급 알림 대상이 먼저
+            if (aUrgent && !bUrgent) return -1;
+            if (!aUrgent && bUrgent) return 1;
+            
+            // 2차 정렬: 같은 그룹 내에서는 dateAdded가 최신인 것이 먼저
+            if (typeof a === 'object' && typeof b === 'object' && a.dateAdded && b.dateAdded) {
+                return new Date(b.dateAdded) - new Date(a.dateAdded);
+            }
+            
+            return 0;
+        });
+        
+        const items = sortedDrugs.slice(0, maxShow).map(drug => {
+            const drugName = typeof drug === 'object' ? drug.drugName : drug;
+            const isUrgent = typeof drug === 'object' && drug.isUrgent;
+            
+            const icon = isUrgent ? 'bi bi-bell-fill' : 'bi bi-capsule';
+            const color = isUrgent ? '#dc3545' : 'var(--primary)'; // 빨간색 또는 기본색
+            
+            return this.createTooltipItem(icon, drugName, color);
+        }).join('');
+        
+        const moreItems = totalCount > maxShow ? 
+            this.createMoreItem(`외 ${totalCount - maxShow}개 더...`) : '';
         
         return items + moreItems;
     }
