@@ -83,7 +83,9 @@ def main():
             host="127.0.0.1",
             port=8000,
             reload=False,
-            log_level="info"
+            log_level="info",
+            access_log=False,
+            log_config=None
         )
     else:
         # 개발 환경: subprocess로 실행

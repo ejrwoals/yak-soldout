@@ -1,5 +1,14 @@
 # PyInstaller 빌드 및 배포 가이드 (Playwright 브라우저 내장 버전)
 
+### 빌드 명령어
+```powershell
+# 이전 빌드 파일 정리 (권한 문제 해결)
+Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
+
+# 원-폴더 모드로 빌드 (권장) - 브라우저 포함으로 시간이 오래 걸림
+pyinstaller yak_soldout.spec
+```
+
 ## 개요
 이 가이드는 Python 웹 애플리케이션을 PyInstaller를 사용하여 **Playwright 브라우저가 내장된** 독립 실행형 .exe 파일로 빌드하고 배포하는 전체 과정을 다룹니다.
 
@@ -159,7 +168,9 @@ def main():
             host="127.0.0.1",
             port=8000,
             reload=False,
-            log_level="info"
+            log_level="info",
+            access_log=False,
+            log_config=None
         )
     else:
         # 개발 환경: subprocess로 실행
