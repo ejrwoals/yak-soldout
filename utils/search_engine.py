@@ -308,8 +308,13 @@ def execute_search_sync(app_state, progress_queue=None):
         return result_dict
         
     except Exception as e:
-        error_msg = f"❌ 동기 검색 중 오류: {e}"
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f"❌ 동기 검색 중 오류: {str(e)}\n상세 오류:\n{error_details}"
         log_message(error_msg)
+        print(f"DEBUG - 오류 타입: {type(e).__name__}")
+        print(f"DEBUG - 오류 메시지: {str(e)}")
+        print(f"DEBUG - 상세 스택트레이스:\n{error_details}")
         app_state.current_search["status"] = "error"
         app_state.current_search["errors"].append(str(e))
         return None

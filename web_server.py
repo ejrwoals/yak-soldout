@@ -10,9 +10,47 @@ import json
 import concurrent.futures
 import threading
 import queue
+import platform
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+
+# Windows asyncio 호환성 문제 해결 (전역 설정)
+if platform.system() == "Windows":
+    try:
+        # Windows에서 Playwright subprocess 지원을 위해 ProactorEventLoop 사용
+        if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            print("✅ Windows ProactorEventLoop 정책 적용됨")
+        
+        # subprocess 및 인코딩 관련 환경변수 설정
+        os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+        os.environ.setdefault('PYTHONUTF8', '1')
+        os.environ.setdefault('PLAYWRIGHT_DOWNLOAD_HOST', 'https://playwright.azureedge.net')
+        
+        # asyncio subprocess 문제 해결을 위한 추가 설정
+        os.environ.setdefault('ASYNCIO_EVENT_LOOP', 'ProactorEventLoop')
+        
+        # 현재 이벤트 루프가 있으면 닫고 새로 생성
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                pass  # 실행 중인 루프는 건드리지 않음
+            else:
+                loop.close()
+                # 새 루프 설정
+                if hasattr(asyncio, 'new_event_loop'):
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+        except RuntimeError:
+            # 루프가 없으면 새로 만들기
+            if hasattr(asyncio, 'new_event_loop'):
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+        
+    except Exception as e:
+        print(f"⚠️ Windows 호환성 설정 중 오류 (무시 가능): {e}")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles

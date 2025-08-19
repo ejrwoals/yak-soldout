@@ -1,5 +1,6 @@
 import os
 import platform
+import asyncio
 from typing import List, Dict, Any
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 
@@ -29,7 +30,22 @@ class BrowserManager:
     
     def start(self):
         """브라우저 시작"""
-        self.playwright = sync_playwright().start()
+        # Windows 환경변수 추가 설정 (전역 설정과 보완)
+        if platform.system() == "Windows":
+            try:
+                os.environ.setdefault('PWTEST_MODE', '0')
+                os.environ.setdefault('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD', '0')
+                print("🌐 Windows Playwright 환경변수 설정 완료")
+            except Exception as e:
+                print(f"⚠️ 환경변수 설정 실패 (무시 가능): {e}")
+        
+        # Playwright 시작
+        try:
+            self.playwright = sync_playwright().start()
+            print("✅ Playwright 시작 성공")
+        except Exception as e:
+            print(f"❌ Playwright 시작 실패: {e}")
+            raise
         
         # 플랫폼별 브라우저 설정
         browser_args = self._get_browser_args()
