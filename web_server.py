@@ -62,6 +62,17 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import uvicorn
 
+# PyInstaller 환경에서 리소스 경로를 찾기 위한 함수
+def resource_path(relative_path):
+    """개발 및 PyInstaller 환경 모두에서 리소스의 절대 경로를 가져옵니다."""
+    try:
+        # PyInstaller는 임시 폴더를 만들고 _MEIPASS에 경로를 저장합니다
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    
+    return os.path.join(base_path, relative_path)
+
 # 프로젝트 모듈 import
 from models.config import ConfigManager, AppConfig
 from models.drug_data import SearchResult
@@ -77,11 +88,17 @@ from scrapers.baekje_scraper import BaekjeScraper
 
 app = FastAPI(title="약품 재고 자동 검색", version="2.0.0")
 
-# 정적 파일 서빙
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# 템플릿 엔진
-templates = Jinja2Templates(directory="templates")
+# PyInstaller 환경인지 확인하고 경로 설정
+if getattr(sys, 'frozen', False):
+    # 번들된 경우
+    static_folder = resource_path('static')
+    template_folder = resource_path('templates')
+    app.mount("/static", StaticFiles(directory=static_folder), name="static")
+    templates = Jinja2Templates(directory=template_folder)
+else:
+    # 개발 환경인 경우
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    templates = Jinja2Templates(directory="templates")
 
 # 전역 앱 상태 인스턴스
 app_state = AppState()

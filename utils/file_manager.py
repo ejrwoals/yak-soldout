@@ -1,9 +1,20 @@
 import os
+import sys
 import json
 import chardet
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+def resource_path(relative_path):
+    """개발 및 PyInstaller 환경 모두에서 리소스의 절대 경로를 가져옵니다."""
+    try:
+        # PyInstaller는 임시 폴더를 만들고 _MEIPASS에 경로를 저장합니다
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    
+    return os.path.join(base_path, relative_path)
 
 
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import platform
 import asyncio
 from typing import List, Dict, Any
@@ -18,6 +19,17 @@ class BrowserManager:
         self.playwright = None
         self.browser = None
         self.context = None
+        
+        # PyInstaller 환경에서 브라우저 경로 설정
+        if getattr(sys, 'frozen', False):
+            # PyInstaller 임시 디렉토리에서 브라우저 경로 설정
+            try:
+                base_path = sys._MEIPASS
+            except Exception:
+                base_path = os.path.dirname(sys.executable)
+            
+            browsers_dir = os.path.join(base_path, 'ms-playwright')
+            os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
     
     def __enter__(self):
         """Context manager 진입"""
@@ -51,10 +63,32 @@ class BrowserManager:
         browser_args = self._get_browser_args()
         
         # Chromium 사용 (가장 안정적)
-        self.browser = self.playwright.chromium.launch(
-            headless=self.headless,
-            args=browser_args
-        )
+        launch_options = {
+            'headless': self.headless,
+            'args': browser_args
+        }
+        
+        # PyInstaller 환경에서는 브라우저 실행 파일 경로 직접 지정
+        if getattr(sys, 'frozen', False):
+            try:
+                base_path = sys._MEIPASS
+                # 가능한 브라우저 경로들 시도
+                possible_paths = [
+                    os.path.join(base_path, 'ms-playwright', 'chromium-1181', 'chrome-win', 'chrome.exe'),
+                    os.path.join(base_path, 'ms-playwright', 'chromium_headless_shell-1181', 'chrome-win', 'headless_shell.exe'),
+                ]
+                
+                for browser_path in possible_paths:
+                    if os.path.exists(browser_path):
+                        launch_options['executable_path'] = browser_path
+                        print(f"✅ 브라우저 실행 파일 발견: {browser_path}")
+                        break
+                else:
+                    print("⚠️ 내장 브라우저를 찾을 수 없습니다. 기본 설정으로 시도합니다.")
+            except Exception as e:
+                print(f"⚠️ 브라우저 경로 설정 중 오류: {e}")
+        
+        self.browser = self.playwright.chromium.launch(**launch_options)
         
         # 새 컨텍스트 생성 (쿠키, 세션 분리)
         self.context = self.browser.new_context(
