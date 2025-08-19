@@ -12,6 +12,9 @@ import threading
 import queue
 import platform
 import os
+import webbrowser
+import sys
+import signal
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -100,7 +103,27 @@ async def websocket_endpoint(websocket: WebSocket):
             # 클라이언트로부터 메시지 대기 (연결 유지용)
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        should_shutdown = manager.disconnect(websocket)
+        if should_shutdown:
+            print("\n🔴 브라우저가 닫혔습니다. 서버를 종료합니다...")
+            # 서버 종료를 위해 별도 스레드에서 시그널 전송
+            def shutdown_server():
+                import time
+                time.sleep(0.5)  # 로그 출력을 위한 짧은 대기
+                
+                # Windows에서 강제 종료
+                if platform.system() == "Windows":
+                    # 현재 프로세스 ID 가져오기
+                    pid = os.getpid()
+                    # 부모 프로세스(reload 모드)까지 함께 종료
+                    os.system(f"taskkill /F /PID {pid} /T >nul 2>&1")
+                else:
+                    # Unix 계열에서는 SIGTERM 신호 전송
+                    os.kill(os.getpid(), signal.SIGTERM)
+            
+            shutdown_thread = threading.Thread(target=shutdown_server)
+            shutdown_thread.daemon = True
+            shutdown_thread.start()
 
 @app.get("/api/status")
 async def get_status():
@@ -462,12 +485,23 @@ async def add_to_exclusion(data: dict):
 
 if __name__ == "__main__":
     print("🚀 약품 재고 자동 검색 웹 서버 시작")
-    print("📱 브라우저에서 http://localhost:8000 을 열어보세요")
+    print("📱 브라우저를 자동으로 열고 있습니다...")
+    
+    # 서버 시작 후 브라우저 자동 열기
+    def open_browser():
+        import time
+        time.sleep(1)  # 서버가 완전히 시작될 때까지 잠시 대기
+        webbrowser.open("http://localhost:8000")
+    
+    # 별도 스레드에서 브라우저 열기
+    browser_thread = threading.Thread(target=open_browser)
+    browser_thread.daemon = True
+    browser_thread.start()
     
     uvicorn.run(
         "web_server:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=False,  # reload 모드는 개발 중에 코드를 자주 수정할 경우에 사용하는 모드
         log_level="info"
     )

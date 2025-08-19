@@ -15,11 +15,13 @@ class ConnectionManager:
     
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.browser_opened = False  # 브라우저가 열렸는지 추적
     
     async def connect(self, websocket: WebSocket):
         """새로운 WebSocket 연결 추가"""
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.browser_opened = True  # 브라우저가 연결되었음을 표시
         print(f"WebSocket 클라이언트 연결됨. 총 {len(self.active_connections)}개")
     
     def disconnect(self, websocket: WebSocket):
@@ -27,6 +29,11 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         print(f"WebSocket 클라이언트 연결 해제됨. 총 {len(self.active_connections)}개")
+        
+        # 브라우저가 열렸었고 모든 연결이 끊어지면 서버 종료 신호
+        if self.browser_opened and len(self.active_connections) == 0:
+            return True  # 서버 종료 신호
+        return False
     
     async def broadcast_message(self, message: str):
         """모든 연결된 클라이언트에게 메시지 브로드캐스트"""
