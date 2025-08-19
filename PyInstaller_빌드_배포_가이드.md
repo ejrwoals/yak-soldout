@@ -1,16 +1,22 @@
 # PyInstaller 빌드 및 배포 가이드 (Playwright 브라우저 내장 버전)
 
-### 빌드 명령어
+## 개요
+이 가이드는 Python 웹 애플리케이션을 PyInstaller를 사용하여 **Playwright 브라우저가 내장된** 독립 실행형 .exe 파일로 빌드하고 배포하는 전체 과정을 다룹니다.
+
+### 다빈도 명령어
 ```powershell
 # 이전 빌드 파일 정리 (권한 문제 해결)
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 
 # 원-폴더 모드로 빌드 (권장) - 브라우저 포함으로 시간이 오래 걸림
 pyinstaller yak_soldout.spec
-```
 
-## 개요
-이 가이드는 Python 웹 애플리케이션을 PyInstaller를 사용하여 **Playwright 브라우저가 내장된** 독립 실행형 .exe 파일로 빌드하고 배포하는 전체 과정을 다룹니다.
+# dist 폴더로 이동
+cd dist
+
+# ZIP 파일 생성
+Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for이안약국.zip" -Force
+```
 
 ## 특징
 - ✅ **완전 독립 실행**: Python 설치 불필요
@@ -373,7 +379,7 @@ ls dist
 cd dist
 
 # ZIP 파일 생성
-Compress-Archive -Path "약품재고검색" -DestinationPath "약품재고검색_v1.0.zip" -Force
+Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for이안약국.zip" -Force
 
 # 또는 7zip 사용 (설치된 경우)
 # 7z a "약품재고검색_v1.0.zip" "약품재고검색\"
@@ -522,7 +528,3 @@ if ($LASTEXITCODE -eq 0) {
 }
 "@ | Out-File -FilePath build.ps1 -Encoding UTF8
 ```
-
----
-
-이 가이드를 따라하면 Python이 설치되지 않은 컴퓨터에서도 실행 가능한 독립형 애플리케이션을 성공적으로 빌드하고 배포할 수 있습니다.
