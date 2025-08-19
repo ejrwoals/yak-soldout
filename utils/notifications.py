@@ -3,49 +3,44 @@ import sys
 from typing import List, Dict
 from models.drug_data import Drug
 
-# Windows Toast 알림 라이브러리
-TOAST_AVAILABLE = False
-if platform.system() == "Windows":
-    try:
-        from win10toast import ToastNotifier
-        TOAST_AVAILABLE = True
-    except ImportError:
-        TOAST_AVAILABLE = False
+# 크로스 플랫폼 알림 라이브러리
+NOTIFICATION_AVAILABLE = False
+try:
+    from plyer import notification
+    NOTIFICATION_AVAILABLE = True
+except ImportError:
+    NOTIFICATION_AVAILABLE = False
 
 
 class CrossPlatformNotifier:
-    """Windows 전용 최적화된 알림 시스템"""
+    """크로스 플랫폼 알림 시스템"""
     
     @staticmethod
     def show_alert(title: str, message: str, sound: bool = True):
-        """Windows에서만 시스템 알림 표시, 다른 OS에서는 콘솔 출력"""
-        system = platform.system()
-        
-        if system == "Windows":
+        """시스템 알림 표시 (크로스 플랫폼)"""
+        if NOTIFICATION_AVAILABLE:
             try:
-                if TOAST_AVAILABLE:
-                    CrossPlatformNotifier._show_windows_toast(title, message)
-                else:
-                    # fallback: 기본 Windows 메시지박스
-                    CrossPlatformNotifier._show_windows_messagebox(title, message, sound)
+                CrossPlatformNotifier._show_notification(title, message)
             except Exception as e:
-                # Windows 알림 실패 시 콘솔 출력
-                print(f"Windows 알림 실패: {e}")
+                # 알림 실패 시 콘솔 출력
+                print(f"알림 실패: {e}")
                 print(f"[{title}] {message}")
         else:
-            # Windows가 아닌 경우 콘솔 출력만
-            print(f"[{title}] {message}")
+            # plyer 사용 불가 시 플랫폼별 fallback
+            system = platform.system()
+            if system == "Windows":
+                CrossPlatformNotifier._show_windows_messagebox(title, message, sound)
+            else:
+                print(f"[{title}] {message}")
     
     @staticmethod
-    def _show_windows_toast(title: str, message: str):
-        """Windows Toast 알림 (Windows 10/11 알림 센터)"""
-        toaster = ToastNotifier()
-        toaster.show_toast(
+    def _show_notification(title: str, message: str):
+        """Plyer를 사용한 크로스 플랫폼 알림"""
+        notification.notify(
             title=title,
-            msg=message,
-            icon_path=None,  # 기본 아이콘 사용
-            duration=10,      # 10초간 표시
-            threaded=True     # 비블로킹 방식
+            message=message,
+            app_name="약국 재고 알리미",
+            timeout=10  # 10초간 표시
         )
     
     @staticmethod
@@ -81,14 +76,14 @@ class CrossPlatformNotifier:
     
     @staticmethod
     def is_notification_supported() -> bool:
-        """현재 플랫폼에서 알림이 지원되는지 확인 (Windows만 지원)"""
-        system = platform.system()
-        
-        if system == "Windows":
-            # Toast 알림 또는 메시지박스 지원 확인
-            return TOAST_AVAILABLE or True  # ctypes는 기본적으로 사용 가능
+        """현재 플랫폼에서 알림이 지원되는지 확인"""
+        if NOTIFICATION_AVAILABLE:
+            return True
+        elif platform.system() == "Windows":
+            # Windows는 ctypes fallback 사용 가능
+            return True
         else:
-            # Windows가 아닌 경우 시스템 알림 미지원 (콘솔 출력만)
+            # 다른 OS에서 plyer 없으면 콘솔 출력만
             return False
 
 
