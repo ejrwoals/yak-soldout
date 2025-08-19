@@ -461,6 +461,53 @@ async def toggle_drug_urgent(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"긴급 알림 해제 실패: {str(e)}")
 
+@app.get("/api/system-settings")
+async def get_system_settings():
+    """시스템 설정 조회"""
+    try:
+        config_data = app_state.file_manager.read_config_file()
+        return {
+            "repeat_interval_minutes": config_data.get('repeat_interval_minutes', '30'),
+            "alert_exclusion_days": config_data.get('alert_exclusion_days', '7')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"시스템 설정 읽기 실패: {str(e)}")
+
+@app.put("/api/system-settings")
+async def update_system_settings(data: dict):
+    """시스템 설정 업데이트"""
+    try:
+        repeat_interval = data.get('repeat_interval_minutes')
+        alert_exclusion_days = data.get('alert_exclusion_days')
+        
+        # 유효성 검사
+        if not repeat_interval or not isinstance(repeat_interval, int) or repeat_interval < 1 or repeat_interval > 1440:
+            raise HTTPException(status_code=400, detail="반복 간격은 1분에서 1440분 사이의 정수여야 합니다")
+        
+        if not alert_exclusion_days or not isinstance(alert_exclusion_days, int) or alert_exclusion_days < 1 or alert_exclusion_days > 365:
+            raise HTTPException(status_code=400, detail="알림 제외 기간은 1일에서 365일 사이의 정수여야 합니다")
+        
+        # 현재 설정 읽기
+        try:
+            config_data = app_state.file_manager.read_config_file()
+        except FileNotFoundError:
+            # 파일이 없으면 기본 설정으로 시작
+            config_data = {}
+        
+        # 새 설정값 적용
+        config_data['repeat_interval_minutes'] = str(repeat_interval)
+        config_data['alert_exclusion_days'] = str(alert_exclusion_days)
+        
+        # 파일에 저장
+        app_state.file_manager.write_config_file(config_data)
+        
+        return {"message": "시스템 설정이 저장되었습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"시스템 설정 저장 실패: {str(e)}")
+
 @app.post("/api/exclusion-add")
 async def add_to_exclusion(data: dict):
     """특정 약품을 결과 표시 제외 목록에 추가"""

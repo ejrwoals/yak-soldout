@@ -1070,4 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 결과 표시 제외 목록 모달 초기화
     window.exclusionListModal = new ExclusionListModal(window.modernDrugApp);
+    
+    // 시스템 설정 모달 초기화
+    window.systemSettingsModal = new SystemSettingsModal(window.modernDrugApp);
 });

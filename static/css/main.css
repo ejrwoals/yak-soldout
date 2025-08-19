@@ -93,7 +93,7 @@ body {
   gap: 1.5rem;
 }
 
-.theme-toggle {
+.system-settings-btn, .theme-toggle {
   background: none;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -103,7 +103,7 @@ body {
   transition: all 0.2s ease;
 }
 
-.theme-toggle:hover {
+.system-settings-btn:hover, .theme-toggle:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }

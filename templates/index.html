@@ -23,9 +23,12 @@
         <div class="nav-content">
             <div class="nav-brand">
                 <i class="bi bi-capsule"></i>
-                <span>품절 약 똑똑이</span>
+                <span>품절 약 똑똑이 <span style="color: #6b7280; font-size: 0.8em;">for 이안약국</span></span>
             </div>
             <div class="nav-controls">
+                <button id="systemSettingsBtn" class="system-settings-btn" title="시스템 설정">
+                    <i class="bi bi-gear"></i>
+                </button>
                 <button id="themeToggle" class="theme-toggle" title="다크모드 전환">
                     <i class="bi bi-moon"></i>
                 </button>
@@ -252,6 +255,37 @@
         </div>
     </div>
 
+    <!-- 시스템 설정 모달 -->
+    <div id="systemSettingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-gear"></i> 시스템 설정</h2>
+                <button class="modal-close" id="closeSystemSettingsModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="systemSettingsForm">
+                    <div class="settings-section">
+                        <h3><i class="bi bi-clock"></i> 모니터링 설정</h3>
+                        <div class="form-group">
+                            <label for="repeatInterval">반복 간격 (분)</label>
+                            <input type="number" id="repeatInterval" min="1" max="1440" placeholder="15">
+                            <small class="help-text">약품 재고 확인을 반복할 간격을 분 단위로 설정합니다</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="alertExclusionDays">결과 표시 제외 기간 (일)</label>
+                            <input type="number" id="alertExclusionDays" min="1" max="365" placeholder="7">
+                            <small class="help-text">결과 표시 제외 목록에 추가된 항목이 유지되는 기간입니다</small>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" id="cancelSystemSettingsBtn">취소</button>
+                        <button type="submit" class="btn-save">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom JS -->
     <script src="/static/js/notification-manager.js"></script>
     <script src="/static/js/websocket-manager.js"></script>
@@ -260,5 +294,6 @@
     <script src="/static/js/distributor-modal.js"></script>
     <script src="/static/js/drug-list-modal.js"></script>
     <script src="/static/js/exclusion-list-modal.js"></script>
+    <script src="/static/js/system-settings-modal.js"></script>
 </body>
 </html>
