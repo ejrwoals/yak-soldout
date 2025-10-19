@@ -49,6 +49,7 @@ cd yak-soldout
 
 # 가상환경 생성 (권장)
 python -m venv venv
+uv venv
 
 # 가상환경 활성화
 # Windows
@@ -58,6 +59,7 @@ source venv/bin/activate
 
 # 의존성 설치
 pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # Playwright 브라우저 설치 (처음 실행 시 필수)
 python -m playwright install chromium

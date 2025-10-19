@@ -3,7 +3,15 @@
 ## 개요
 이 가이드는 Python 웹 애플리케이션을 PyInstaller를 사용하여 **Playwright 브라우저가 내장된** 독립 실행형 .exe 파일로 빌드하고 배포하는 전체 과정을 다룹니다.
 
-### 다빈도 명령어
+### 요약
+먼저 yak_soldout.spec 파일을 생성하고 아래 내리면 있는 코드를 복붙한다.
+그리고 playwright install chromium 를 통해 크롬 브라우저를 설치후, ~~브라우저 설치 경로를 아래 명령어를 이용해 확인한다. 그후 yak_soldout.spec 에서 기본 설정된 브라우저 경로를 출력된 경로로 수정해준다.~~ (설치 경로를 자동으로 찾아주는 코드가 추가되어서 불필요함)
+
+```
+# Playwright 브라우저 설치 (중요!)
+playwright install chromium
+```
+
 ```powershell
 # 이전 빌드 파일 정리 (권한 문제 해결)
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
@@ -15,7 +23,7 @@ pyinstaller yak_soldout.spec
 cd dist
 
 # ZIP 파일 생성
-Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for이안약국.zip" -Force
+Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for가나안약국.zip" -Force
 ```
 
 ## 특징
@@ -379,7 +387,7 @@ ls dist
 cd dist
 
 # ZIP 파일 생성
-Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for이안약국.zip" -Force
+Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for가나안약국.zip" -Force
 
 # 또는 7zip 사용 (설치된 경우)
 # 7z a "약품재고검색_v1.0.zip" "약품재고검색\"
