@@ -535,7 +535,7 @@ def search_geoweb_sync(app_state, drug_list: List[str], excluded_names: List[str
                     incheon_display = "품절" if incheon_stock == "품절" or incheon_stock == "0" else f"{incheon_stock}개"
                     
                     # 한 줄로 통합된 로그 메시지
-                    log_message(f"🔍 검색 완료 ({i}/{len(drug_list)}): {drug_name} ( 메인: {main_display} | 인천: {incheon_display} )")
+                    log_message(f"🔍 검색 완료 ({i}/{len(drug_list)}): {drug_name} ( 메인: {main_display} | 타센터: {incheon_display} )")
                     
                     # 재고 발견 여부 확인
                     has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")

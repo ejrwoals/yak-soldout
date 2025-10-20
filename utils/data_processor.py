@@ -97,7 +97,7 @@ class DataProcessor:
                 found_data.append({
                     '도매': drug.distributor.value,
                     '메인센터': drug.main_stock,
-                    '인천센터': drug.incheon_stock,
+                    '타센터': drug.incheon_stock,
                     '비고': drug.notes,
                     '결과 표시 제외 여부': drug.is_excluded_from_alert
                 })
@@ -110,7 +110,7 @@ class DataProcessor:
                 soldout_data.append({
                     '도매': drug.distributor.value,
                     '메인센터': drug.main_stock,
-                    '인천센터': drug.incheon_stock,
+                    '타센터': drug.incheon_stock,
                     '비고': drug.notes,
                     '결과 표시 제외 여부': drug.is_excluded_from_alert
                 })

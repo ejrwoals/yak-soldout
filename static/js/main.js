@@ -619,7 +619,7 @@ class ModernDrugSearchApp {
                 ${distributorBadge}
                 <span class="stock-item">메인: ${drug.main_stock}</span>
                 ${!company.includes('백제') && drug.incheon_stock !== '-' ? 
-                    `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}
+                    `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}
             </div>
         `;
         
@@ -673,7 +673,7 @@ class ModernDrugSearchApp {
                                 <div class="drug-info">
                                     ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
                                     ${!company.includes('백제') && drug.incheon_stock && drug.incheon_stock !== '-' ? 
-                                        `<span class="stock-badge">인천: ${drug.incheon_stock}</span>` : ''}
+                                        `<span class="stock-badge">타센터: ${drug.incheon_stock}</span>` : ''}
                                 </div>
                             </div>
                         `;
@@ -740,7 +740,7 @@ class ModernDrugSearchApp {
         // 브라우저 알림 생성
         const drugDisplayName = drug.name + (drug.unit ? ` [${drug.unit}]` : '');
         const notification = new Notification('🚨 긴급 재고 알림', {
-            body: `${drugDisplayName}\n재고: ${drug.main_stock}${drug.incheon_stock !== '-' ? ` / 인천: ${drug.incheon_stock}` : ''}\n도매상: ${drug.distributor}`,
+            body: `${drugDisplayName}\n재고: ${drug.main_stock}${drug.incheon_stock !== '-' ? ` / 타센터: ${drug.incheon_stock}` : ''}\n도매상: ${drug.distributor}`,
             icon: '/static/favicon.ico',
             tag: `urgent-${drug.name}`, // 중복 알림 방지
             requireInteraction: true // 사용자가 클릭할 때까지 유지
@@ -777,7 +777,7 @@ class ModernDrugSearchApp {
                                     `<div class="stock-item">${spec.unit_display}: ${spec.main_display}</div>`
                                 ).join('') :
                                 `<span class="stock-item">메인: ${drug.main_stock}</span>
-                                ${drug.incheon_stock !== '-' ? `<span class="stock-item">인천: ${drug.incheon_stock}</span>` : ''}`
+                                ${drug.incheon_stock !== '-' ? `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}`
                             }
                         </div>
                         <div class="urgent-distributor">

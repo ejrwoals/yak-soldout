@@ -195,7 +195,7 @@ class GeowebScraper(BaseScraper):
             if not drug_name:
                 return drugs
             
-            # 인천센터 재고 확인
+            # 타센터 재고 확인
             incheon_stock = self._get_incheon_stock()
             
             # 비고 정보
@@ -223,7 +223,7 @@ class GeowebScraper(BaseScraper):
         return drugs
     
     def _get_incheon_stock(self) -> str:
-        """인천센터 재고 확인"""
+        """타센터 재고 확인"""
         try:
             incheon_selector = '#div-product-info > div.another_center_board.board_wrap > div > table > tbody > tr > td:nth-child(2)'
             incheon_stock = self.get_text_safe(incheon_selector, "0")
