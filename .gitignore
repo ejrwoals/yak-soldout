@@ -208,6 +208,7 @@ __marimo__/
 
 # data
 data/
+.json
 
 # claude
 .claude/

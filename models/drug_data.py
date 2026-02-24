@@ -7,6 +7,7 @@ from enum import Enum
 class DistributorType(Enum):
     GEOWEB = "지오영"
     BAEKJE = "백제"
+    INCHEON = "인천약품"
 
 
 @dataclass
@@ -127,16 +128,22 @@ class SearchResult:
         )
 
 
-@dataclass 
+@dataclass
 class AppConfig:
     """애플리케이션 설정"""
     geoweb_id: str
     geoweb_password: str
     baekje_id: Optional[str] = None
     baekje_password: Optional[str] = None
+    incheon_id: Optional[str] = None
+    incheon_password: Optional[str] = None
     repeat_interval_minutes: int = 30
     alert_exclusion_days: int = 7
-    
+
     def has_baekje_credentials(self) -> bool:
         """백제 인증정보가 있는지 확인"""
         return bool(self.baekje_id and self.baekje_password)
+
+    def has_incheon_credentials(self) -> bool:
+        """인천약품 인증정보가 있는지 확인"""
+        return bool(self.incheon_id and self.incheon_password)

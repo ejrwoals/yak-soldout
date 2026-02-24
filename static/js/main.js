@@ -288,14 +288,15 @@ class ModernDrugSearchApp {
     
     updateDistributorStatus(config) {
         if (!this.elements.distributorStatus) return;
-        
+
         const geoweb = config?.geoweb_configured || false;
         const baekje = config?.baekje_configured || false;
-        
+        const incheon = config?.incheon_configured || false;
+
         // 설정된 도매상 수 계산
         let configuredCount = 0;
         const distributors = [];
-        
+
         if (geoweb) {
             configuredCount++;
             distributors.push('지오영');
@@ -304,10 +305,14 @@ class ModernDrugSearchApp {
             configuredCount++;
             distributors.push('백제약품');
         }
-        
+        if (incheon) {
+            configuredCount++;
+            distributors.push('인천약품');
+        }
+
         // 카드에는 숫자만 표시
         this.elements.distributorStatus.textContent = configuredCount.toString();
-        
+
         // 툴팁 업데이트
         const statusCard = this.elements.distributorStatus.closest('.status-card');
         window.tooltipManager.updateDistributorTooltip(statusCard, distributors);
@@ -597,11 +602,22 @@ class ModernDrugSearchApp {
             '<i class="bi bi-check-circle text-success"></i>' : 
             '<i class="bi bi-x-circle text-warning"></i>';
 
-        // 도매상 정보 추출 (company 필드 또는 이름에서 유추)
-        const company = drug.company || '';
-        const distributorBadge = company.includes('백제') ? 
-            '<span class="distributor-badge baekje">백제약품</span>' : 
-            '<span class="distributor-badge geoweb">지오영</span>';
+        // 도매상 정보 추출 (distributor 필드 사용)
+        const distributor = drug.distributor || '지오영';
+        let distributorBadge, distributorName, distributorClass;
+        if (distributor === '백제약품') {
+            distributorBadge = '<span class="distributor-badge baekje">백제약품</span>';
+            distributorName = '백제약품';
+            distributorClass = 'baekje';
+        } else if (distributor === '인천약품') {
+            distributorBadge = '<span class="distributor-badge incheon">인천약품</span>';
+            distributorName = '인천약품';
+            distributorClass = 'incheon';
+        } else {
+            distributorBadge = '<span class="distributor-badge geoweb">지오영</span>';
+            distributorName = '지오영';
+            distributorClass = 'geoweb';
+        }
 
         drugCard.innerHTML = `
             <div class="drug-header">
@@ -610,7 +626,7 @@ class ModernDrugSearchApp {
                     <h5>${drug.name}</h5>
                 </div>
                 <div class="drug-actions">
-                    <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${drug.name}', '${company.includes('백제') ? '백제약품' : '지오영'}', this)" title="결과 표시 제외 목록에 추가">
+                    <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${drug.name}', '${distributorName}', this)" title="결과 표시 제외 목록에 추가">
                         <i class="bi bi-eye-slash"></i>
                     </button>
                 </div>
@@ -618,7 +634,7 @@ class ModernDrugSearchApp {
             <div class="drug-stock">
                 ${distributorBadge}
                 <span class="stock-item">메인: ${drug.main_stock}</span>
-                ${!company.includes('백제') && drug.incheon_stock !== '-' ? 
+                ${distributorClass === 'geoweb' && drug.incheon_stock !== '-' ?
                     `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}
             </div>
         `;
@@ -660,9 +676,18 @@ class ModernDrugSearchApp {
                     </div>
                     <div class="drugs-grid">
                         ${foundDrugs.slice(0, 6).map(drug => {
-                            const company = drug.company || '';
-                            const distributorName = company.includes('백제') ? '백제약품' : '지오영';
-                            const distributorClass = company.includes('백제') ? 'baekje' : 'geoweb';
+                            const distributor = drug.distributor || '지오영';
+                            let distributorName, distributorClass;
+                            if (distributor === '백제약품') {
+                                distributorName = '백제약품';
+                                distributorClass = 'baekje';
+                            } else if (distributor === '인천약품') {
+                                distributorName = '인천약품';
+                                distributorClass = 'incheon';
+                            } else {
+                                distributorName = '지오영';
+                                distributorClass = 'geoweb';
+                            }
                             
                             return `
                             <div class="drug-card">
@@ -672,7 +697,7 @@ class ModernDrugSearchApp {
                                 </div>
                                 <div class="drug-info">
                                     ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
-                                    ${!company.includes('백제') && drug.incheon_stock && drug.incheon_stock !== '-' ? 
+                                    ${distributorClass === 'geoweb' && drug.incheon_stock && drug.incheon_stock !== '-' ?
                                         `<span class="stock-badge">타센터: ${drug.incheon_stock}</span>` : ''}
                                 </div>
                             </div>
@@ -781,7 +806,10 @@ class ModernDrugSearchApp {
                             }
                         </div>
                         <div class="urgent-distributor">
-                            <span class="distributor-badge ${drug.distributor === '지오영' ? 'geoweb' : 'baekje'}">${drug.distributor}</span>
+                            <span class="distributor-badge ${
+                                drug.distributor === '지오영' ? 'geoweb' :
+                                drug.distributor === '백제약품' ? 'baekje' : 'incheon'
+                            }">${drug.distributor}</span>
                         </div>
                     </div>
                 </div>

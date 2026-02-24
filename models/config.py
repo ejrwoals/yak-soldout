@@ -33,6 +33,8 @@ class ConfigManager:
             'geoweb_password': None,
             'baekje_id': None,
             'baekje_password': None,
+            'incheon_id': None,
+            'incheon_password': None,
             'repeat_interval_minutes': 30,
             'alert_exclusion_days': 7
         }
@@ -62,6 +64,12 @@ class ConfigManager:
                         elif key in ['백제비밀번호', 'baekje_password']:
                             if len(value) > 1:  # 빈 값이 아닌 경우만
                                 config_data['baekje_password'] = value
+                        elif key in ['인천약품아이디', 'incheon_id']:
+                            if len(value) > 1:  # 빈 값이 아닌 경우만
+                                config_data['incheon_id'] = value
+                        elif key in ['인천약품비밀번호', 'incheon_password']:
+                            if len(value) > 1:  # 빈 값이 아닌 경우만
+                                config_data['incheon_password'] = value
                         elif key in ['반복실행간격(분)', 'repeat_interval_minutes']:
                             config_data['repeat_interval_minutes'] = int(value)
                         elif key in ['재고발견이후알림제외기간(일)', 'alert_exclusion_days']:
@@ -87,6 +95,8 @@ class ConfigManager:
             geoweb_password=config_data['geoweb_password'],
             baekje_id=config_data['baekje_id'],
             baekje_password=config_data['baekje_password'],
+            incheon_id=config_data['incheon_id'],
+            incheon_password=config_data['incheon_password'],
             repeat_interval_minutes=config_data['repeat_interval_minutes'],
             alert_exclusion_days=config_data['alert_exclusion_days']
         )

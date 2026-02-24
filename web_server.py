@@ -165,10 +165,12 @@ async def get_status():
         return {
             "is_searching": app_state.is_searching,
             "config": {
-                "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id and 
+                "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id and
                                         app_state.file_manager.read_config_file().get('지오영활성화', 'true').lower() == 'true'),
                 "baekje_configured": bool(app_state.config and app_state.config.has_baekje_credentials() and
                                         app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true'),
+                "incheon_configured": bool(app_state.config and app_state.config.has_incheon_credentials() and
+                                        app_state.file_manager.read_config_file().get('인천약품활성화', 'false').lower() == 'true'),
                 "alert_exclusion_days": alert_exclusion_days
             },
             "files": {
@@ -250,16 +252,25 @@ async def get_distributor_settings():
         
         # 백제약품 정보 (항상 표시)
         distributors.append({
-            "id": "baekje", 
+            "id": "baekje",
             "name": "백제약품",
             "enabled": config_data.get('백제활성화', 'false').lower() == 'true',
             "username": config_data.get('백제아이디', ''),
             "password": config_data.get('백제비밀번호', '')
         })
-        
+
+        # 인천약품 정보 (항상 표시)
+        distributors.append({
+            "id": "incheon",
+            "name": "인천약품",
+            "enabled": config_data.get('인천약품활성화', 'false').lower() == 'true',
+            "username": config_data.get('인천약품아이디', ''),
+            "password": config_data.get('인천약품비밀번호', '')
+        })
+
         # info.txt에서 새로운 도매상 자동 감지 (아이디/비밀번호 패턴)
         for key, value in config_data.items():
-            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디']:
+            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디', '인천약품아이디']:
                 distributor_name = key.replace('아이디', '')
                 password_key = distributor_name + '비밀번호'
                 active_key = distributor_name + '활성화'
@@ -315,7 +326,14 @@ async def update_distributor_settings(settings: dict):
                 if enabled:
                     config_data['백제아이디'] = username
                     config_data['백제비밀번호'] = password
-                    
+
+            elif dist_name == "인천약품":
+                config_data['인천약품활성화'] = 'true' if enabled else 'false'
+                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
+                if enabled:
+                    config_data['인천약품아이디'] = username
+                    config_data['인천약품비밀번호'] = password
+
             else:
                 # 새로운 도매상
                 config_data[f'{dist_name}활성화'] = 'true' if enabled else 'false'
