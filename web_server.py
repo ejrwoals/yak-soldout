@@ -171,6 +171,8 @@ async def get_status():
                                         app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true'),
                 "incheon_configured": bool(app_state.config and app_state.config.has_incheon_credentials() and
                                         app_state.file_manager.read_config_file().get('인천약품활성화', 'false').lower() == 'true'),
+                "boksan_configured": bool(app_state.config and app_state.config.has_boksan_credentials() and
+                                        app_state.file_manager.read_config_file().get('복산활성화', 'false').lower() == 'true'),
                 "alert_exclusion_days": alert_exclusion_days
             },
             "files": {
@@ -194,11 +196,12 @@ async def start_search():
     config_file = app_state.file_manager.read_config_file()
     geoweb_active = config_file.get('지오영활성화', 'true').lower() == 'true'
     baekje_active = config_file.get('백제활성화', 'false').lower() == 'true'
-    
+    boksan_active = config_file.get('복산활성화', 'false').lower() == 'true'
+
     if not app_state.config or not app_state.config.geoweb_id:
         raise HTTPException(status_code=400, detail="지오영 계정 정보가 설정되지 않았습니다")
-        
-    if not geoweb_active and not baekje_active:
+
+    if not geoweb_active and not baekje_active and not boksan_active:
         raise HTTPException(status_code=400, detail="활성화된 도매상이 없습니다. 도매상 설정에서 최소 하나를 활성화해주세요")
     
     # 검색 데이터 초기화 (새 사이클 시작)
@@ -268,9 +271,18 @@ async def get_distributor_settings():
             "password": config_data.get('인천약품비밀번호', '')
         })
 
+        # 복산 정보 (항상 표시)
+        distributors.append({
+            "id": "boksan",
+            "name": "복산",
+            "enabled": config_data.get('복산활성화', 'false').lower() == 'true',
+            "username": config_data.get('복산아이디', ''),
+            "password": config_data.get('복산비밀번호', '')
+        })
+
         # info.txt에서 새로운 도매상 자동 감지 (아이디/비밀번호 패턴)
         for key, value in config_data.items():
-            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디', '인천약품아이디']:
+            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디', '인천약품아이디', '복산아이디']:
                 distributor_name = key.replace('아이디', '')
                 password_key = distributor_name + '비밀번호'
                 active_key = distributor_name + '활성화'
@@ -333,6 +345,12 @@ async def update_distributor_settings(settings: dict):
                 if enabled:
                     config_data['인천약품아이디'] = username
                     config_data['인천약품비밀번호'] = password
+
+            elif dist_name == "복산":
+                config_data['복산활성화'] = 'true' if enabled else 'false'
+                if enabled:
+                    config_data['복산아이디'] = username
+                    config_data['복산비밀번호'] = password
 
             else:
                 # 새로운 도매상

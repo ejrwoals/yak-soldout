@@ -8,6 +8,7 @@ class DistributorType(Enum):
     GEOWEB = "지오영"
     BAEKJE = "백제"
     INCHEON = "인천약품"
+    BOKSAN = "복산"
 
 
 @dataclass
@@ -137,6 +138,8 @@ class AppConfig:
     baekje_password: Optional[str] = None
     incheon_id: Optional[str] = None
     incheon_password: Optional[str] = None
+    boksan_id: Optional[str] = None
+    boksan_password: Optional[str] = None
     repeat_interval_minutes: int = 30
     alert_exclusion_days: int = 7
 
@@ -147,3 +150,7 @@ class AppConfig:
     def has_incheon_credentials(self) -> bool:
         """인천약품 인증정보가 있는지 확인"""
         return bool(self.incheon_id and self.incheon_password)
+
+    def has_boksan_credentials(self) -> bool:
+        """복산 인증정보가 있는지 확인"""
+        return bool(self.boksan_id and self.boksan_password)

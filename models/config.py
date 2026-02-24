@@ -35,6 +35,8 @@ class ConfigManager:
             'baekje_password': None,
             'incheon_id': None,
             'incheon_password': None,
+            'boksan_id': None,
+            'boksan_password': None,
             'repeat_interval_minutes': 30,
             'alert_exclusion_days': 7
         }
@@ -70,6 +72,12 @@ class ConfigManager:
                         elif key in ['인천약품비밀번호', 'incheon_password']:
                             if len(value) > 1:  # 빈 값이 아닌 경우만
                                 config_data['incheon_password'] = value
+                        elif key in ['복산아이디', 'boksan_id']:
+                            if len(value) > 1:
+                                config_data['boksan_id'] = value
+                        elif key in ['복산비밀번호', 'boksan_password']:
+                            if len(value) > 1:
+                                config_data['boksan_password'] = value
                         elif key in ['반복실행간격(분)', 'repeat_interval_minutes']:
                             config_data['repeat_interval_minutes'] = int(value)
                         elif key in ['재고발견이후알림제외기간(일)', 'alert_exclusion_days']:
@@ -97,6 +105,8 @@ class ConfigManager:
             baekje_password=config_data['baekje_password'],
             incheon_id=config_data['incheon_id'],
             incheon_password=config_data['incheon_password'],
+            boksan_id=config_data['boksan_id'],
+            boksan_password=config_data['boksan_password'],
             repeat_interval_minutes=config_data['repeat_interval_minutes'],
             alert_exclusion_days=config_data['alert_exclusion_days']
         )
