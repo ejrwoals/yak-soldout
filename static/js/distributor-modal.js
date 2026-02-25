@@ -56,46 +56,64 @@ class DistributorModal {
     
     render(distributors) {
         if (!this.distributorList) return;
-        
-        this.distributorList.innerHTML = distributors.map(dist => `
-            <div class="distributor-section">
-                <div class="distributor-header">
-                    <div class="distributor-checkbox">
-                        <input type="checkbox" id="enabled_${dist.id}" ${dist.enabled ? 'checked' : ''}
-                               onchange="window.distributorModal.toggleFields('${dist.id}', this.checked)">
-                        <label for="enabled_${dist.id}">활성화</label>
-                    </div>
-                    <h3 class="distributor-name">${dist.name}</h3>
+
+        this.distributorList.innerHTML = distributors.map(dist => {
+            const regionField = dist.id === 'geopharm' ? `
+                <div class="form-group">
+                    <label for="region_${dist.id}">지역</label>
+                    <select id="region_${dist.id}" ${!dist.enabled ? 'disabled' : ''}>
+                        <option value="01" ${(dist.region || '01') === '01' ? 'selected' : ''}>대구</option>
+                        <option value="02" ${dist.region === '02' ? 'selected' : ''}>대전</option>
+                        <option value="03" ${dist.region === '03' ? 'selected' : ''}>광주</option>
+                        <option value="04" ${dist.region === '04' ? 'selected' : ''}>서울</option>
+                    </select>
                 </div>
-                <div class="distributor-form">
-                    <div class="form-group">
-                        <label for="username_${dist.id}">아이디</label>
-                        <input type="text" id="username_${dist.id}" 
-                               value="${dist.username}" 
-                               ${!dist.enabled ? 'disabled' : ''}>
+            ` : '';
+
+            return `
+                <div class="distributor-section">
+                    <div class="distributor-header">
+                        <div class="distributor-checkbox">
+                            <input type="checkbox" id="enabled_${dist.id}" ${dist.enabled ? 'checked' : ''}
+                                   onchange="window.distributorModal.toggleFields('${dist.id}', this.checked)">
+                            <label for="enabled_${dist.id}">활성화</label>
+                        </div>
+                        <h3 class="distributor-name">${dist.name}</h3>
                     </div>
-                    <div class="form-group">
-                        <label for="password_${dist.id}">비밀번호</label>
-                        <input type="password" id="password_${dist.id}" 
-                               value="${dist.password}"
-                               ${!dist.enabled ? 'disabled' : ''}>
+                    <div class="distributor-form">
+                        <div class="form-group">
+                            <label for="username_${dist.id}">아이디</label>
+                            <input type="text" id="username_${dist.id}"
+                                   value="${dist.username}"
+                                   ${!dist.enabled ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label for="password_${dist.id}">비밀번호</label>
+                            <input type="password" id="password_${dist.id}"
+                                   value="${dist.password}"
+                                   ${!dist.enabled ? 'disabled' : ''}>
+                        </div>
+                        ${regionField}
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
     
     toggleFields(distributorId, enabled) {
         const usernameField = document.getElementById(`username_${distributorId}`);
         const passwordField = document.getElementById(`password_${distributorId}`);
-        
+        const regionField = document.getElementById(`region_${distributorId}`);
+
         if (enabled) {
             usernameField.disabled = false;
             passwordField.disabled = false;
+            if (regionField) regionField.disabled = false;
             usernameField.focus();
         } else {
             usernameField.disabled = true;
             passwordField.disabled = true;
+            if (regionField) regionField.disabled = true;
         }
     }
     
@@ -111,17 +129,24 @@ class DistributorModal {
                 const nameElement = section.querySelector('.distributor-name');
                 const usernameInput = section.querySelector('input[type="text"]');
                 const passwordInput = section.querySelector('input[type="password"]');
-                
+                const regionSelect = section.querySelector('select');
+
                 const distributorId = checkbox.id.replace('enabled_', '');
                 const enabled = checkbox.checked;
-                
-                distributors.push({
+
+                const distData = {
                     id: distributorId,
                     name: nameElement.textContent,
                     enabled: enabled,
                     username: usernameInput.value.trim(),
                     password: passwordInput.value.trim()
-                });
+                };
+
+                if (regionSelect) {
+                    distData.region = regionSelect.value;
+                }
+
+                distributors.push(distData);
             });
             
             // 유효성 검사
