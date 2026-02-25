@@ -9,6 +9,7 @@ class DistributorType(Enum):
     BAEKJE = "백제"
     INCHEON = "인천약품"
     GEOPHARM = "지오팜"
+    BOKSAN = "복산"
 
 
 @dataclass
@@ -141,6 +142,8 @@ class AppConfig:
     geopharm_id: Optional[str] = None
     geopharm_password: Optional[str] = None
     geopharm_region: str = '01'
+    boksan_id: Optional[str] = None
+    boksan_password: Optional[str] = None
     repeat_interval_minutes: int = 30
     alert_exclusion_days: int = 7
 
@@ -155,3 +158,7 @@ class AppConfig:
     def has_geopharm_credentials(self) -> bool:
         """지오팜 인증정보가 있는지 확인"""
         return bool(self.geopharm_id and self.geopharm_password)
+
+    def has_boksan_credentials(self) -> bool:
+        """복산 인증정보가 있는지 확인"""
+        return bool(self.boksan_id and self.boksan_password)

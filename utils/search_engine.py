@@ -329,6 +329,30 @@ def execute_search_sync(app_state, progress_queue=None):
         elif geopharm_active:
             log_message("⚠️ 지오팜이 활성화되어 있지만 계정 정보가 없습니다")
 
+        # 복산 검색 (활성화된 경우) - 보험코드 기반 검색
+        boksan_active = config_file.get('복산활성화', 'false').lower() == 'true'
+        if app_state.cycle_terminated:
+            log_message("🏭 긴급 재고 발견으로 복산 검색 건너 뜀")
+        elif boksan_active and app_state.config.has_boksan_credentials():
+            log_message("🏭 복산 검색 시작...")
+            # 지오영에서 수집한 보험코드 사용
+            if hasattr(all_drugs, '__iter__') and len(all_drugs) > 0:
+                insurance_codes = {}
+                for drug in all_drugs:
+                    if hasattr(drug, 'insurance_code') and drug.insurance_code:
+                        insurance_codes[drug.insurance_code] = drug.name
+
+                if insurance_codes:
+                    boksan_drugs, boksan_errors = search_boksan_sync(app_state, insurance_codes, excluded_by_distributor.get("복산", []), progress_queue, urgent_drugs)
+                    all_drugs.extend(boksan_drugs)
+                    errors.extend(boksan_errors)
+                else:
+                    log_message("⚠️ 지오영에서 보험코드를 수집하지 못했습니다")
+            else:
+                log_message("⚠️ 지오영 검색 결과가 없어 복산 검색을 건너뜁니다")
+        elif boksan_active:
+            log_message("⚠️ 복산이 활성화되어 있지만 계정 정보가 없습니다")
+
         # 결과 분류 (모든 도매상의 excluded 약품명을 합친 리스트로 전달)
         all_excluded_names = []
         for distributor_names in excluded_by_distributor.values():
@@ -911,13 +935,12 @@ def search_geopharm_sync(app_state, insurance_codes: Dict[str, str], excluded_na
 
                     for drug in drugs:
                         main_stock = drug.main_stock if drug.main_stock else "정보없음"
-
-                        main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
+                        main_display = "품절" if main_stock in ("품절", "0") else f"{main_stock}개"
                         unit_display = f" [{drug.unit}]" if drug.unit else ""
 
                         log_message(f"   - {drug.name}{unit_display}: {main_display}")
 
-                        has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")
+                        has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock not in ("품절", "0"))
 
                         if urgent_drugs and original_name in urgent_drugs and has_stock and not drug.is_excluded_from_alert:
                             urgent_stock_found = True
@@ -958,7 +981,6 @@ def search_geopharm_sync(app_state, insurance_codes: Dict[str, str], excluded_na
                             base_name = urgent_drugs_list[0]['name']
                             unit_specs = [spec['unit_display'] for spec in urgent_drugs_list]
                             specs_display = f"{base_name} {', '.join(unit_specs)}"
-
                             detailed_specs = [f"{spec['unit_display']}: {spec['main_display']}" for spec in urgent_drugs_list]
                             detailed_display = f"{base_name}\n" + "\n".join(detailed_specs)
                         else:
@@ -997,6 +1019,160 @@ def search_geopharm_sync(app_state, insurance_codes: Dict[str, str], excluded_na
                 log_message(f"❌ {error_msg}")
 
         log_message(f"✓ 지오팜 검색 완료: {len(all_drugs)}개 약품")
+
+    finally:
+        browser_mgr.stop()
+
+    return all_drugs, errors
+
+
+def search_boksan_sync(app_state, insurance_codes: Dict[str, str], excluded_names: List[str], progress_queue=None, urgent_drugs=None) -> tuple:
+    """복산 검색 (동기) - 보험코드 기반 검색"""
+
+    def log_message(msg):
+        """로그 메시지를 터미널과 큐에 모두 전송"""
+        print(msg)
+        if progress_queue:
+            try:
+                progress_queue.put_nowait(msg)
+            except:
+                pass
+
+    all_drugs = []
+    errors = []
+
+    browser_mgr = BrowserManager()
+    browser_mgr.start()
+
+    try:
+        from scrapers.boksan_scraper import BoksanScraper
+
+        scraper = BoksanScraper()
+        page = browser_mgr.new_page()
+
+        # 로그인
+        log_message("🤖 복산에 로그인하는 중입니다...")
+        if not scraper.login(page, app_state.config.boksan_id, app_state.config.boksan_password):
+            raise Exception("복산 로그인 실패")
+
+        log_message("✓ 복산 로그인 성공")
+
+        # 보험코드 기반 검색
+        log_message(f"📋 검색할 약품 수: {len(insurance_codes)}개")
+
+        for i, (insurance_code, original_name) in enumerate(insurance_codes.items(), 1):
+            if not app_state.is_searching:  # 중단 확인
+                break
+
+            try:
+                drugs = scraper._search_by_insurance_code(insurance_code, original_name)
+                for drug in drugs:
+                    # 복산 exclusion 체크: 규격 정보까지 포함한 전체 이름으로 매칭
+                    unit_display = f" [{drug.unit}]" if drug.unit else ""
+                    full_name = f"{drug.name}{unit_display}"
+                    drug.is_excluded_from_alert = full_name in excluded_names
+                    drug.search_insurance_code = insurance_code
+                    drug.original_drug_name = original_name
+                    drug.distributor = "복산"
+
+                # 검색 결과 로그
+                if drugs:
+                    log_message(f"🔍 복산 검색 완료 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - {len(drugs)}개 규격 발견")
+
+                    # 긴급 재고 발견 여부 확인
+                    urgent_stock_found = False
+                    urgent_drugs_list = []
+
+                    for drug in drugs:
+                        main_stock = drug.main_stock if drug.main_stock else "정보없음"
+                        main_display = "품절" if main_stock in ("품절", "0") else f"{main_stock}개"
+                        unit_display = f" [{drug.unit}]" if drug.unit else ""
+
+                        log_message(f"   - {drug.name}{unit_display}: {main_display}")
+
+                        has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock not in ("품절", "0"))
+
+                        # 긴급 약품 체크
+                        if urgent_drugs and original_name in urgent_drugs and has_stock and not drug.is_excluded_from_alert:
+                            urgent_stock_found = True
+                            urgent_drugs_list.append({
+                                "name": drug.name,
+                                "main_stock": main_stock,
+                                "unit": drug.unit,
+                                "unit_display": unit_display,
+                                "main_display": main_display
+                            })
+
+                        # 메모리 상태에 개별 결과 추가
+                        drug_data = {
+                            "name": f"{drug.name}{unit_display}",
+                            "main_stock": main_stock,
+                            "incheon_stock": "-",
+                            "company": drug.company if hasattr(drug, 'company') else "복산",
+                            "distributor": "복산",
+                            "has_stock": has_stock,
+                            "unit": drug.unit
+                        }
+                        app_state.add_drug_result(drug_data, has_stock)
+
+                        # WebSocket 전송
+                        if progress_queue and not drug.is_excluded_from_alert:
+                            try:
+                                drug_found_msg = {
+                                    "type": "drug_found",
+                                    "drug": drug_data,
+                                    "progress": {"current": i, "total": len(insurance_codes)}
+                                }
+                                progress_queue.put_nowait(f"DRUG_FOUND:{json.dumps(drug_found_msg)}")
+                            except:
+                                pass
+
+                    # 긴급 재고 발견 시 알림
+                    if urgent_stock_found:
+                        app_state.cycle_terminated = True
+
+                        if urgent_drugs_list:
+                            base_name = urgent_drugs_list[0]['name']
+                            unit_specs = [spec['unit_display'] for spec in urgent_drugs_list]
+                            specs_display = f"{base_name} {', '.join(unit_specs)}"
+                            detailed_specs = [f"{spec['unit_display']}: {spec['main_display']}" for spec in urgent_drugs_list]
+                            detailed_display = f"{base_name}\n" + "\n".join(detailed_specs)
+                        else:
+                            specs_display = "재고 발견"
+                            detailed_display = "재고 발견"
+
+                        urgent_alert_msg = {
+                            "type": "urgent_alert",
+                            "drug": {
+                                "name": f"복산 재고 발견: {specs_display}",
+                                "main_stock": detailed_display,
+                                "incheon_stock": "-",
+                                "company": "복산",
+                                "distributor": "복산",
+                                "original_drug_name": original_name,
+                                "specifications": urgent_drugs_list
+                            },
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        if progress_queue:
+                            try:
+                                progress_queue.put_nowait(f"URGENT_ALERT:{json.dumps(urgent_alert_msg)}")
+                            except:
+                                pass
+
+                        all_drugs.extend(drugs)
+                        return all_drugs, errors
+                else:
+                    log_message(f"❌ 복산 검색 실패 ({i}/{len(insurance_codes)}): {original_name} ({insurance_code}) - 검색 결과 없음")
+                    errors.append(f"{original_name} ({insurance_code}): 검색 결과 없음")
+
+                all_drugs.extend(drugs)
+            except Exception as e:
+                error_msg = f"{original_name} ({insurance_code}): {str(e)}"
+                errors.append(error_msg)
+                log_message(f"❌ {error_msg}")
+
+        log_message(f"✓ 복산 검색 완료: {len(all_drugs)}개 약품")
 
     finally:
         browser_mgr.stop()

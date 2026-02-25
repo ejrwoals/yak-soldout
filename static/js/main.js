@@ -293,6 +293,7 @@ class ModernDrugSearchApp {
         const baekje = config?.baekje_configured || false;
         const incheon = config?.incheon_configured || false;
         const geopharm = config?.geopharm_configured || false;
+        const boksan = config?.boksan_configured || false;
 
         // 설정된 도매상 수 계산
         let configuredCount = 0;
@@ -313,6 +314,10 @@ class ModernDrugSearchApp {
         if (geopharm) {
             configuredCount++;
             distributors.push('지오팜');
+        }
+        if (boksan) {
+            configuredCount++;
+            distributors.push('복산');
         }
 
         // 카드에는 숫자만 표시
@@ -622,6 +627,10 @@ class ModernDrugSearchApp {
             distributorBadge = '<span class="distributor-badge geopharm">지오팜</span>';
             distributorName = '지오팜';
             distributorClass = 'geopharm';
+        } else if (distributor === '복산') {
+            distributorBadge = '<span class="distributor-badge boksan">복산</span>';
+            distributorName = '복산';
+            distributorClass = 'boksan';
         } else {
             distributorBadge = '<span class="distributor-badge geoweb">지오영</span>';
             distributorName = '지오영';

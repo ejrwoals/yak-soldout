@@ -38,6 +38,8 @@ class ConfigManager:
             'geopharm_id': None,
             'geopharm_password': None,
             'geopharm_region': '01',
+            'boksan_id': None,
+            'boksan_password': None,
             'repeat_interval_minutes': 30,
             'alert_exclusion_days': 7
         }
@@ -82,6 +84,12 @@ class ConfigManager:
                         elif key in ['지오팜지역', 'geopharm_region']:
                             if value:
                                 config_data['geopharm_region'] = value
+                        elif key in ['복산아이디', 'boksan_id']:
+                            if len(value) > 1:
+                                config_data['boksan_id'] = value
+                        elif key in ['복산비밀번호', 'boksan_password']:
+                            if len(value) > 1:
+                                config_data['boksan_password'] = value
                         elif key in ['반복실행간격(분)', 'repeat_interval_minutes']:
                             config_data['repeat_interval_minutes'] = int(value)
                         elif key in ['재고발견이후알림제외기간(일)', 'alert_exclusion_days']:
@@ -112,6 +120,8 @@ class ConfigManager:
             geopharm_id=config_data['geopharm_id'],
             geopharm_password=config_data['geopharm_password'],
             geopharm_region=config_data['geopharm_region'],
+            boksan_id=config_data['boksan_id'],
+            boksan_password=config_data['boksan_password'],
             repeat_interval_minutes=config_data['repeat_interval_minutes'],
             alert_exclusion_days=config_data['alert_exclusion_days']
         )
