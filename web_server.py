@@ -526,7 +526,14 @@ async def get_system_settings():
         config_data = app_state.file_manager.read_config_file()
         return {
             "repeat_interval_minutes": config_data.get('repeat_interval_minutes', '30'),
-            "alert_exclusion_days": config_data.get('alert_exclusion_days', '7')
+            "alert_exclusion_days": config_data.get('alert_exclusion_days', '7'),
+            "distributor_enables": {
+                "geoweb": config_data.get('지오영활성화', 'true').lower() == 'true',
+                "baekje": config_data.get('백제활성화', 'false').lower() == 'true',
+                "incheon": config_data.get('인천약품활성화', 'false').lower() == 'true',
+                "geopharm": config_data.get('지오팜활성화', 'false').lower() == 'true',
+                "boksan": config_data.get('복산활성화', 'false').lower() == 'true'
+            }
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"시스템 설정 읽기 실패: {str(e)}")
@@ -537,30 +544,45 @@ async def update_system_settings(data: dict):
     try:
         repeat_interval = data.get('repeat_interval_minutes')
         alert_exclusion_days = data.get('alert_exclusion_days')
-        
+        distributor_enables = data.get('distributor_enables', {})
+
         # 유효성 검사
         if not repeat_interval or not isinstance(repeat_interval, int) or repeat_interval < 1 or repeat_interval > 1440:
             raise HTTPException(status_code=400, detail="반복 간격은 1분에서 1440분 사이의 정수여야 합니다")
-        
+
         if not alert_exclusion_days or not isinstance(alert_exclusion_days, int) or alert_exclusion_days < 1 or alert_exclusion_days > 365:
             raise HTTPException(status_code=400, detail="알림 제외 기간은 1일에서 365일 사이의 정수여야 합니다")
-        
+
         # 현재 설정 읽기
         try:
             config_data = app_state.file_manager.read_config_file()
         except FileNotFoundError:
             # 파일이 없으면 기본 설정으로 시작
             config_data = {}
-        
-        # 새 설정값 적용
+
+        # 모니터링 설정값 적용
         config_data['repeat_interval_minutes'] = str(repeat_interval)
         config_data['alert_exclusion_days'] = str(alert_exclusion_days)
-        
+
+        # 도매상 활성화 상태 적용
+        if distributor_enables:
+            config_data['지오영활성화'] = 'true' if distributor_enables.get('geoweb', True) else 'false'
+            config_data['백제활성화'] = 'true' if distributor_enables.get('baekje', False) else 'false'
+            config_data['인천약품활성화'] = 'true' if distributor_enables.get('incheon', False) else 'false'
+            config_data['지오팜활성화'] = 'true' if distributor_enables.get('geopharm', False) else 'false'
+            config_data['복산활성화'] = 'true' if distributor_enables.get('boksan', False) else 'false'
+
         # 파일에 저장
         app_state.file_manager.write_config_file(config_data)
-        
+
+        # 앱 설정 다시 로드 (자격증명 미설정 시 실패해도 허용)
+        try:
+            app_state.config = app_state.config_manager.load_config()
+        except Exception:
+            pass
+
         return {"message": "시스템 설정이 저장되었습니다"}
-        
+
     except HTTPException:
         raise
     except Exception as e:

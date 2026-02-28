@@ -942,3 +942,72 @@
 #systemSettingsModal .modal-content {
   max-width: 500px;
 }
+
+/* ============= 도매상 활성화 목록 (시스템 설정 모달) ============= */
+
+.distributor-enables-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.distributor-enable-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.distributor-enable-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.distributor-enable-item input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.distributor-enable-item span {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* ============= 도매상 설정 모달 — 빈 상태 ============= */
+
+.empty-distributor-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-distributor-settings i {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  opacity: 0.4;
+}
+
+.empty-distributor-settings p {
+  margin: 0 0 0.4rem 0;
+  font-weight: 500;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-distributor-settings small {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}

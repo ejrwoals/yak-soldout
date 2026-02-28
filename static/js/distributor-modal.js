@@ -6,10 +6,10 @@ class DistributorModal {
         this.modal = document.getElementById('distributorModal');
         this.form = document.getElementById('distributorForm');
         this.distributorList = document.getElementById('distributorList');
-        
+
         this.init();
     }
-    
+
     init() {
         // 이벤트 리스너 등록
         document.getElementById('distributorCard')?.addEventListener('click', () => this.open());
@@ -54,31 +54,45 @@ class DistributorModal {
             }
         });
     }
-    
+
     async open() {
         try {
             // 현재 설정 로드
             const response = await fetch('/api/distributor-settings');
             if (!response.ok) throw new Error('설정 로드 실패');
-            
+
             const data = await response.json();
-            this.render(data.distributors);
-            
+            // 활성화된 도매상만 표시
+            const enabledDistributors = data.distributors.filter(d => d.enabled);
+            this.render(enabledDistributors);
+
             // 모달 표시
             this.modal.classList.add('show');
-            
+
         } catch (error) {
             console.error('도매상 설정 로드 오류:', error);
             this.app.showError('설정을 불러오는데 실패했습니다');
         }
     }
-    
+
     close() {
         this.modal?.classList.remove('show');
     }
-    
+
     render(distributors) {
         if (!this.distributorList) return;
+
+        // 활성화된 도매상이 없을 경우 빈 상태 메시지
+        if (distributors.length === 0) {
+            this.distributorList.innerHTML = `
+                <div class="empty-distributor-settings">
+                    <i class="bi bi-shop"></i>
+                    <p>활성화된 도매상이 없습니다</p>
+                    <small>시스템 설정에서 먼저 활성화할 도매상을 선택해주세요</small>
+                </div>
+            `;
+            return;
+        }
 
         this.distributorList.innerHTML = distributors.map(dist => {
             const regions = [
@@ -94,7 +108,7 @@ class DistributorModal {
             const regionField = dist.id === 'geopharm' ? `
                 <div class="form-group">
                     <label>지역</label>
-                    <div class="custom-select ${!dist.enabled ? 'disabled' : ''}" id="region_${dist.id}" data-value="${selectedRegion}">
+                    <div class="custom-select" id="region_${dist.id}" data-value="${selectedRegion}">
                         <button class="custom-select-trigger" type="button">
                             <span class="custom-select-value">${selectedLabel}</span>
                             ${chevron}
@@ -109,27 +123,18 @@ class DistributorModal {
             ` : '';
 
             return `
-                <div class="distributor-section">
+                <div class="distributor-section" data-id="${dist.id}" data-name="${dist.name}">
                     <div class="distributor-header">
-                        <div class="distributor-checkbox">
-                            <input type="checkbox" id="enabled_${dist.id}" ${dist.enabled ? 'checked' : ''}
-                                   onchange="window.distributorModal.toggleFields('${dist.id}', this.checked)">
-                            <label for="enabled_${dist.id}">활성화</label>
-                        </div>
                         <h3 class="distributor-name">${dist.name}</h3>
                     </div>
                     <div class="distributor-form">
                         <div class="form-group">
                             <label for="username_${dist.id}">아이디</label>
-                            <input type="text" id="username_${dist.id}"
-                                   value="${dist.username}"
-                                   ${!dist.enabled ? 'disabled' : ''}>
+                            <input type="text" id="username_${dist.id}" value="${dist.username}">
                         </div>
                         <div class="form-group">
                             <label for="password_${dist.id}">비밀번호</label>
-                            <input type="password" id="password_${dist.id}"
-                                   value="${dist.password}"
-                                   ${!dist.enabled ? 'disabled' : ''}>
+                            <input type="password" id="password_${dist.id}" value="${dist.password}">
                         </div>
                         ${regionField}
                     </div>
@@ -137,45 +142,25 @@ class DistributorModal {
             `;
         }).join('');
     }
-    
-    toggleFields(distributorId, enabled) {
-        const usernameField = document.getElementById(`username_${distributorId}`);
-        const passwordField = document.getElementById(`password_${distributorId}`);
-        const regionEl = document.getElementById(`region_${distributorId}`);
 
-        if (enabled) {
-            usernameField.disabled = false;
-            passwordField.disabled = false;
-            if (regionEl) regionEl.classList.remove('disabled');
-            usernameField.focus();
-        } else {
-            usernameField.disabled = true;
-            passwordField.disabled = true;
-            if (regionEl) regionEl.classList.add('disabled');
-        }
-    }
-    
     async handleSubmit(e) {
         e.preventDefault();
-        
+
         try {
-            // 폼 데이터 수집
+            // 폼 데이터 수집 (활성화된 도매상만 표시되므로 모두 enabled: true)
             const distributors = [];
-            
+
             this.distributorList.querySelectorAll('.distributor-section').forEach(section => {
-                const checkbox = section.querySelector('input[type="checkbox"]');
-                const nameElement = section.querySelector('.distributor-name');
+                const distributorId = section.dataset.id;
+                const distributorName = section.dataset.name;
                 const usernameInput = section.querySelector('input[type="text"]');
                 const passwordInput = section.querySelector('input[type="password"]');
                 const regionEl = section.querySelector('.custom-select');
 
-                const distributorId = checkbox.id.replace('enabled_', '');
-                const enabled = checkbox.checked;
-
                 const distData = {
                     id: distributorId,
-                    name: nameElement.textContent,
-                    enabled: enabled,
+                    name: distributorName,
+                    enabled: true,
                     username: usernameInput.value.trim(),
                     password: passwordInput.value.trim()
                 };
@@ -186,15 +171,15 @@ class DistributorModal {
 
                 distributors.push(distData);
             });
-            
+
             // 유효성 검사
             for (const dist of distributors) {
-                if (dist.enabled && (!dist.username || !dist.password)) {
+                if (!dist.username || !dist.password) {
                     this.app.showError(`${dist.name}의 아이디와 비밀번호를 모두 입력해주세요`);
                     return;
                 }
             }
-            
+
             // 서버로 전송
             const response = await fetch('/api/distributor-settings', {
                 method: 'PUT',
@@ -203,18 +188,18 @@ class DistributorModal {
                 },
                 body: JSON.stringify({ distributors: distributors })
             });
-            
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || '저장 실패');
             }
-            
+
             this.app.showSuccess('설정이 저장되었습니다');
             this.close();
-            
+
             // 상태 새로고침
             setTimeout(() => this.app.loadStatus(), 1000);
-            
+
         } catch (error) {
             console.error('도매상 설정 저장 오류:', error);
             this.app.showError(`저장 실패: ${error.message}`);
