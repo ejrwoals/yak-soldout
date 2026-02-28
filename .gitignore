@@ -208,7 +208,7 @@ __marimo__/
 
 # data
 data/
-.json
+*.json
 
 # claude
 .claude/
