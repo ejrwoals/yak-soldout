@@ -16,18 +16,41 @@ class DistributorModal {
         document.getElementById('closeModal')?.addEventListener('click', () => this.close());
         document.getElementById('cancelBtn')?.addEventListener('click', () => this.close());
         this.form?.addEventListener('submit', (e) => this.handleSubmit(e));
-        
+
         // 모달 외부 클릭 시 닫기
         this.modal?.addEventListener('click', (e) => {
             if (e.target === this.modal) {
                 this.close();
             }
         });
-        
+
         // ESC 키로 모달 닫기
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal?.classList.contains('show')) {
                 this.close();
+            }
+        });
+
+        // 커스텀 드롭다운 이벤트 (이벤트 위임)
+        document.addEventListener('click', (e) => {
+            const trigger = e.target.closest('.custom-select-trigger');
+            const option = e.target.closest('.custom-select-option');
+
+            if (trigger) {
+                const selectEl = trigger.closest('.custom-select');
+                if (selectEl.classList.contains('disabled')) return;
+                const isOpen = selectEl.classList.contains('open');
+                document.querySelectorAll('.custom-select.open').forEach(s => s.classList.remove('open'));
+                if (!isOpen) selectEl.classList.add('open');
+            } else if (option) {
+                const selectEl = option.closest('.custom-select');
+                selectEl.dataset.value = option.dataset.value;
+                selectEl.querySelector('.custom-select-value').textContent = option.textContent;
+                selectEl.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                selectEl.classList.remove('open');
+            } else {
+                document.querySelectorAll('.custom-select.open').forEach(s => s.classList.remove('open'));
             }
         });
     }
@@ -58,15 +81,30 @@ class DistributorModal {
         if (!this.distributorList) return;
 
         this.distributorList.innerHTML = distributors.map(dist => {
+            const regions = [
+                { value: '01', label: '대구' },
+                { value: '02', label: '대전' },
+                { value: '03', label: '광주' },
+                { value: '04', label: '서울' },
+            ];
+            const selectedRegion = dist.region || '01';
+            const selectedLabel = regions.find(r => r.value === selectedRegion)?.label || '대구';
+            const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
             const regionField = dist.id === 'geopharm' ? `
                 <div class="form-group">
-                    <label for="region_${dist.id}">지역</label>
-                    <select id="region_${dist.id}" ${!dist.enabled ? 'disabled' : ''}>
-                        <option value="01" ${(dist.region || '01') === '01' ? 'selected' : ''}>대구</option>
-                        <option value="02" ${dist.region === '02' ? 'selected' : ''}>대전</option>
-                        <option value="03" ${dist.region === '03' ? 'selected' : ''}>광주</option>
-                        <option value="04" ${dist.region === '04' ? 'selected' : ''}>서울</option>
-                    </select>
+                    <label>지역</label>
+                    <div class="custom-select ${!dist.enabled ? 'disabled' : ''}" id="region_${dist.id}" data-value="${selectedRegion}">
+                        <button class="custom-select-trigger" type="button">
+                            <span class="custom-select-value">${selectedLabel}</span>
+                            ${chevron}
+                        </button>
+                        <div class="custom-select-options">
+                            ${regions.map(r => `
+                                <div class="custom-select-option ${r.value === selectedRegion ? 'selected' : ''}" data-value="${r.value}">${r.label}</div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
             ` : '';
 
@@ -103,17 +141,17 @@ class DistributorModal {
     toggleFields(distributorId, enabled) {
         const usernameField = document.getElementById(`username_${distributorId}`);
         const passwordField = document.getElementById(`password_${distributorId}`);
-        const regionField = document.getElementById(`region_${distributorId}`);
+        const regionEl = document.getElementById(`region_${distributorId}`);
 
         if (enabled) {
             usernameField.disabled = false;
             passwordField.disabled = false;
-            if (regionField) regionField.disabled = false;
+            if (regionEl) regionEl.classList.remove('disabled');
             usernameField.focus();
         } else {
             usernameField.disabled = true;
             passwordField.disabled = true;
-            if (regionField) regionField.disabled = true;
+            if (regionEl) regionEl.classList.add('disabled');
         }
     }
     
@@ -129,7 +167,7 @@ class DistributorModal {
                 const nameElement = section.querySelector('.distributor-name');
                 const usernameInput = section.querySelector('input[type="text"]');
                 const passwordInput = section.querySelector('input[type="password"]');
-                const regionSelect = section.querySelector('select');
+                const regionEl = section.querySelector('.custom-select');
 
                 const distributorId = checkbox.id.replace('enabled_', '');
                 const enabled = checkbox.checked;
@@ -142,8 +180,8 @@ class DistributorModal {
                     password: passwordInput.value.trim()
                 };
 
-                if (regionSelect) {
-                    distData.region = regionSelect.value;
+                if (regionEl) {
+                    distData.region = regionEl.dataset.value;
                 }
 
                 distributors.push(distData);

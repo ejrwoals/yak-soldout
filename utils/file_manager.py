@@ -229,9 +229,12 @@ class FileManager:
             lines.append("# 기타 도매상 계정 정보")
             for dist_name, id_key, pw_key in other_distributors:
                 active_key = f"{dist_name}활성화"
+                region_key = f"{dist_name}지역"
                 lines.append(f"{active_key}={config_data.get(active_key, 'false')}")
                 lines.append(f"{id_key}={config_data.get(id_key, '')}")
                 lines.append(f"{pw_key}={config_data.get(pw_key, '')}")
+                if region_key in config_data:
+                    lines.append(f"{region_key}={config_data.get(region_key, '')}")
             lines.append("")
         
         # 모니터링 설정
