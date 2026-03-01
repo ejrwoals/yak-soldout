@@ -148,6 +148,14 @@
 
 /* ============= 도매상 모달 전용 스타일 ============= */
 
+/* 도매상 컨트롤 (상단 버튼) */
+.distributor-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
 /* 도매상 리스트 */
 .distributor-list {
   display: flex;
@@ -879,6 +887,14 @@
 }
 
 /* ============= 시스템 설정 모달 전용 스타일 ============= */
+
+/* 시스템 설정 컨트롤 (상단 버튼) */
+.system-settings-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
 
 /* 설정 섹션 */
 .settings-section {

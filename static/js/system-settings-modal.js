@@ -10,27 +10,30 @@ class SystemSettingsModal {
         this.alertExclusionDaysInput = document.getElementById('alertExclusionDays');
         this.enablesList = document.getElementById('systemDistributorEnables');
 
+        // 원본 설정값 (변경사항 추적용)
+        this.originalSettings = null;
+
         this.init();
     }
 
     init() {
         // 이벤트 리스너 등록
         document.getElementById('systemSettingsBtn')?.addEventListener('click', () => this.open());
-        document.getElementById('closeSystemSettingsModal')?.addEventListener('click', () => this.close());
-        document.getElementById('cancelSystemSettingsBtn')?.addEventListener('click', () => this.close());
+        document.getElementById('closeSystemSettingsModal')?.addEventListener('click', () => this.confirmClose());
+        document.getElementById('cancelSystemSettingsBtn')?.addEventListener('click', () => this.confirmClose());
         this.form?.addEventListener('submit', (e) => this.handleSubmit(e));
 
         // 모달 외부 클릭 시 닫기
         this.modal?.addEventListener('click', (e) => {
             if (e.target === this.modal) {
-                this.close();
+                this.confirmClose();
             }
         });
 
         // ESC 키로 모달 닫기
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal?.classList.contains('show')) {
-                this.close();
+                this.confirmClose();
             }
         });
     }
@@ -44,6 +47,9 @@ class SystemSettingsModal {
             const data = await response.json();
             this.loadSettings(data);
 
+            // 원본 설정 스냅샷 저장
+            this.originalSettings = this.getCurrentSettings();
+
             // 모달 표시
             this.modal.classList.add('show');
 
@@ -53,8 +59,50 @@ class SystemSettingsModal {
         }
     }
 
+    confirmClose() {
+        if (this.hasChanges()) {
+            if (!confirm('변경 사항이 저장되지 않았습니다. 그래도 닫으시겠습니까?')) {
+                return;
+            }
+        }
+        this.close();
+    }
+
     close() {
         this.modal?.classList.remove('show');
+    }
+
+    // 현재 폼 값을 객체로 수집
+    getCurrentSettings() {
+        const distributorEnables = {};
+        this.enablesList?.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            const id = checkbox.id.replace('sys_enabled_', '');
+            distributorEnables[id] = checkbox.checked;
+        });
+
+        return {
+            repeat_interval_minutes: this.repeatIntervalInput?.value || '',
+            alert_exclusion_days: this.alertExclusionDaysInput?.value || '',
+            distributor_enables: distributorEnables
+        };
+    }
+
+    // 변경사항 감지
+    hasChanges() {
+        if (!this.originalSettings) return false;
+
+        const current = this.getCurrentSettings();
+
+        if (current.repeat_interval_minutes !== this.originalSettings.repeat_interval_minutes) return true;
+        if (current.alert_exclusion_days !== this.originalSettings.alert_exclusion_days) return true;
+
+        const origEnables = this.originalSettings.distributor_enables;
+        const currEnables = current.distributor_enables;
+        for (const key of Object.keys(origEnables)) {
+            if (origEnables[key] !== currEnables[key]) return true;
+        }
+
+        return false;
     }
 
     loadSettings(settings) {

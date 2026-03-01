@@ -181,12 +181,17 @@
             </div>
             <div class="modal-body">
                 <form id="distributorForm">
+                    <div class="distributor-controls">
+                        <div class="controls-left">
+                            <span class="controls-info">시스템 설정에서 도매상을 활성화/비활성화할 수 있습니다</span>
+                        </div>
+                        <div class="controls-right">
+                            <button type="button" class="btn-cancel" id="cancelBtn">취소</button>
+                            <button type="submit" class="btn-save">저장</button>
+                        </div>
+                    </div>
                     <div id="distributorList" class="distributor-list">
                         <!-- 동적으로 생성될 도매상 설정 폼들 -->
-                    </div>
-                    <div class="modal-actions">
-                        <button type="button" class="btn-cancel" id="cancelBtn">취소</button>
-                        <button type="submit" class="btn-save">저장</button>
                     </div>
                 </form>
             </div>
@@ -264,6 +269,15 @@
             </div>
             <div class="modal-body">
                 <form id="systemSettingsForm">
+                    <div class="system-settings-controls">
+                        <div class="controls-left">
+                            <span class="controls-info">설정 변경은 다음 검색부터 적용됩니다</span>
+                        </div>
+                        <div class="controls-right">
+                            <button type="button" class="btn-cancel" id="cancelSystemSettingsBtn">취소</button>
+                            <button type="submit" class="btn-save">저장</button>
+                        </div>
+                    </div>
                     <div class="settings-section">
                         <h3><i class="bi bi-clock"></i> 모니터링 설정</h3>
                         <div class="form-group">
@@ -283,10 +297,6 @@
                         <div id="systemDistributorEnables" class="distributor-enables-list">
                             <!-- JS로 동적 생성 -->
                         </div>
-                    </div>
-                    <div class="modal-actions">
-                        <button type="button" class="btn-cancel" id="cancelSystemSettingsBtn">취소</button>
-                        <button type="submit" class="btn-save">저장</button>
                     </div>
                 </form>
             </div>

@@ -25,21 +25,21 @@ class DrugListModal {
         document.getElementById('addDrugBtn')?.addEventListener('click', () => this.showAddForm());
         document.getElementById('confirmAddBtn')?.addEventListener('click', () => this.addDrug());
         document.getElementById('cancelAddBtn')?.addEventListener('click', () => this.hideAddForm());
-        document.getElementById('closeDrugListModal')?.addEventListener('click', () => this.close());
-        document.getElementById('cancelDrugListBtn')?.addEventListener('click', () => this.close());
+        document.getElementById('closeDrugListModal')?.addEventListener('click', () => this.confirmClose());
+        document.getElementById('cancelDrugListBtn')?.addEventListener('click', () => this.confirmClose());
         document.getElementById('saveDrugListBtn')?.addEventListener('click', () => this.save());
-        
+
         // 모달 외부 클릭 시 닫기
         this.modal?.addEventListener('click', (e) => {
             if (e.target === this.modal) {
-                this.close();
+                this.confirmClose();
             }
         });
-        
+
         // ESC 키로 모달 닫기
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal?.classList.contains('show')) {
-                this.close();
+                this.confirmClose();
             }
         });
         
@@ -75,6 +75,15 @@ class DrugListModal {
         }
     }
     
+    confirmClose() {
+        if (this.hasChanges()) {
+            if (!confirm('변경 사항이 저장되지 않았습니다. 그래도 닫으시겠습니까?')) {
+                return;
+            }
+        }
+        this.close();
+    }
+
     close() {
         this.modal?.classList.remove('show');
         this.hideAddForm();
