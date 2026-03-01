@@ -216,5 +216,7 @@ CLAUDE.md
 
 # user_data
 info.txt
+info.txt.bak
+config.json
 
 .DS_Store

@@ -25,8 +25,8 @@ async def execute_search(app_state, manager):
     
     try:
         # repeat_interval_minutes 설정 읽기
-        config_file = app_state.file_manager.read_config_file()
-        repeat_interval = int(config_file.get('repeat_interval_minutes', '30'))
+        config_data = app_state.config_manager.get_raw_config()
+        repeat_interval = config_data.get('monitoring', {}).get('repeat_interval_minutes', 30)
         
         await broadcast_log(manager, f"🔄 반복 사이클 시작 (간격: {repeat_interval}분)")
         
@@ -234,10 +234,11 @@ def execute_search_sync(app_state, progress_queue=None):
         errors = []
 
         # 활성화 플래그 확인
-        config_file = app_state.file_manager.read_config_file()
+        config_data = app_state.config_manager.get_raw_config()
+        distributors_config = config_data.get('distributors', {})
 
         # 지오영 검색 (항상 먼저 실행 — 보험코드 수집 역할)
-        geoweb_active = config_file.get('지오영활성화', 'true').lower() == 'true'
+        geoweb_active = distributors_config.get('geoweb', {}).get('enabled', True)
         if geoweb_active and app_state.config.geoweb_id:
             log_message("🌐 지오영 검색 시작...")
             geoweb_drugs, geoweb_errors = search_geoweb_sync(
@@ -259,9 +260,8 @@ def execute_search_sync(app_state, progress_queue=None):
             if dist_id == 'geoweb':
                 continue
 
-            k = dist_info['korean_key']
             dist_name = dist_info['name']
-            active = config_file.get(f'{k}활성화', 'false').lower() == 'true'
+            active = distributors_config.get(dist_id, {}).get('enabled', False)
 
             if not active:
                 continue

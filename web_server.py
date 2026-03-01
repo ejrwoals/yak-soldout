@@ -74,7 +74,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # 프로젝트 모듈 import
-from models.config import ConfigManager, AppConfig
+from models.config import ConfigManager
 from models.drug_data import SearchResult
 from utils.file_manager import FileManager
 from utils.data_processor import DataProcessor
@@ -159,16 +159,15 @@ async def get_status():
         # 실시간 검색 상태 (메모리에서)
         current_search = app_state.current_search.copy()
         
-        # 설정 파일에서 alert_exclusion_days 값 읽기
-        config_file = app_state.file_manager.read_config_file()
-        alert_exclusion_days = int(config_file.get('alert_exclusion_days', '7'))
-        
+        # 설정 파일에서 값 읽기
+        config_data = app_state.config_manager.get_raw_config()
+        alert_exclusion_days = config_data.get('monitoring', {}).get('alert_exclusion_days', 7)
+
         # 도매상별 설정/활성화 상태 (레지스트리 루프)
+        distributors_config = config_data.get('distributors', {})
         distributor_status = []
         for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
-            k = dist_info['korean_key']
-            default_enabled = 'true' if dist_info['default_enabled'] else 'false'
-            enabled = config_file.get(f'{k}활성화', default_enabled).lower() == 'true'
+            enabled = distributors_config.get(dist_id, {}).get('enabled', dist_info['default_enabled'])
             configured = bool(app_state.config and app_state.config.has_credentials(dist_id) and enabled)
             distributor_status.append({
                 "id": dist_id,
@@ -202,14 +201,15 @@ async def start_search():
         raise HTTPException(status_code=400, detail="이미 검색 중입니다")
     
     # 활성화된 도매상이 있는지 확인
-    config_file = app_state.file_manager.read_config_file()
+    config_data = app_state.config_manager.get_raw_config()
+    distributors_config = config_data.get('distributors', {})
 
     if not app_state.config or not app_state.config.geoweb_id:
         raise HTTPException(status_code=400, detail="지오영 계정 정보가 설정되지 않았습니다")
 
     any_active = any(
-        config_file.get(f'{info["korean_key"]}활성화', 'true' if info['default_enabled'] else 'false').lower() == 'true'
-        for info in DISTRIBUTOR_REGISTRY.values()
+        distributors_config.get(dist_id, {}).get('enabled', info['default_enabled'])
+        for dist_id, info in DISTRIBUTOR_REGISTRY.items()
     )
     if not any_active:
         raise HTTPException(status_code=400, detail="활성화된 도매상이 없습니다. 도매상 설정에서 최소 하나를 활성화해주세요")
@@ -248,32 +248,29 @@ async def stop_search():
 async def get_distributor_settings():
     """도매상 설정 정보 조회"""
     try:
-        # info.txt 파일에서 설정 읽기
-        config_data = app_state.file_manager.read_config_file()
-        
+        config_data = app_state.config_manager.get_raw_config()
+        distributors_config = config_data.get('distributors', {})
+
         # 레지스트리 기반 도매상 리스트 생성
         distributors = []
         for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
-            k = dist_info['korean_key']
-            default_enabled = 'true' if dist_info['default_enabled'] else 'false'
+            dist_conf = distributors_config.get(dist_id, {})
             entry = {
                 "id": dist_id,
                 "name": dist_info['name'],
-                "enabled": config_data.get(f'{k}활성화', default_enabled).lower() == 'true',
-                "username": config_data.get(f'{k}아이디', ''),
-                "password": config_data.get(f'{k}비밀번호', ''),
+                "enabled": dist_conf.get('enabled', dist_info['default_enabled']),
+                "username": dist_conf.get('username', ''),
+                "password": dist_conf.get('password', ''),
                 "badge_symbol": dist_info['badge_symbol'],
             }
             # extra_params (region 등) 자동 추가
             for param_key, param_default in dist_info.get('extra_params', {}).items():
-                from models.config import _EXTRA_PARAM_KO_SUFFIX
-                ko_suffix = _EXTRA_PARAM_KO_SUFFIX.get(param_key, param_key)
-                entry[param_key] = config_data.get(f'{k}{ko_suffix}', param_default)
+                entry[param_key] = dist_conf.get(param_key, param_default)
             # region_options가 있으면 함께 전달 (프론트엔드에서 드롭다운 생성)
             if 'region_options' in dist_info:
                 entry['region_options'] = dist_info['region_options']
             distributors.append(entry)
-        
+
         return {"distributors": distributors}
         
     except Exception as e:
@@ -294,40 +291,33 @@ async def update_distributor_settings(settings: dict):
                     )
         
         # 기존 설정 읽기
-        config_data = app_state.file_manager.read_config_file()
-        
-        # 도매상 설정 업데이트 (레지스트리 역방향 조회)
-        from models.config import _EXTRA_PARAM_KO_SUFFIX
-        name_to_info = {info['name']: (dist_id, info) for dist_id, info in DISTRIBUTOR_REGISTRY.items()}
+        config_data = app_state.config_manager.get_raw_config()
+        distributors_config = config_data.setdefault('distributors', {})
+
+        # 도매상 설정 업데이트
+        name_to_id = {info['name']: dist_id for dist_id, info in DISTRIBUTOR_REGISTRY.items()}
 
         for dist in distributors:
-            dist_name = dist['name']
+            dist_id = name_to_id.get(dist['name'])
+            if not dist_id:
+                continue
+
+            dist_entry = distributors_config.setdefault(dist_id, {})
             enabled = dist.get('enabled', False)
-            username = dist.get('username', '')
-            password = dist.get('password', '')
+            dist_entry['enabled'] = enabled
 
-            if dist_name in name_to_info:
-                dist_id, dist_info = name_to_info[dist_name]
-                k = dist_info['korean_key']
-            else:
-                # 레지스트리에 없는 미지의 도매상 (fallback)
-                k = dist_name
-                dist_info = {'extra_params': {}}
-
-            config_data[f'{k}활성화'] = 'true' if enabled else 'false'
             # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시 기존 값 유지)
             if enabled:
-                config_data[f'{k}아이디'] = username
-                config_data[f'{k}비밀번호'] = password
+                dist_entry['username'] = dist.get('username', '')
+                dist_entry['password'] = dist.get('password', '')
 
             # extra_params (region 등) 업데이트
-            for param_key, param_default in dist_info.get('extra_params', {}).items():
-                ko_suffix = _EXTRA_PARAM_KO_SUFFIX.get(param_key, param_key)
+            for param_key in DISTRIBUTOR_REGISTRY[dist_id].get('extra_params', {}):
                 if param_key in dist:
-                    config_data[f'{k}{ko_suffix}'] = dist[param_key]
-        
-        # info.txt 파일 저장
-        app_state.file_manager.write_config_file(config_data)
+                    dist_entry[param_key] = dist[param_key]
+
+        # config.json 저장
+        app_state.config_manager.save_raw_config(config_data)
         
         # 앱 설정 다시 로드
         app_state.config = app_state.config_manager.load_config()
@@ -467,15 +457,14 @@ async def toggle_drug_urgent(data: dict):
 async def get_system_settings():
     """시스템 설정 조회"""
     try:
-        config_data = app_state.file_manager.read_config_file()
+        config_data = app_state.config_manager.get_raw_config()
+        monitoring = config_data.get('monitoring', {})
+        distributors_config = config_data.get('distributors', {})
         return {
-            "repeat_interval_minutes": config_data.get('repeat_interval_minutes', '30'),
-            "alert_exclusion_days": config_data.get('alert_exclusion_days', '7'),
+            "repeat_interval_minutes": monitoring.get('repeat_interval_minutes', 30),
+            "alert_exclusion_days": monitoring.get('alert_exclusion_days', 7),
             "distributor_enables": {
-                dist_id: config_data.get(
-                    f'{info["korean_key"]}활성화',
-                    'true' if info['default_enabled'] else 'false'
-                ).lower() == 'true'
+                dist_id: distributors_config.get(dist_id, {}).get('enabled', info['default_enabled'])
                 for dist_id, info in DISTRIBUTOR_REGISTRY.items()
             },
             "distributor_names": {
@@ -502,24 +491,22 @@ async def update_system_settings(data: dict):
             raise HTTPException(status_code=400, detail="알림 제외 기간은 1일에서 365일 사이의 정수여야 합니다")
 
         # 현재 설정 읽기
-        try:
-            config_data = app_state.file_manager.read_config_file()
-        except FileNotFoundError:
-            # 파일이 없으면 기본 설정으로 시작
-            config_data = {}
+        config_data = app_state.config_manager.get_raw_config()
 
         # 모니터링 설정값 적용
-        config_data['repeat_interval_minutes'] = str(repeat_interval)
-        config_data['alert_exclusion_days'] = str(alert_exclusion_days)
+        monitoring = config_data.setdefault('monitoring', {})
+        monitoring['repeat_interval_minutes'] = repeat_interval
+        monitoring['alert_exclusion_days'] = alert_exclusion_days
 
         # 도매상 활성화 상태 적용 (레지스트리 루프)
         if distributor_enables:
+            distributors_config = config_data.setdefault('distributors', {})
             for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
-                k = dist_info['korean_key']
-                config_data[f'{k}활성화'] = 'true' if distributor_enables.get(dist_id, dist_info['default_enabled']) else 'false'
+                distributors_config.setdefault(dist_id, {})['enabled'] = \
+                    distributor_enables.get(dist_id, dist_info['default_enabled'])
 
-        # 파일에 저장
-        app_state.file_manager.write_config_file(config_data)
+        # config.json 저장
+        app_state.config_manager.save_raw_config(config_data)
 
         # 앱 설정 다시 로드 (자격증명 미설정 시 실패해도 허용)
         try:

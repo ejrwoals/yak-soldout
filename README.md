@@ -61,12 +61,36 @@ python -m playwright install chromium
 프로젝트 루트 디렉터리에 다음 파일들을 생성하세요:
 
 ```bash
-# 로그인 정보 설정 (info.example.txt를 참고하여 생성)
-cp info.example.txt info.txt
-# info.txt 파일을 열어 실제 도매상 계정 정보 입력
+# 로그인 정보 설정 (config.example.json을 참고하여 생성)
+cp config.example.json config.json
+# config.json 파일을 열어 실제 도매상 계정 정보 입력
 ```
 
-# 품절 약품 목록 
+> **기존 info.txt 사용자**: 기존 `info.txt` 파일이 있으면 첫 실행 시 `config.json`으로 자동 마이그레이션됩니다. 원본은 `info.txt.bak`으로 백업됩니다.
+
+`config.json` 파일 형식:
+```json
+{
+  "distributors": {
+    "geoweb": {
+      "enabled": true,
+      "username": "your_geoweb_username",
+      "password": "your_geoweb_password"
+    },
+    "baekje": {
+      "enabled": false,
+      "username": "",
+      "password": ""
+    }
+  },
+  "monitoring": {
+    "repeat_interval_minutes": 30,
+    "alert_exclusion_days": 7
+  }
+}
+```
+
+# 품절 약품 목록
 geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
 ```json
 [
@@ -116,7 +140,7 @@ set HEADLESS=false && python web_server.py
 yak-soldout/
 ├── web_server.py              # FastAPI 웹 서버 (개발 실행: python web_server.py)
 ├── run_app.py                 # PyInstaller 배포 빌드용 진입점
-├── info.txt                   # 도매상 로그인 정보 (직접 생성 필요)
+├── config.json                # 도매상 로그인 정보 (직접 생성 필요, JSON 형식)
 ├── geoweb-soldout-list.json   # 모니터링할 약품 목록
 ├── exclusion-list.json        # 결과 표시 제외 목록 (자동 생성)
 │
@@ -132,7 +156,7 @@ yak-soldout/
 │
 ├── models/                    # 데이터 구조 및 설정
 │   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
-│   └── config.py              # ConfigManager — registry 기반 동적 설정 파싱
+│   └── config.py              # ConfigManager — config.json 기반 설정 관리 (자동 마이그레이션 포함)
 │
 ├── utils/                     # 유틸리티
 │   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반)
@@ -165,7 +189,7 @@ DISTRIBUTOR_REGISTRY = {
     "geoweb": {
         "id": "geoweb",
         "name": "지오영",
-        "korean_key": "지오영",       # info.txt 키 prefix
+        "korean_key": "지오영",       # 한국어 표시명 prefix
         "scraper_class": GeowebScraper,
         "default_enabled": True,
         "badge_symbol": "●",
@@ -179,7 +203,7 @@ DISTRIBUTOR_REGISTRY = {
 
 ### 검색 간격 및 결과 표시 제외 설정
 
-설정은 `models/config.py`에서 수정할 수 있습니다:
+설정은 `config.json`의 `monitoring` 섹션에서 수정할 수 있습니다:
 
 - `repeat_interval_minutes`: 검색 반복 간격 (분)
 - `alert_exclusion_days`: 결과 표시 제외 기간 (일) - 고정하지 않은 항목이 자동 삭제되는 기간
@@ -188,7 +212,7 @@ DISTRIBUTOR_REGISTRY = {
 
 ### 필수 파일
 
-1. **info.txt**: 도매상 로그인 정보
+1. **config.json**: 도매상 로그인 정보 및 모니터링 설정 (JSON 형식)
 2. **geoweb-soldout-list.json**: 모니터링할 약품 목록 (JSON 형식, 긴급 알림 설정 포함)
 
 ### 자동 생성 파일
@@ -250,7 +274,7 @@ class DistributorType(Enum):
 "newdist": {
     "id": "newdist",
     "name": "신규도매상명",
-    "korean_key": "신규도매상",    # info.txt 키 prefix
+    "korean_key": "신규도매상",    # 한국어 표시명 prefix
     "scraper_class": NewDistScraper,
     "default_enabled": False,
     "badge_symbol": "※",
@@ -260,12 +284,18 @@ class DistributorType(Enum):
 
 **3단계**: 스크래퍼 파일 생성 (`scrapers/newdist_scraper.py`) — `BaseScraper` 상속 후 `login()`, `search_by_insurance_codes()` 등 구현
 
-**4단계**: `info.txt`에 설정 키 추가
+**4단계**: `config.json`에 도매상 설정 추가
 
-```
-신규도매상아이디=
-신규도매상비밀번호=
-신규도매상활성화=false
+```json
+{
+  "distributors": {
+    "newdist": {
+      "enabled": false,
+      "username": "",
+      "password": ""
+    }
+  }
+}
 ```
 
 이 4단계만으로 웹 UI, 검색 엔진, 설정 파싱, API 응답이 모두 자동으로 신규 도매상을 지원합니다.
