@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -131,34 +131,39 @@ class SearchResult:
 
 
 @dataclass
+class DistributorCredentials:
+    """도매상 인증 정보"""
+    username: str
+    password: str
+    extra: Dict[str, str] = field(default_factory=dict)  # {"region": "01"} 등 추가 파라미터
+
+    def is_valid(self) -> bool:
+        return bool(self.username and self.password)
+
+
+@dataclass
 class AppConfig:
     """애플리케이션 설정"""
-    geoweb_id: str
-    geoweb_password: str
-    baekje_id: Optional[str] = None
-    baekje_password: Optional[str] = None
-    incheon_id: Optional[str] = None
-    incheon_password: Optional[str] = None
-    geopharm_id: Optional[str] = None
-    geopharm_password: Optional[str] = None
-    geopharm_region: str = '01'
-    boksan_id: Optional[str] = None
-    boksan_password: Optional[str] = None
+    distributor_credentials: Dict[str, DistributorCredentials]  # key: dist_id (e.g. "geoweb")
     repeat_interval_minutes: int = 30
     alert_exclusion_days: int = 7
 
-    def has_baekje_credentials(self) -> bool:
-        """백제 인증정보가 있는지 확인"""
-        return bool(self.baekje_id and self.baekje_password)
+    def has_credentials(self, dist_id: str) -> bool:
+        """해당 도매상의 인증정보가 있는지 확인"""
+        creds = self.distributor_credentials.get(dist_id)
+        return creds is not None and creds.is_valid()
 
-    def has_incheon_credentials(self) -> bool:
-        """인천약품 인증정보가 있는지 확인"""
-        return bool(self.incheon_id and self.incheon_password)
+    def get_credentials(self, dist_id: str) -> Optional[DistributorCredentials]:
+        """해당 도매상의 인증정보 반환"""
+        return self.distributor_credentials.get(dist_id)
 
-    def has_geopharm_credentials(self) -> bool:
-        """지오팜 인증정보가 있는지 확인"""
-        return bool(self.geopharm_id and self.geopharm_password)
+    # 지오영은 필수 도매상(보험코드 수집)이므로 하위 호환성 property 유지
+    @property
+    def geoweb_id(self) -> Optional[str]:
+        creds = self.distributor_credentials.get('geoweb')
+        return creds.username if creds else None
 
-    def has_boksan_credentials(self) -> bool:
-        """복산 인증정보가 있는지 확인"""
-        return bool(self.boksan_id and self.boksan_password)
+    @property
+    def geoweb_password(self) -> Optional[str]:
+        creds = self.distributor_credentials.get('geoweb')
+        return creds.password if creds else None

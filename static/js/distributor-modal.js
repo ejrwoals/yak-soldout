@@ -95,32 +95,31 @@ class DistributorModal {
         }
 
         this.distributorList.innerHTML = distributors.map(dist => {
-            const regions = [
-                { value: '01', label: '대구' },
-                { value: '02', label: '대전' },
-                { value: '03', label: '광주' },
-                { value: '04', label: '서울' },
-            ];
-            const selectedRegion = dist.region || '01';
-            const selectedLabel = regions.find(r => r.value === selectedRegion)?.label || '대구';
             const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 
-            const regionField = dist.id === 'geopharm' ? `
-                <div class="form-group">
-                    <label>지역</label>
-                    <div class="custom-select" id="region_${dist.id}" data-value="${selectedRegion}">
-                        <button class="custom-select-trigger" type="button">
-                            <span class="custom-select-value">${selectedLabel}</span>
-                            ${chevron}
-                        </button>
-                        <div class="custom-select-options">
-                            ${regions.map(r => `
-                                <div class="custom-select-option ${r.value === selectedRegion ? 'selected' : ''}" data-value="${r.value}">${r.label}</div>
-                            `).join('')}
+            // region_options는 API에서 내려오는 경우에만 렌더링 (하드코딩 제거)
+            let regionField = '';
+            if (dist.region_options) {
+                const regions = Object.entries(dist.region_options).map(([value, label]) => ({ value, label }));
+                const selectedRegion = dist.region || regions[0]?.value || '01';
+                const selectedLabel = regions.find(r => r.value === selectedRegion)?.label || regions[0]?.label || '';
+                regionField = `
+                    <div class="form-group">
+                        <label>지역</label>
+                        <div class="custom-select" id="region_${dist.id}" data-value="${selectedRegion}">
+                            <button class="custom-select-trigger" type="button">
+                                <span class="custom-select-value">${selectedLabel}</span>
+                                ${chevron}
+                            </button>
+                            <div class="custom-select-options">
+                                ${regions.map(r => `
+                                    <div class="custom-select-option ${r.value === selectedRegion ? 'selected' : ''}" data-value="${r.value}">${r.label}</div>
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
-                </div>
-            ` : '';
+                `;
+            }
 
             return `
                 <div class="distributor-section" data-id="${dist.id}" data-name="${dist.name}">

@@ -1,5 +1,19 @@
 // 약품 재고 자동 검색 - 모던 대시보드 JavaScript
 
+// 도매상 메타데이터 맵 (name → {id, badge_symbol})
+// /api/status 응답의 config.distributors 배열로 초기화됩니다.
+let DISTRIBUTOR_MAP = {};
+
+function buildDistributorMap(distributors) {
+    DISTRIBUTOR_MAP = Object.fromEntries(
+        (distributors || []).map(d => [d.name, { id: d.id, symbol: d.badge_symbol }])
+    );
+}
+
+function getDistributorInfo(distributorName) {
+    return DISTRIBUTOR_MAP[distributorName] || { id: 'geoweb', symbol: '●' };
+}
+
 class ModernDrugSearchApp {
     constructor() {
         // 상태
@@ -289,43 +303,20 @@ class ModernDrugSearchApp {
     updateDistributorStatus(config) {
         if (!this.elements.distributorStatus) return;
 
-        const geoweb = config?.geoweb_configured || false;
-        const baekje = config?.baekje_configured || false;
-        const incheon = config?.incheon_configured || false;
-        const geopharm = config?.geopharm_configured || false;
-        const boksan = config?.boksan_configured || false;
+        // API 응답의 distributors 배열 기반 (하드코딩 없음)
+        const allDistributors = config?.distributors || [];
 
-        // 설정된 도매상 수 계산
-        let configuredCount = 0;
-        const distributors = [];
+        // 레지스트리 맵 갱신
+        buildDistributorMap(allDistributors);
 
-        if (geoweb) {
-            configuredCount++;
-            distributors.push('지오영');
-        }
-        if (baekje) {
-            configuredCount++;
-            distributors.push('백제약품');
-        }
-        if (incheon) {
-            configuredCount++;
-            distributors.push('인천약품');
-        }
-        if (geopharm) {
-            configuredCount++;
-            distributors.push('지오팜');
-        }
-        if (boksan) {
-            configuredCount++;
-            distributors.push('복산');
-        }
+        const configured = allDistributors.filter(d => d.configured);
 
         // 카드에는 숫자만 표시
-        this.elements.distributorStatus.textContent = configuredCount.toString();
+        this.elements.distributorStatus.textContent = configured.length.toString();
 
         // 툴팁 업데이트
         const statusCard = this.elements.distributorStatus.closest('.status-card');
-        window.tooltipManager.updateDistributorTooltip(statusCard, distributors);
+        window.tooltipManager.updateDistributorTooltip(statusCard, configured.map(d => d.name));
     }
 
 
@@ -614,28 +605,10 @@ class ModernDrugSearchApp {
 
         // 도매상 정보 추출 (distributor 필드 사용)
         const distributor = drug.distributor || '지오영';
-        let distributorBadge, distributorName, distributorClass;
-        if (distributor === '백제약품') {
-            distributorBadge = '<span class="distributor-badge baekje">백제약품</span>';
-            distributorName = '백제약품';
-            distributorClass = 'baekje';
-        } else if (distributor === '인천약품') {
-            distributorBadge = '<span class="distributor-badge incheon">인천약품</span>';
-            distributorName = '인천약품';
-            distributorClass = 'incheon';
-        } else if (distributor === '지오팜') {
-            distributorBadge = '<span class="distributor-badge geopharm">지오팜</span>';
-            distributorName = '지오팜';
-            distributorClass = 'geopharm';
-        } else if (distributor === '복산') {
-            distributorBadge = '<span class="distributor-badge boksan">복산</span>';
-            distributorName = '복산';
-            distributorClass = 'boksan';
-        } else {
-            distributorBadge = '<span class="distributor-badge geoweb">지오영</span>';
-            distributorName = '지오영';
-            distributorClass = 'geoweb';
-        }
+        const distInfo = getDistributorInfo(distributor);
+        const distributorName = distributor;
+        const distributorClass = distInfo.id;
+        const distributorBadge = `<span class="distributor-badge" data-symbol="${distInfo.symbol}">${distributor}</span>`;
 
         drugCard.innerHTML = `
             <div class="drug-header">
@@ -695,23 +668,15 @@ class ModernDrugSearchApp {
                     <div class="drugs-grid">
                         ${foundDrugs.slice(0, 6).map(drug => {
                             const distributor = drug.distributor || '지오영';
-                            let distributorName, distributorClass;
-                            if (distributor === '백제약품') {
-                                distributorName = '백제약품';
-                                distributorClass = 'baekje';
-                            } else if (distributor === '인천약품') {
-                                distributorName = '인천약품';
-                                distributorClass = 'incheon';
-                            } else {
-                                distributorName = '지오영';
-                                distributorClass = 'geoweb';
-                            }
+                            const _di = getDistributorInfo(distributor);
+                            const distributorName = distributor;
+                            const distributorClass = _di.id;
                             
                             return `
                             <div class="drug-card">
                                 <div class="drug-card-header">
                                     <h5>${drug.name}</h5>
-                                    <span class="distributor-badge ${distributorClass}">${distributorName}</span>
+                                    <span class="distributor-badge" data-symbol="${_di.symbol}">${distributorName}</span>
                                 </div>
                                 <div class="drug-info">
                                     ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
@@ -824,10 +789,7 @@ class ModernDrugSearchApp {
                             }
                         </div>
                         <div class="urgent-distributor">
-                            <span class="distributor-badge ${
-                                drug.distributor === '지오영' ? 'geoweb' :
-                                drug.distributor === '백제약품' ? 'baekje' : 'incheon'
-                            }">${drug.distributor}</span>
+                            <span class="distributor-badge" data-symbol="${getDistributorInfo(drug.distributor).symbol}">${drug.distributor}</span>
                         </div>
                     </div>
                 </div>

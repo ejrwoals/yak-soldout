@@ -160,7 +160,8 @@
     border: 1px solid var(--border-color);
 }
 
-/* 도매상 배지 스타일 */
+/* 도매상 배지 스타일 — data-symbol 어트리뷰트 기반 (하드코딩 없음)
+   새 도매상 추가 시 CSS 수정 불필요. registry.py의 badge_symbol 값이 자동 반영됩니다. */
 .distributor-badge {
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
@@ -170,69 +171,14 @@
     letter-spacing: 0.5px;
     white-space: nowrap;
     flex-shrink: 0;
-}
-
-.distributor-badge.geoweb {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     border: 2px solid var(--border-color);
     position: relative;
 }
 
-.distributor-badge.geoweb::before {
-    content: "●";
-    color: var(--text-secondary);
-    margin-right: 4px;
-}
-
-.distributor-badge.baekje {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
-    position: relative;
-}
-
-.distributor-badge.baekje::before {
-    content: "■";
-    color: var(--text-secondary);
-    margin-right: 4px;
-}
-
-.distributor-badge.incheon {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
-    position: relative;
-}
-
-.distributor-badge.incheon::before {
-    content: "▲";
-    color: var(--text-secondary);
-    margin-right: 4px;
-}
-
-.distributor-badge.geopharm {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
-    position: relative;
-}
-
-.distributor-badge.geopharm::before {
-    content: "◆";
-    color: var(--text-secondary);
-    margin-right: 4px;
-}
-
-.distributor-badge.boksan {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
-    position: relative;
-}
-
-.distributor-badge.boksan::before {
-    content: "★";
+.distributor-badge::before {
+    content: attr(data-symbol);
     color: var(--text-secondary);
     margin-right: 4px;
 }

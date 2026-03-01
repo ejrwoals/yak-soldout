@@ -1,129 +1,118 @@
 import os
 import chardet
 from pathlib import Path
-from typing import Optional
-from .drug_data import AppConfig
+from typing import Optional, Dict
+from .drug_data import AppConfig, DistributorCredentials
+
+# 순환 임포트 방지를 위해 함수 내부에서 registry 임포트
+def _get_registry():
+    from scrapers.registry import DISTRIBUTOR_REGISTRY
+    return DISTRIBUTOR_REGISTRY
+
+# extra_params 파라미터 키 → 한국어 suffix 매핑
+# 새 extra param 추가 시 여기에 추가
+_EXTRA_PARAM_KO_SUFFIX = {
+    "region": "지역",
+}
 
 
 class ConfigManager:
     """설정 파일 관리 클래스"""
-    
+
     def __init__(self, config_file: str = "info.txt"):
         self.config_file = config_file
         self.app_directory = Path(__file__).parent.parent
         self.config_path = self.app_directory / config_file
-    
+
     def _detect_encoding(self, file_path: Path) -> str:
         """파일 인코딩 자동 감지"""
         with open(file_path, 'rb') as file:
             raw_data = file.read()
             result = chardet.detect(raw_data)
             return result['encoding'] or 'utf-8'
-    
-    def load_config(self) -> AppConfig:
-        """info.txt 파일에서 설정 로드"""
+
+    def _read_raw_config(self) -> Dict[str, str]:
+        """info.txt 파일의 모든 key=value 쌍을 그대로 읽어 dict 반환"""
         if not self.config_path.exists():
             raise FileNotFoundError(f"설정 파일을 찾을 수 없습니다: {self.config_path}")
-        
+
         encoding = self._detect_encoding(self.config_path)
-        
-        # 기본값 설정
-        config_data = {
-            'geoweb_id': None,
-            'geoweb_password': None,
-            'baekje_id': None,
-            'baekje_password': None,
-            'incheon_id': None,
-            'incheon_password': None,
-            'geopharm_id': None,
-            'geopharm_password': None,
-            'geopharm_region': '01',
-            'boksan_id': None,
-            'boksan_password': None,
-            'repeat_interval_minutes': 30,
-            'alert_exclusion_days': 7
-        }
-        
+        raw: Dict[str, str] = {}
+
         try:
             with open(self.config_path, 'r', encoding=encoding) as file:
-                lines = file.readlines()
-                
-                for line in lines:
+                for line in file:
                     line = line.strip()
                     if not line or '=' not in line:
                         continue
-                        
                     try:
                         key, value = line.split('=', 1)
-                        key = key.strip()
-                        value = value.strip()
-                        
-                        # Legacy 한국어 키와 새로운 영어 키 모두 지원
-                        if key in ['지오영아이디', 'geoweb_id']:
-                            config_data['geoweb_id'] = value
-                        elif key in ['지오영비밀번호', 'geoweb_password']:
-                            config_data['geoweb_password'] = value
-                        elif key in ['백제아이디', 'baekje_id']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['baekje_id'] = value
-                        elif key in ['백제비밀번호', 'baekje_password']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['baekje_password'] = value
-                        elif key in ['인천약품아이디', 'incheon_id']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['incheon_id'] = value
-                        elif key in ['인천약품비밀번호', 'incheon_password']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['incheon_password'] = value
-                        elif key in ['지오팜아이디', 'geopharm_id']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['geopharm_id'] = value
-                        elif key in ['지오팜비밀번호', 'geopharm_password']:
-                            if len(value) > 1:  # 빈 값이 아닌 경우만
-                                config_data['geopharm_password'] = value
-                        elif key in ['지오팜지역', 'geopharm_region']:
-                            if value:
-                                config_data['geopharm_region'] = value
-                        elif key in ['복산아이디', 'boksan_id']:
-                            if len(value) > 1:
-                                config_data['boksan_id'] = value
-                        elif key in ['복산비밀번호', 'boksan_password']:
-                            if len(value) > 1:
-                                config_data['boksan_password'] = value
-                        elif key in ['반복실행간격(분)', 'repeat_interval_minutes']:
-                            config_data['repeat_interval_minutes'] = int(value)
-                        elif key in ['재고발견이후알림제외기간(일)', 'alert_exclusion_days']:
-                            try:
-                                config_data['alert_exclusion_days'] = int(value)
-                            except ValueError:
-                                print("info.txt / '재고발견이후알림제외기간' 설정 오류")
-                                config_data['alert_exclusion_days'] = 0
-                    
+                        raw[key.strip()] = value.strip()
                     except ValueError as e:
                         print(f"설정 파일 파싱 오류 (line: {line}): {e}")
-                        continue
-        
         except Exception as e:
             raise Exception(f"설정 파일 읽기 오류: {e}")
-        
-        # 필수 값 검증
-        if not config_data['geoweb_id'] or not config_data['geoweb_password']:
+
+        return raw
+
+    def load_config(self) -> AppConfig:
+        """info.txt 파일에서 설정 로드 (레지스트리 기반 동적 파싱)"""
+        raw = self._read_raw_config()
+        registry = _get_registry()
+
+        distributor_credentials: Dict[str, DistributorCredentials] = {}
+
+        for dist_id, dist_info in registry.items():
+            k = dist_info['korean_key']
+
+            # 한국어 키 우선, 영어 키 fallback
+            username = raw.get(f'{k}아이디') or raw.get(f'{dist_id}_id', '')
+            password = raw.get(f'{k}비밀번호') or raw.get(f'{dist_id}_password', '')
+
+            # 빈 값(길이 1 이하) 제거 — geoweb 제외
+            if dist_id != 'geoweb':
+                if len(username) <= 1:
+                    username = ''
+                if len(password) <= 1:
+                    password = ''
+
+            # extra_params 파싱 (region 등)
+            extra: Dict[str, str] = {}
+            for param_key, param_default in dist_info.get('extra_params', {}).items():
+                ko_suffix = _EXTRA_PARAM_KO_SUFFIX.get(param_key, param_key)
+                value = (raw.get(f'{k}{ko_suffix}')
+                         or raw.get(f'{dist_id}_{param_key}')
+                         or param_default)
+                extra[param_key] = value
+
+            if username or password:
+                distributor_credentials[dist_id] = DistributorCredentials(
+                    username=username,
+                    password=password,
+                    extra=extra,
+                )
+
+        # 필수 값 검증 (지오영)
+        geoweb_creds = distributor_credentials.get('geoweb')
+        if not geoweb_creds or not geoweb_creds.is_valid():
             raise ValueError("지오영 아이디와 비밀번호는 필수입니다")
-        
+
+        # 반복 간격 / 알림 제외 기간
+        try:
+            repeat_interval = int(raw.get('반복실행간격(분)') or raw.get('repeat_interval_minutes', 30))
+        except ValueError:
+            repeat_interval = 30
+
+        try:
+            alert_exclusion_days = int(raw.get('재고발견이후알림제외기간(일)') or raw.get('alert_exclusion_days', 7))
+        except ValueError:
+            print("info.txt / '재고발견이후알림제외기간' 설정 오류")
+            alert_exclusion_days = 0
+
         return AppConfig(
-            geoweb_id=config_data['geoweb_id'],
-            geoweb_password=config_data['geoweb_password'],
-            baekje_id=config_data['baekje_id'],
-            baekje_password=config_data['baekje_password'],
-            incheon_id=config_data['incheon_id'],
-            incheon_password=config_data['incheon_password'],
-            geopharm_id=config_data['geopharm_id'],
-            geopharm_password=config_data['geopharm_password'],
-            geopharm_region=config_data['geopharm_region'],
-            boksan_id=config_data['boksan_id'],
-            boksan_password=config_data['boksan_password'],
-            repeat_interval_minutes=config_data['repeat_interval_minutes'],
-            alert_exclusion_days=config_data['alert_exclusion_days']
+            distributor_credentials=distributor_credentials,
+            repeat_interval_minutes=repeat_interval,
+            alert_exclusion_days=alert_exclusion_days,
         )
     
     def get_app_directory(self) -> Path:

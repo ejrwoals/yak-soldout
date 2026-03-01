@@ -89,7 +89,7 @@ class BaekjeScraper(BaseScraper):
         """단일 약품 검색 (백제는 주로 보험코드로 검색하므로 빈 리스트 반환)"""
         return []
     
-    def _search_by_insurance_code(self, insurance_code: str) -> List[Drug]:
+    def _search_by_insurance_code(self, insurance_code: str, original_name: str = '') -> List[Drug]:
         """보험코드로 검색"""
         drugs = []
         

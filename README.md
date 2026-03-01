@@ -2,9 +2,9 @@
 
 > 약국을 위한 도매상 품절 약품 자동 모니터링 시스템
 
-주요 의약품 도매상(지오영, 백제약품)에서 품절된 약품의 재고 상황을 자동으로 모니터링하고 실시간으로 알림을 제공하는 시스템입니다. 
+주요 의약품 도매상(지오영, 백제약품, 인천약품, 지오팜, 복산)에서 품절된 약품의 재고 상황을 자동으로 모니터링하고 실시간으로 알림을 제공하는 시스템입니다.
 
-FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 웹 자동화 기술을 사용하여 효율성을 높입니다.
+FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 웹 자동화 기술을 사용하며, 레지스트리 패턴으로 도매상을 손쉽게 추가할 수 있는 확장형 아키텍처를 갖추고 있습니다.
 
 ## ✨ 주요 기능
 
@@ -113,7 +113,66 @@ set HEADLESS=false && python web_server.py
 ## 📁 프로젝트 구조
 
 ```
-( 추후 프로젝트 완료시에 채워 넣을 예정 )
+yak-soldout/
+├── web_server.py              # FastAPI 웹 서버 (개발 실행: python web_server.py)
+├── run_app.py                 # PyInstaller 배포 빌드용 진입점
+├── info.txt                   # 도매상 로그인 정보 (직접 생성 필요)
+├── geoweb-soldout-list.json   # 모니터링할 약품 목록
+├── exclusion-list.json        # 결과 표시 제외 목록 (자동 생성)
+│
+├── scrapers/                  # Playwright 기반 도매상 스크래퍼
+│   ├── registry.py            # 도매상 레지스트리 — Single Source of Truth
+│   ├── base_scraper.py        # 기본 스크래퍼 공통 기능
+│   ├── browser_manager.py     # 브라우저 인스턴스 중앙 관리
+│   ├── geoweb_scraper.py      # 지오영 스크래퍼
+│   ├── baekje_scraper.py      # 백제약품 스크래퍼
+│   ├── incheon_scraper.py     # 인천약품 스크래퍼
+│   ├── geopharm_scraper.py    # 지오팜 스크래퍼
+│   └── boksan_scraper.py      # 복산 스크래퍼
+│
+├── models/                    # 데이터 구조 및 설정
+│   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
+│   └── config.py              # ConfigManager — registry 기반 동적 설정 파싱
+│
+├── utils/                     # 유틸리티
+│   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반)
+│   ├── file_manager.py        # 약품 목록 / JSON 파일 I/O
+│   ├── data_processor.py      # 데이터 처리 및 분류
+│   └── notifications.py       # 크로스 플랫폼 알림
+│
+├── templates/
+│   └── index.html             # 웹 프론트엔드 HTML 템플릿
+│
+├── static/
+│   ├── css/                   # 기능별 CSS 파일
+│   └── js/                    # 모듈별 JavaScript 파일
+│
+├── tests/                     # 테스트 (단위 + 통합)
+│   ├── unit/
+│   └── integration/
+│
+└── legacy_codes/              # 구 Selenium/Streamlit 구현 (참고용)
+    └── g50.py
+```
+
+## 🏗️ 아키텍처: 도매상 레지스트리
+
+`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 뱃지 심볼 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다.
+
+```python
+# scrapers/registry.py
+DISTRIBUTOR_REGISTRY = {
+    "geoweb": {
+        "id": "geoweb",
+        "name": "지오영",
+        "korean_key": "지오영",       # info.txt 키 prefix
+        "scraper_class": GeowebScraper,
+        "default_enabled": True,
+        "badge_symbol": "●",
+        "extra_params": {},
+    },
+    # ... 나머지 도매상
+}
 ```
 
 ## 🔧 고급 설정
@@ -174,10 +233,42 @@ python -m pytest --cov=.
 ## 🔄 개발 가이드
 
 ### 새로운 도매상 추가하기
-1. `scrapers/` 디렉터리에 새 스크래퍼 클래스 생성
-2. `BaseScraper`를 상속하고 `login()`, `search_drug()` 메서드 구현
-3. `models/drug_data.py`의 `DistributorType` enum에 새 도매상 추가
-4. `web_server.py`에서 새 스크래퍼 통합
+
+레지스트리 패턴 덕분에 새 도매상 추가 시 수정해야 할 파일이 최소화되어 있습니다.
+
+**1단계**: `DistributorType` enum에 추가 (`models/drug_data.py`)
+
+```python
+class DistributorType(Enum):
+    # ... 기존 항목 ...
+    NEWDIST = "신규도매상명"  # 추가
+```
+
+**2단계**: 레지스트리에 항목 추가 (`scrapers/registry.py`)
+
+```python
+"newdist": {
+    "id": "newdist",
+    "name": "신규도매상명",
+    "korean_key": "신규도매상",    # info.txt 키 prefix
+    "scraper_class": NewDistScraper,
+    "default_enabled": False,
+    "badge_symbol": "※",
+    "extra_params": {},
+},
+```
+
+**3단계**: 스크래퍼 파일 생성 (`scrapers/newdist_scraper.py`) — `BaseScraper` 상속 후 `login()`, `search_by_insurance_codes()` 등 구현
+
+**4단계**: `info.txt`에 설정 키 추가
+
+```
+신규도매상아이디=
+신규도매상비밀번호=
+신규도매상활성화=false
+```
+
+이 4단계만으로 웹 UI, 검색 엔진, 설정 파싱, API 응답이 모두 자동으로 신규 도매상을 지원합니다.
 
 ### 프론트엔드 수정하기
 - CSS: `static/css/` 디렉터리의 기능별 파일 수정

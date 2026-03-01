@@ -1,12 +1,5 @@
 // 시스템 설정 모달 관리 클래스
-
-const DISTRIBUTOR_LIST = [
-    { id: 'geoweb',   name: '지오영' },
-    { id: 'baekje',   name: '백제약품' },
-    { id: 'incheon',  name: '인천약품' },
-    { id: 'geopharm', name: '지오팜' },
-    { id: 'boksan',   name: '복산' }
-];
+// 도매상 목록은 /api/system-settings 응답에서 동적으로 수신합니다.
 
 class SystemSettingsModal {
     constructor(mainApp) {
@@ -71,15 +64,19 @@ class SystemSettingsModal {
         this.repeatIntervalInput.value = settings.repeat_interval_minutes || '';
         this.alertExclusionDaysInput.value = settings.alert_exclusion_days || '';
 
-        // 도매상 활성화 체크박스 렌더링
+        // 도매상 활성화 체크박스 렌더링 (API 응답 기반 — 하드코딩 없음)
         const enables = settings.distributor_enables || {};
         if (this.enablesList) {
-            this.enablesList.innerHTML = DISTRIBUTOR_LIST.map(dist => `
-                <label class="distributor-enable-item">
-                    <input type="checkbox" id="sys_enabled_${dist.id}" ${enables[dist.id] ? 'checked' : ''}>
-                    <span>${dist.name}</span>
-                </label>
-            `).join('');
+            this.enablesList.innerHTML = Object.entries(enables).map(([id, enabled]) => {
+                // 도매상 표시 이름은 distributor_names 맵 또는 id를 그대로 사용
+                const name = (settings.distributor_names || {})[id] || id;
+                return `
+                    <label class="distributor-enable-item">
+                        <input type="checkbox" id="sys_enabled_${id}" ${enabled ? 'checked' : ''}>
+                        <span>${name}</span>
+                    </label>
+                `;
+            }).join('');
         }
     }
 
@@ -104,13 +101,11 @@ class SystemSettingsModal {
                 return;
             }
 
-            // 도매상 활성화 상태 수집
+            // 도매상 활성화 상태 수집 (렌더링된 체크박스 기준 — 동적)
             const distributorEnables = {};
-            DISTRIBUTOR_LIST.forEach(dist => {
-                const checkbox = document.getElementById(`sys_enabled_${dist.id}`);
-                if (checkbox) {
-                    distributorEnables[dist.id] = checkbox.checked;
-                }
+            this.enablesList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                const id = checkbox.id.replace('sys_enabled_', '');
+                distributorEnables[id] = checkbox.checked;
             });
 
             // 설정 데이터 구성

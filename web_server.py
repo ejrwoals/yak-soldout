@@ -80,6 +80,7 @@ from utils.file_manager import FileManager
 from utils.data_processor import DataProcessor
 from utils.notifications import AlertManager
 from utils.app_state import AppState
+from scrapers.registry import DISTRIBUTOR_REGISTRY
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search
 from scrapers.browser_manager import BrowserManager
@@ -162,19 +163,25 @@ async def get_status():
         config_file = app_state.file_manager.read_config_file()
         alert_exclusion_days = int(config_file.get('alert_exclusion_days', '7'))
         
+        # 도매상별 설정/활성화 상태 (레지스트리 루프)
+        distributor_status = []
+        for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+            k = dist_info['korean_key']
+            default_enabled = 'true' if dist_info['default_enabled'] else 'false'
+            enabled = config_file.get(f'{k}활성화', default_enabled).lower() == 'true'
+            configured = bool(app_state.config and app_state.config.has_credentials(dist_id) and enabled)
+            distributor_status.append({
+                "id": dist_id,
+                "name": dist_info['name'],
+                "configured": configured,
+                "enabled": enabled,
+                "badge_symbol": dist_info['badge_symbol'],
+            })
+
         return {
             "is_searching": app_state.is_searching,
             "config": {
-                "geoweb_configured": bool(app_state.config and app_state.config.geoweb_id and
-                                        app_state.file_manager.read_config_file().get('지오영활성화', 'true').lower() == 'true'),
-                "baekje_configured": bool(app_state.config and app_state.config.has_baekje_credentials() and
-                                        app_state.file_manager.read_config_file().get('백제활성화', 'false').lower() == 'true'),
-                "incheon_configured": bool(app_state.config and app_state.config.has_incheon_credentials() and
-                                        app_state.file_manager.read_config_file().get('인천약품활성화', 'false').lower() == 'true'),
-                "geopharm_configured": bool(app_state.config and app_state.config.has_geopharm_credentials() and
-                                        app_state.file_manager.read_config_file().get('지오팜활성화', 'false').lower() == 'true'),
-                "boksan_configured": bool(app_state.config and app_state.config.has_boksan_credentials() and
-                                        app_state.file_manager.read_config_file().get('복산활성화', 'false').lower() == 'true'),
+                "distributors": distributor_status,
                 "alert_exclusion_days": alert_exclusion_days
             },
             "files": {
@@ -196,16 +203,15 @@ async def start_search():
     
     # 활성화된 도매상이 있는지 확인
     config_file = app_state.file_manager.read_config_file()
-    geoweb_active = config_file.get('지오영활성화', 'true').lower() == 'true'
-    baekje_active = config_file.get('백제활성화', 'false').lower() == 'true'
-    incheon_active = config_file.get('인천약품활성화', 'false').lower() == 'true'
-    geopharm_active = config_file.get('지오팜활성화', 'false').lower() == 'true'
-    boksan_active = config_file.get('복산활성화', 'false').lower() == 'true'
 
     if not app_state.config or not app_state.config.geoweb_id:
         raise HTTPException(status_code=400, detail="지오영 계정 정보가 설정되지 않았습니다")
 
-    if not geoweb_active and not baekje_active and not incheon_active and not geopharm_active and not boksan_active:
+    any_active = any(
+        config_file.get(f'{info["korean_key"]}활성화', 'true' if info['default_enabled'] else 'false').lower() == 'true'
+        for info in DISTRIBUTOR_REGISTRY.values()
+    )
+    if not any_active:
         raise HTTPException(status_code=400, detail="활성화된 도매상이 없습니다. 도매상 설정에서 최소 하나를 활성화해주세요")
     
     # 검색 데이터 초기화 (새 사이클 시작)
@@ -245,69 +251,28 @@ async def get_distributor_settings():
         # info.txt 파일에서 설정 읽기
         config_data = app_state.file_manager.read_config_file()
         
-        # 동적으로 도매상 리스트 생성
+        # 레지스트리 기반 도매상 리스트 생성
         distributors = []
-        
-        # 지오영 정보 (항상 표시)
-        distributors.append({
-            "id": "geoweb",
-            "name": "지오영",
-            "enabled": config_data.get('지오영활성화', 'true').lower() == 'true',
-            "username": config_data.get('지오영아이디', ''),
-            "password": config_data.get('지오영비밀번호', '')
-        })
-        
-        # 백제약품 정보 (항상 표시)
-        distributors.append({
-            "id": "baekje",
-            "name": "백제약품",
-            "enabled": config_data.get('백제활성화', 'false').lower() == 'true',
-            "username": config_data.get('백제아이디', ''),
-            "password": config_data.get('백제비밀번호', '')
-        })
-
-        # 인천약품 정보 (항상 표시)
-        distributors.append({
-            "id": "incheon",
-            "name": "인천약품",
-            "enabled": config_data.get('인천약품활성화', 'false').lower() == 'true',
-            "username": config_data.get('인천약품아이디', ''),
-            "password": config_data.get('인천약품비밀번호', '')
-        })
-
-        # 지오팜 정보 (항상 표시, 지역 드롭다운 포함)
-        distributors.append({
-            "id": "geopharm",
-            "name": "지오팜",
-            "enabled": config_data.get('지오팜활성화', 'false').lower() == 'true',
-            "username": config_data.get('지오팜아이디', ''),
-            "password": config_data.get('지오팜비밀번호', ''),
-            "region": config_data.get('지오팜지역', '01')
-        })
-
-        # 복산 정보 (항상 표시)
-        distributors.append({
-            "id": "boksan",
-            "name": "복산",
-            "enabled": config_data.get('복산활성화', 'false').lower() == 'true',
-            "username": config_data.get('복산아이디', ''),
-            "password": config_data.get('복산비밀번호', '')
-        })
-
-        # info.txt에서 새로운 도매상 자동 감지 (아이디/비밀번호 패턴)
-        for key, value in config_data.items():
-            if key.endswith('아이디') and key not in ['지오영아이디', '백제아이디', '인천약품아이디', '지오팜아이디', '복산아이디']:
-                distributor_name = key.replace('아이디', '')
-                password_key = distributor_name + '비밀번호'
-                active_key = distributor_name + '활성화'
-                
-                distributors.append({
-                    "id": distributor_name.lower(),
-                    "name": distributor_name,
-                    "enabled": config_data.get(active_key, 'false').lower() == 'true',
-                    "username": value or '',
-                    "password": config_data.get(password_key, '')
-                })
+        for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+            k = dist_info['korean_key']
+            default_enabled = 'true' if dist_info['default_enabled'] else 'false'
+            entry = {
+                "id": dist_id,
+                "name": dist_info['name'],
+                "enabled": config_data.get(f'{k}활성화', default_enabled).lower() == 'true',
+                "username": config_data.get(f'{k}아이디', ''),
+                "password": config_data.get(f'{k}비밀번호', ''),
+                "badge_symbol": dist_info['badge_symbol'],
+            }
+            # extra_params (region 등) 자동 추가
+            for param_key, param_default in dist_info.get('extra_params', {}).items():
+                from models.config import _EXTRA_PARAM_KO_SUFFIX
+                ko_suffix = _EXTRA_PARAM_KO_SUFFIX.get(param_key, param_key)
+                entry[param_key] = config_data.get(f'{k}{ko_suffix}', param_default)
+            # region_options가 있으면 함께 전달 (프론트엔드에서 드롭다운 생성)
+            if 'region_options' in dist_info:
+                entry['region_options'] = dist_info['region_options']
+            distributors.append(entry)
         
         return {"distributors": distributors}
         
@@ -331,56 +296,35 @@ async def update_distributor_settings(settings: dict):
         # 기존 설정 읽기
         config_data = app_state.file_manager.read_config_file()
         
-        # 도매상 설정 업데이트
+        # 도매상 설정 업데이트 (레지스트리 역방향 조회)
+        from models.config import _EXTRA_PARAM_KO_SUFFIX
+        name_to_info = {info['name']: (dist_id, info) for dist_id, info in DISTRIBUTOR_REGISTRY.items()}
+
         for dist in distributors:
             dist_name = dist['name']
             enabled = dist.get('enabled', False)
             username = dist.get('username', '')
             password = dist.get('password', '')
-            
-            # 한국어 이름을 키로 사용
-            if dist_name == "지오영":
-                config_data['지오영활성화'] = 'true' if enabled else 'false'
-                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
-                if enabled:
-                    config_data['지오영아이디'] = username
-                    config_data['지오영비밀번호'] = password
-                    
-            elif dist_name == "백제약품":
-                config_data['백제활성화'] = 'true' if enabled else 'false'
-                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
-                if enabled:
-                    config_data['백제아이디'] = username
-                    config_data['백제비밀번호'] = password
 
-            elif dist_name == "인천약품":
-                config_data['인천약품활성화'] = 'true' if enabled else 'false'
-                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
-                if enabled:
-                    config_data['인천약품아이디'] = username
-                    config_data['인천약품비밀번호'] = password
-
-            elif dist_name == "지오팜":
-                config_data['지오팜활성화'] = 'true' if enabled else 'false'
-                region = dist.get('region', '01')
-                config_data['지오팜지역'] = region
-                if enabled:
-                    config_data['지오팜아이디'] = username
-                    config_data['지오팜비밀번호'] = password
-
-            elif dist_name == "복산":
-                config_data['복산활성화'] = 'true' if enabled else 'false'
-                if enabled:
-                    config_data['복산아이디'] = username
-                    config_data['복산비밀번호'] = password
-
+            if dist_name in name_to_info:
+                dist_id, dist_info = name_to_info[dist_name]
+                k = dist_info['korean_key']
             else:
-                # 새로운 도매상
-                config_data[f'{dist_name}활성화'] = 'true' if enabled else 'false'
-                # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시에는 기존 값 유지)
-                if enabled:
-                    config_data[f'{dist_name}아이디'] = username
-                    config_data[f'{dist_name}비밀번호'] = password
+                # 레지스트리에 없는 미지의 도매상 (fallback)
+                k = dist_name
+                dist_info = {'extra_params': {}}
+
+            config_data[f'{k}활성화'] = 'true' if enabled else 'false'
+            # 활성화된 경우에만 아이디/비밀번호 업데이트 (비활성화 시 기존 값 유지)
+            if enabled:
+                config_data[f'{k}아이디'] = username
+                config_data[f'{k}비밀번호'] = password
+
+            # extra_params (region 등) 업데이트
+            for param_key, param_default in dist_info.get('extra_params', {}).items():
+                ko_suffix = _EXTRA_PARAM_KO_SUFFIX.get(param_key, param_key)
+                if param_key in dist:
+                    config_data[f'{k}{ko_suffix}'] = dist[param_key]
         
         # info.txt 파일 저장
         app_state.file_manager.write_config_file(config_data)
@@ -528,11 +472,15 @@ async def get_system_settings():
             "repeat_interval_minutes": config_data.get('repeat_interval_minutes', '30'),
             "alert_exclusion_days": config_data.get('alert_exclusion_days', '7'),
             "distributor_enables": {
-                "geoweb": config_data.get('지오영활성화', 'true').lower() == 'true',
-                "baekje": config_data.get('백제활성화', 'false').lower() == 'true',
-                "incheon": config_data.get('인천약품활성화', 'false').lower() == 'true',
-                "geopharm": config_data.get('지오팜활성화', 'false').lower() == 'true',
-                "boksan": config_data.get('복산활성화', 'false').lower() == 'true'
+                dist_id: config_data.get(
+                    f'{info["korean_key"]}활성화',
+                    'true' if info['default_enabled'] else 'false'
+                ).lower() == 'true'
+                for dist_id, info in DISTRIBUTOR_REGISTRY.items()
+            },
+            "distributor_names": {
+                dist_id: info['name']
+                for dist_id, info in DISTRIBUTOR_REGISTRY.items()
             }
         }
     except Exception as e:
@@ -564,13 +512,11 @@ async def update_system_settings(data: dict):
         config_data['repeat_interval_minutes'] = str(repeat_interval)
         config_data['alert_exclusion_days'] = str(alert_exclusion_days)
 
-        # 도매상 활성화 상태 적용
+        # 도매상 활성화 상태 적용 (레지스트리 루프)
         if distributor_enables:
-            config_data['지오영활성화'] = 'true' if distributor_enables.get('geoweb', True) else 'false'
-            config_data['백제활성화'] = 'true' if distributor_enables.get('baekje', False) else 'false'
-            config_data['인천약품활성화'] = 'true' if distributor_enables.get('incheon', False) else 'false'
-            config_data['지오팜활성화'] = 'true' if distributor_enables.get('geopharm', False) else 'false'
-            config_data['복산활성화'] = 'true' if distributor_enables.get('boksan', False) else 'false'
+            for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+                k = dist_info['korean_key']
+                config_data[f'{k}활성화'] = 'true' if distributor_enables.get(dist_id, dist_info['default_enabled']) else 'false'
 
         # 파일에 저장
         app_state.file_manager.write_config_file(config_data)
