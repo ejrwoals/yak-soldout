@@ -174,7 +174,7 @@ async def get_status():
                 "name": dist_info['name'],
                 "configured": configured,
                 "enabled": enabled,
-                "badge_symbol": dist_info['badge_symbol'],
+                "color": distributors_config.get(dist_id, {}).get('color', dist_info['default_color']),
             })
 
         return {
@@ -261,7 +261,7 @@ async def get_distributor_settings():
                 "enabled": dist_conf.get('enabled', dist_info['default_enabled']),
                 "username": dist_conf.get('username', ''),
                 "password": dist_conf.get('password', ''),
-                "badge_symbol": dist_info['badge_symbol'],
+                "color": dist_conf.get('color', dist_info['default_color']),
             }
             # extra_params (region 등) 자동 추가
             for param_key, param_default in dist_info.get('extra_params', {}).items():
@@ -315,6 +315,10 @@ async def update_distributor_settings(settings: dict):
             for param_key in DISTRIBUTOR_REGISTRY[dist_id].get('extra_params', {}):
                 if param_key in dist:
                     dist_entry[param_key] = dist[param_key]
+
+            # color 업데이트 (활성화 여부와 무관하게 저장)
+            if 'color' in dist:
+                dist_entry['color'] = dist['color']
 
         # config.json 저장
         app_state.config_manager.save_raw_config(config_data)

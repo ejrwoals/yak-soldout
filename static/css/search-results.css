@@ -12,7 +12,7 @@
     background: var(--bg-tertiary);
     border-radius: 8px;
     padding: 1rem;
-    border-left: 4px solid var(--success);
+    border-left: 4px solid var(--dist-color, var(--success));
 }
 
 .drug-card h5 {
@@ -106,12 +106,9 @@
     font-size: 1rem;
 }
 
-.col-header.success {
-    background: var(--success);
-}
-
+.col-header.success,
 .col-header.warning {
-    background: var(--warning);
+    background: var(--text-secondary);
 }
 
 
@@ -126,17 +123,27 @@
     border-radius: 8px;
     padding: 0.75rem;
     margin-bottom: 0.75rem;
-    border-left: 3px solid var(--border-color);
+    border-left: 4px solid var(--dist-color, var(--border-color));
     opacity: 0;
     animation: fadeIn 0.3s ease forwards;
+    position: relative;
 }
 
-.drug-result-card.has-stock {
-    border-left-color: var(--success);
+/* 도매상 색상 배경 틴트 */
+.drug-result-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: var(--dist-color, transparent);
+    opacity: 0.06;
+    pointer-events: none;
+    z-index: 0;
 }
 
-.drug-result-card.soldout {
-    border-left-color: var(--warning);
+.drug-result-card > * {
+    position: relative;
+    z-index: 1;
 }
 
 
@@ -160,27 +167,20 @@
     border: 1px solid var(--border-color);
 }
 
-/* 도매상 배지 스타일 — data-symbol 어트리뷰트 기반 (하드코딩 없음)
-   새 도매상 추가 시 CSS 수정 불필요. registry.py의 badge_symbol 값이 자동 반영됩니다. */
+/* 도매상 배지 스타일 — --dist-color CSS 변수 기반 (하드코딩 없음)
+   새 도매상 추가 시 CSS 수정 불필요. 카드의 --dist-color 값이 자동 반영됩니다. */
 .distributor-badge {
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
     font-size: 0.8rem;
     font-weight: 600;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
     flex-shrink: 0;
     background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-color);
+    color: var(--dist-color, var(--text-primary));
+    border: 2px solid var(--dist-color, var(--border-color));
     position: relative;
-}
-
-.distributor-badge::before {
-    content: attr(data-symbol);
-    color: var(--text-secondary);
-    margin-right: 4px;
 }
 
 /* drug-header 스타일 개선 */

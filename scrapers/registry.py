@@ -18,7 +18,7 @@ DISTRIBUTOR_REGISTRY = {
         "korean_key": "지오영",       # info.txt 키 prefix: 지오영아이디, 지오영비밀번호, 지오영활성화
         "scraper_class": GeowebScraper,
         "default_enabled": True,
-        "badge_symbol": "●",
+        "default_color": "#0d9488",
         "extra_params": {},           # 추가 로그인 파라미터 schema: { param_key: default_value }
     },
     "baekje": {
@@ -27,7 +27,7 @@ DISTRIBUTOR_REGISTRY = {
         "korean_key": "백제",
         "scraper_class": BaekjeScraper,
         "default_enabled": False,
-        "badge_symbol": "■",
+        "default_color": "#3b82f6",
         "extra_params": {},
     },
     "incheon": {
@@ -36,7 +36,7 @@ DISTRIBUTOR_REGISTRY = {
         "korean_key": "인천약품",
         "scraper_class": IncheonScraper,
         "default_enabled": False,
-        "badge_symbol": "▲",
+        "default_color": "#d97706",
         "extra_params": {},
     },
     "geopharm": {
@@ -45,7 +45,7 @@ DISTRIBUTOR_REGISTRY = {
         "korean_key": "지오팜",
         "scraper_class": GeoPharmScraper,
         "default_enabled": False,
-        "badge_symbol": "◆",
+        "default_color": "#e11d48",
         "extra_params": {"region": "01"},   # region 파라미터, info.txt: 지오팜지역
         "region_options": {                  # 지오팜 전용: 지역 선택 옵션
             "01": "대구",
@@ -60,7 +60,7 @@ DISTRIBUTOR_REGISTRY = {
         "korean_key": "복산",
         "scraper_class": BoksanScraper,
         "default_enabled": False,
-        "badge_symbol": "★",
+        "default_color": "#7c3aed",
         "extra_params": {},
     },
 }

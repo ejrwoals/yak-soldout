@@ -1,5 +1,10 @@
 // 도매상 설정 모달 관리 클래스
 
+const COLOR_PALETTE = [
+    '#0d9488', '#3b82f6', '#d97706', '#e11d48', '#7c3aed',
+    '#059669', '#ea580c', '#0891b2', '#c026d3', '#475569'
+];
+
 class DistributorModal {
     constructor(mainApp) {
         this.app = mainApp;
@@ -31,10 +36,11 @@ class DistributorModal {
             }
         });
 
-        // 커스텀 드롭다운 이벤트 (이벤트 위임)
+        // 커스텀 드롭다운 이벤트 (이벤트 위임) — 지역 + 색상 공용
         document.addEventListener('click', (e) => {
             const trigger = e.target.closest('.custom-select-trigger');
             const option = e.target.closest('.custom-select-option');
+            const colorOption = e.target.closest('.color-select-option');
 
             if (trigger) {
                 const selectEl = trigger.closest('.custom-select');
@@ -42,6 +48,14 @@ class DistributorModal {
                 const isOpen = selectEl.classList.contains('open');
                 document.querySelectorAll('.custom-select.open').forEach(s => s.classList.remove('open'));
                 if (!isOpen) selectEl.classList.add('open');
+            } else if (colorOption) {
+                const selectEl = colorOption.closest('.custom-select');
+                const color = colorOption.dataset.value;
+                selectEl.dataset.value = color;
+                selectEl.querySelector('.color-preview').style.background = color;
+                selectEl.querySelectorAll('.color-select-option').forEach(o => o.classList.remove('selected'));
+                colorOption.classList.add('selected');
+                selectEl.classList.remove('open');
             } else if (option) {
                 const selectEl = option.closest('.custom-select');
                 selectEl.dataset.value = option.dataset.value;
@@ -121,6 +135,26 @@ class DistributorModal {
                 `;
             }
 
+            const currentColor = dist.color || '#475569';
+            const colorField = `
+                <div class="form-group">
+                    <label>표시 색상</label>
+                    <div class="custom-select color-select" id="color_${dist.id}" data-value="${currentColor}">
+                        <button class="custom-select-trigger" type="button">
+                            <span class="color-preview" style="background: ${currentColor}"></span>
+                            ${chevron}
+                        </button>
+                        <div class="custom-select-options color-select-options">
+                            ${COLOR_PALETTE.map(c => `
+                                <div class="color-select-option ${c === currentColor ? 'selected' : ''}" data-value="${c}">
+                                    <span class="color-dot" style="background: ${c}"></span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
             return `
                 <div class="distributor-section" data-id="${dist.id}" data-name="${dist.name}">
                     <div class="distributor-header">
@@ -135,6 +169,7 @@ class DistributorModal {
                             <label for="password_${dist.id}">비밀번호</label>
                             <input type="password" id="password_${dist.id}" value="${dist.password}">
                         </div>
+                        ${colorField}
                         ${regionField}
                     </div>
                 </div>
@@ -166,6 +201,11 @@ class DistributorModal {
 
                 if (regionEl) {
                     distData.region = regionEl.dataset.value;
+                }
+
+                const colorSelect = section.querySelector('.color-select');
+                if (colorSelect) {
+                    distData.color = colorSelect.dataset.value;
                 }
 
                 distributors.push(distData);

@@ -1,17 +1,17 @@
 // 약품 재고 자동 검색 - 모던 대시보드 JavaScript
 
-// 도매상 메타데이터 맵 (name → {id, badge_symbol})
+// 도매상 메타데이터 맵 (name → {id, color})
 // /api/status 응답의 config.distributors 배열로 초기화됩니다.
 let DISTRIBUTOR_MAP = {};
 
 function buildDistributorMap(distributors) {
     DISTRIBUTOR_MAP = Object.fromEntries(
-        (distributors || []).map(d => [d.name, { id: d.id, symbol: d.badge_symbol }])
+        (distributors || []).map(d => [d.name, { id: d.id, color: d.color }])
     );
 }
 
 function getDistributorInfo(distributorName) {
-    return DISTRIBUTOR_MAP[distributorName] || { id: 'geoweb', symbol: '●' };
+    return DISTRIBUTOR_MAP[distributorName] || { id: 'unknown', color: '#475569' };
 }
 
 class ModernDrugSearchApp {
@@ -597,10 +597,10 @@ class ModernDrugSearchApp {
         if (!col) return;
         
         const drugCard = document.createElement('div');
-        drugCard.className = `drug-result-card ${drug.has_stock ? 'has-stock' : 'soldout'} fade-in`;
-        
-        const statusIcon = drug.has_stock ? 
-            '<i class="bi bi-check-circle text-success"></i>' : 
+        drugCard.className = 'drug-result-card fade-in';
+
+        const statusIcon = drug.has_stock ?
+            '<i class="bi bi-check-circle text-success"></i>' :
             '<i class="bi bi-x-circle text-warning"></i>';
 
         // 도매상 정보 추출 (distributor 필드 사용)
@@ -608,7 +608,8 @@ class ModernDrugSearchApp {
         const distInfo = getDistributorInfo(distributor);
         const distributorName = distributor;
         const distributorClass = distInfo.id;
-        const distributorBadge = `<span class="distributor-badge" data-symbol="${distInfo.symbol}">${distributor}</span>`;
+        drugCard.style.setProperty('--dist-color', distInfo.color);
+        const distributorBadge = `<span class="distributor-badge">${distributor}</span>`;
 
         drugCard.innerHTML = `
             <div class="drug-header">
@@ -673,10 +674,10 @@ class ModernDrugSearchApp {
                             const distributorClass = _di.id;
                             
                             return `
-                            <div class="drug-card">
+                            <div class="drug-card" style="--dist-color: ${_di.color}">
                                 <div class="drug-card-header">
                                     <h5>${drug.name}</h5>
-                                    <span class="distributor-badge" data-symbol="${_di.symbol}">${distributorName}</span>
+                                    <span class="distributor-badge">${distributorName}</span>
                                 </div>
                                 <div class="drug-info">
                                     ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
@@ -788,8 +789,8 @@ class ModernDrugSearchApp {
                                 ${drug.incheon_stock !== '-' ? `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}`
                             }
                         </div>
-                        <div class="urgent-distributor">
-                            <span class="distributor-badge" data-symbol="${getDistributorInfo(drug.distributor).symbol}">${drug.distributor}</span>
+                        <div class="urgent-distributor" style="--dist-color: ${getDistributorInfo(drug.distributor).color}">
+                            <span class="distributor-badge">${drug.distributor}</span>
                         </div>
                     </div>
                 </div>

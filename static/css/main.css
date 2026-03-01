@@ -691,17 +691,7 @@ body {
     border-radius: 8px;
     padding: 1rem;
     transition: all 0.3s ease;
-    border-left: 4px solid var(--text-muted);
-}
-
-.drug-result-card.has-stock {
-    border-left-color: var(--success);
-    background: rgba(16, 185, 129, 0.05);
-}
-
-.drug-result-card.soldout {
-    border-left-color: var(--warning);
-    background: rgba(139, 92, 246, 0.1);
+    border-left: 4px solid var(--dist-color, var(--text-muted));
 }
 
 .drug-header {
