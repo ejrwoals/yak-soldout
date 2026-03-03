@@ -15,41 +15,41 @@ class DataProcessor:
         """결과 표시 제외 목록 처리 (JSON 형식, 도매상별로 구분)"""
         now = datetime.now()
         cleaned_exclusions = []
-        excluded_by_distributor = {"지오영": [], "백제약품": []}
-        
+        excluded_by_distributor: Dict[str, List[str]] = {}
+
         for exclusion in exclusion_list:
             if not isinstance(exclusion, dict):
                 continue
-            
+
             drug_name = exclusion.get('drugName', '')
             distributor = exclusion.get('distributor', '')
             date_str = exclusion.get('date', '')
             is_pinned = exclusion.get('isPinned', False)
-            
+
             # 핀된 항목은 항상 유지
             if is_pinned:
                 cleaned_exclusions.append(exclusion)
-                if distributor in excluded_by_distributor:
-                    excluded_by_distributor[distributor].append(drug_name)
+                if distributor:
+                    excluded_by_distributor.setdefault(distributor, []).append(drug_name)
                 continue
-            
+
             # 날짜 확인 (exclusion_days 이내의 항목만 유지)
             try:
                 exclusion_date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 days_diff = (now - exclusion_date).days
-                
+
                 if days_diff <= exclusion_days:
                     cleaned_exclusions.append(exclusion)
-                    if distributor in excluded_by_distributor:
-                        excluded_by_distributor[distributor].append(drug_name)
+                    if distributor:
+                        excluded_by_distributor.setdefault(distributor, []).append(drug_name)
                 # 오래된 항목은 자동 제거 (cleaned_exclusions에 추가하지 않음)
-                    
+
             except Exception as e:
                 # 날짜 파싱 실패 시 유지
                 print(f"결과 표시 제외 날짜 파싱 오류: {e}")
                 cleaned_exclusions.append(exclusion)
-                if distributor in excluded_by_distributor:
-                    excluded_by_distributor[distributor].append(drug_name)
+                if distributor:
+                    excluded_by_distributor.setdefault(distributor, []).append(drug_name)
         
         return cleaned_exclusions, excluded_by_distributor
     

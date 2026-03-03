@@ -228,7 +228,12 @@ def execute_search_sync(app_state, progress_queue=None):
         # 결과 표시 제외 목록 처리 (JSON 형식, 도매상별로 구분)
         cleaned_exclusions, excluded_by_distributor = \
             app_state.data_processor.process_alert_exclusions(exclusion_list, app_state.config.alert_exclusion_days)
-        
+
+        # 만료된 항목이 있으면 파일에서 제거
+        if len(cleaned_exclusions) != len(exclusion_list):
+            app_state.file_manager.write_alert_exclusions_json(cleaned_exclusions)
+            log_message(f"🧹 만료된 제외 항목 {len(exclusion_list) - len(cleaned_exclusions)}개 자동 삭제")
+
         # 웹 스크래핑 실행
         all_drugs = []
         errors = []
