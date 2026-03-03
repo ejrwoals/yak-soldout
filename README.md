@@ -77,7 +77,8 @@ cp config.example.json config.json
       "enabled": true,
       "username": "your_geoweb_username",
       "password": "your_geoweb_password",
-      "color": "#0d9488"
+      "color": "#0d9488",
+      "region": "seoul"
     },
     "baekje": {
       "enabled": false,
@@ -94,6 +95,8 @@ cp config.example.json config.json
 ```
 
 > **color 필드**: 도매상 구분 색상입니다. 웹 UI의 도매상 설정 모달에서 변경할 수 있으며, 생략 시 레지스트리의 `default_color` 값이 사용됩니다.
+
+> **region 필드**: 일부 도매상(지오영, 지오팜)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천) 또는 `"yeongnam"` (영남), 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택합니다.
 
 # 품절 약품 목록
 geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
@@ -186,9 +189,11 @@ yak-soldout/
 
 ## 🏗️ 아키텍처: 도매상 레지스트리
 
-`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다.
+`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다.
 
 검색 결과 카드는 도매상별 색상으로 시각적으로 구분됩니다. 각 도매상에 `default_color`가 지정되어 있으며, 사용자가 웹 UI의 도매상 설정 모달에서 색상을 변경하면 `config.json`에 저장되어 기본 색상을 덮어씁니다.
+
+일부 도매상은 지역별로 다른 서버를 사용합니다. `region_options`가 정의된 도매상(지오영, 지오팜)은 설정 모달에 지역 선택 드롭다운이 표시되며, 선택한 지역에 따라 스크래퍼가 해당 지역의 서버에 접속합니다. 기본 지역은 `extra_params`의 `region` 값으로 설정됩니다.
 
 ```python
 # scrapers/registry.py
@@ -200,7 +205,11 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeowebScraper,
         "default_enabled": True,
         "default_color": "#0d9488",   # 도매상 구분 색상 (카드 보더, 배경 틴트, 배지에 적용)
-        "extra_params": {},
+        "extra_params": {"region": "seoul"},   # 기본 지역 설정
+        "region_options": {                    # 도매상 설정 모달에 드롭다운으로 표시
+            "seoul": "서울, 경기, 인천",
+            "yeongnam": "영남",
+        },
     },
     # ... 나머지 도매상
 }

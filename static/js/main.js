@@ -625,7 +625,7 @@ class ModernDrugSearchApp {
             </div>
             <div class="drug-stock">
                 ${distributorBadge}
-                <span class="stock-item">메인: ${drug.main_stock}</span>
+                <span class="stock-item">재고: ${drug.main_stock}</span>
                 ${distributorClass === 'geoweb' && drug.incheon_stock !== '-' ?
                     `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}
             </div>
@@ -680,7 +680,7 @@ class ModernDrugSearchApp {
                                     <span class="distributor-badge">${distributorName}</span>
                                 </div>
                                 <div class="drug-info">
-                                    ${drug.main_stock ? `<span class="stock-badge">메인: ${drug.main_stock}</span>` : ''}
+                                    ${drug.main_stock ? `<span class="stock-badge">재고: ${drug.main_stock}</span>` : ''}
                                     ${distributorClass === 'geoweb' && drug.incheon_stock && drug.incheon_stock !== '-' ?
                                         `<span class="stock-badge">타센터: ${drug.incheon_stock}</span>` : ''}
                                 </div>
@@ -785,7 +785,7 @@ class ModernDrugSearchApp {
                                 drug.specifications.map(spec => 
                                     `<div class="stock-item">${spec.unit_display}: ${spec.main_display}</div>`
                                 ).join('') :
-                                `<span class="stock-item">메인: ${drug.main_stock}</span>
+                                `<span class="stock-item">재고: ${drug.main_stock}</span>
                                 ${drug.incheon_stock !== '-' ? `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}`
                             }
                         </div>

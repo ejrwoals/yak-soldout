@@ -19,7 +19,11 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeowebScraper,
         "default_enabled": True,
         "default_color": "#0d9488",
-        "extra_params": {},           # 추가 로그인 파라미터 schema: { param_key: default_value }
+        "extra_params": {"region": "seoul"},
+        "region_options": {
+            "seoul": "서울, 경기, 인천",
+            "yeongnam": "영남",
+        },
     },
     "baekje": {
         "id": "baekje",
@@ -46,12 +50,12 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeoPharmScraper,
         "default_enabled": False,
         "default_color": "#e11d48",
-        "extra_params": {"region": "01"},   # region 파라미터, info.txt: 지오팜지역
-        "region_options": {                  # 지오팜 전용: 지역 선택 옵션
-            "01": "대구",
-            "02": "대전",
-            "03": "광주",
-            "04": "서울",
+        "extra_params": {"region": "daegu"},
+        "region_options": {
+            "daegu": "대구",
+            "daejeon": "대전",
+            "gwangju": "광주",
+            "seoul": "서울",
         },
     },
     "boksan": {

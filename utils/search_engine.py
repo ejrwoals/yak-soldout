@@ -500,9 +500,11 @@ def search_geoweb_sync(app_state, drug_list: List[str], excluded_names: List[str
         scraper = GeowebScraper()
         page = browser_mgr.new_page()
         
-        # 로그인
+        # 로그인 (extra_params에서 region 등 추가 인자 자동 전달)
         log_message("🤖 지오영에 로그인하는 중입니다...")
-        if not scraper.login(page, app_state.config.geoweb_id, app_state.config.geoweb_password):
+        creds = app_state.config.get_credentials('geoweb')
+        login_extra = {k: creds.extra.get(k, v) for k, v in DISTRIBUTOR_REGISTRY['geoweb'].get('extra_params', {}).items()}
+        if not scraper.login(page, app_state.config.geoweb_id, app_state.config.geoweb_password, **login_extra):
             raise Exception("지오영 로그인 실패")
         
         log_message("✓ 지오영 로그인 성공")
@@ -523,14 +525,16 @@ def search_geoweb_sync(app_state, drug_list: List[str], excluded_names: List[str
                 if drugs:
                     drug = drugs[0]  # 첫 번째 결과 사용
                     main_stock = drug.main_stock if drug.main_stock else "정보없음"
-                    incheon_stock = drug.incheon_stock if drug.incheon_stock else "정보없음"
+                    # 영남 지역은 타센터가 없으므로 UI에서 숨김 처리
+                    geoweb_region = login_extra.get('region', 'seoul')
+                    incheon_stock = "-" if geoweb_region == "yeongnam" else (drug.incheon_stock if drug.incheon_stock else "정보없음")
                     
                     # 재고 상황을 더 명확하게 표시
                     main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
                     incheon_display = "품절" if incheon_stock == "품절" or incheon_stock == "0" else f"{incheon_stock}개"
                     
                     # 한 줄로 통합된 로그 메시지
-                    log_message(f"🔍 검색 완료 ({i}/{len(drug_list)}): {drug_name} ( 메인: {main_display} | 타센터: {incheon_display} )")
+                    log_message(f"🔍 검색 완료 ({i}/{len(drug_list)}): {drug_name} ( 재고: {main_display} | 타센터: {incheon_display} )")
                     
                     # 재고 발견 여부 확인
                     has_stock = drug.has_stock() if hasattr(drug, 'has_stock') else (main_stock != "품절" and main_stock != "0")

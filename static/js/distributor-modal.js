@@ -189,8 +189,6 @@ class DistributorModal {
                 const distributorName = section.dataset.name;
                 const usernameInput = section.querySelector('input[type="text"]');
                 const passwordInput = section.querySelector('input[type="password"]');
-                const regionEl = section.querySelector('.custom-select');
-
                 const distData = {
                     id: distributorId,
                     name: distributorName,
@@ -199,6 +197,7 @@ class DistributorModal {
                     password: passwordInput.value.trim()
                 };
 
+                const regionEl = section.querySelector(`#region_${distributorId}`);
                 if (regionEl) {
                     distData.region = regionEl.dataset.value;
                 }

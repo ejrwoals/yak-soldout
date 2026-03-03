@@ -305,6 +305,7 @@
   color: var(--text-primary);
   cursor: pointer;
   transition: background 0.1s ease;
+  white-space: nowrap;
 }
 
 .custom-select-option:hover {
@@ -922,6 +923,7 @@
 .settings-section .form-group {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.5rem;
   margin-bottom: 1.5rem;
 }

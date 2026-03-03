@@ -10,17 +10,25 @@ class GeoPharmScraper(BaseScraper):
     LOGIN_URL = "https://orderpharm.geo-pharm.com/login.php?url=/pharmorder/order.php"
     ORDER_URL = "https://orderpharm.geo-pharm.com/pharmorder/order.php"
 
-    REGION_OPTIONS = {
-        '01': '대구',
-        '02': '대전',
-        '03': '광주',
-        '04': '서울'
+    # 영어 키 → 웹사이트 지역 코드 매핑
+    REGION_CODES = {
+        'daegu': '01',
+        'daejeon': '02',
+        'gwangju': '03',
+        'seoul': '04',
+    }
+
+    REGION_NAMES = {
+        'daegu': '대구',
+        'daejeon': '대전',
+        'gwangju': '광주',
+        'seoul': '서울',
     }
 
     def __init__(self):
         super().__init__(DistributorType.GEOPHARM)
 
-    def login(self, page: Page, username: str, password: str, region: str = '01') -> bool:
+    def login(self, page: Page, username: str, password: str, region: str = 'daegu') -> bool:
         """지오팜 로그인"""
         try:
             self.page = page
@@ -29,10 +37,11 @@ class GeoPharmScraper(BaseScraper):
             page.goto(self.LOGIN_URL, wait_until='networkidle')
             print(f"🌐 지오팜 로그인 페이지 로드 완료: {page.url}")
 
-            # 지역 선택
-            page.select_option('#loginarea', region)
+            # 영어 키 → 웹사이트 코드 변환 후 지역 선택
+            region_code = self.REGION_CODES.get(region, '01')
+            page.select_option('#loginarea', region_code)
             page.wait_for_timeout(300)
-            print(f"🗺️ 지오팜 지역 선택: {region} ({self.REGION_OPTIONS.get(region, '알 수 없음')})")
+            print(f"🗺️ 지오팜 지역 선택: {region} ({self.REGION_NAMES.get(region, '알 수 없음')})")
 
             # 아이디/비밀번호 입력
             self.wait_and_fill('#user_id', username)

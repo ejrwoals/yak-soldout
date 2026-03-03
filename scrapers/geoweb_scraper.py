@@ -7,17 +7,27 @@ from models.drug_data import Drug, DistributorType
 
 class GeowebScraper(BaseScraper):
     """지오영 웹사이트 스크래퍼"""
-    
+
+    REGION_URLS = {
+        "seoul": "https://order.geoweb.kr",
+        "yeongnam": "https://bpm.geoweb.kr",
+    }
+
     def __init__(self):
         super().__init__(DistributorType.GEOWEB)
         self.base_url = "https://order.geoweb.kr"
+        self.region = "seoul"
         self.insurance_code_dict = {}  # 보험코드 매핑 (백제 검색용)
-    
-    def login(self, page: Page, username: str, password: str) -> bool:
+
+    def login(self, page: Page, username: str, password: str, region: str = 'seoul') -> bool:
         """지오영 로그인"""
         try:
             self.page = page
-            
+
+            # 지역에 따라 base_url 설정
+            self.region = region
+            self.base_url = self.REGION_URLS.get(region, self.REGION_URLS["seoul"])
+
             # 로그인 페이지로 이동
             self.page.goto(f"{self.base_url}/Member/Login")
             
@@ -195,16 +205,16 @@ class GeowebScraper(BaseScraper):
             if not drug_name:
                 return drugs
             
-            # 타센터 재고 확인
-            incheon_stock = self._get_incheon_stock()
-            
+            # 타센터 재고 확인 (영남 지역은 타센터 자체가 없으므로 DOM 조회 스킵)
+            incheon_stock = self._get_incheon_stock() if self.region != "yeongnam" else ""
+
             # 비고 정보
             notes = self._get_notes()
-            
+
             # 보험코드 매핑 저장 (백제 검색용)
             if insurance_code:
                 self.insurance_code_dict[insurance_code] = original_drug_name
-            
+
             # Drug 객체 생성
             drug = self.create_drug(
                 name=drug_name,
@@ -214,7 +224,7 @@ class GeowebScraper(BaseScraper):
                 notes=notes,
                 company=company
             )
-            
+
             drugs.append(drug)
             
         except Exception as e:
@@ -260,7 +270,7 @@ class GeowebScraper(BaseScraper):
             print("메인 페이지가 아님. 이동 중...")
             try:
                 # 메인 페이지로 이동
-                self.page.goto("https://order.geoweb.kr/", wait_until="domcontentloaded")
+                self.page.goto(f"{self.base_url}/", wait_until="domcontentloaded")
                 
                 # 팝업 제거
                 self._handle_geoweb_popups()
