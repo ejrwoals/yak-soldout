@@ -323,7 +323,8 @@ class DrugListModal {
                 throw new Error(error.detail || '저장 실패');
             }
             
-            this.app.showSuccess('약품 목록이 저장되었습니다');
+            const baseMsg = '약품 목록이 저장되었습니다';
+            this.app.showSuccess(this.app.isSearching ? `${baseMsg}. 다음 검색부터 적용됩니다` : baseMsg);
             
             // 저장 성공 시 원본 데이터 업데이트 및 임시 스타일 제거
             this.originalDrugs = [...this.currentDrugs];

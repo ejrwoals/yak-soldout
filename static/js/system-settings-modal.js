@@ -177,7 +177,8 @@ class SystemSettingsModal {
                 throw new Error(error.detail || '저장 실패');
             }
 
-            this.app.showSuccess('시스템 설정이 저장되었습니다');
+            const baseMsg = '시스템 설정이 저장되었습니다';
+            this.app.showSuccess(this.app.isSearching ? `${baseMsg}. 다음 검색부터 적용됩니다` : baseMsg);
             this.close();
 
             // 상태 새로고침 (활성화 도매상 변경 반영)

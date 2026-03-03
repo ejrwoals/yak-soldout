@@ -232,7 +232,8 @@ class DistributorModal {
                 throw new Error(error.detail || '저장 실패');
             }
 
-            this.app.showSuccess('설정이 저장되었습니다');
+            const baseMsg = '설정이 저장되었습니다';
+            this.app.showSuccess(this.app.isSearching ? `${baseMsg}. 다음 검색부터 적용됩니다` : baseMsg);
             this.close();
 
             // 상태 새로고침

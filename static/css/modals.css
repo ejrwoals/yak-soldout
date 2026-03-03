@@ -343,6 +343,8 @@
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-shrink: 0;
+  margin-left: 1rem;
 }
 
 .btn-add-drug {
