@@ -9,6 +9,7 @@ from scrapers.baekje_scraper import BaekjeScraper
 from scrapers.incheon_scraper import IncheonScraper
 from scrapers.geopharm_scraper import GeoPharmScraper
 from scrapers.boksan_scraper import BoksanScraper
+from scrapers.upharmmall_scraper import UpharmMallScraper
 
 # 도매상 등록 순서 = 검색 실행 순서 (지오영은 항상 첫 번째 — 보험코드 수집 역할)
 DISTRIBUTOR_REGISTRY = {
@@ -65,6 +66,15 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": BoksanScraper,
         "default_enabled": False,
         "default_color": "#7c3aed",
+        "extra_params": {},
+    },
+    "upharmmall": {
+        "id": "upharmmall",
+        "name": "유팜몰",
+        "korean_key": "유팜몰",
+        "scraper_class": UpharmMallScraper,
+        "default_enabled": False,
+        "default_color": "#059669",
         "extra_params": {},
     },
 }

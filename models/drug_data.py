@@ -10,6 +10,7 @@ class DistributorType(Enum):
     INCHEON = "인천약품"
     GEOPHARM = "지오팜"
     BOKSAN = "복산"
+    UPHARMMALL = "유팜몰"
 
 
 @dataclass
