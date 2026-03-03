@@ -628,6 +628,10 @@ class ModernDrugSearchApp {
                 <span class="stock-item">재고: ${drug.main_stock}</span>
                 ${distributorClass === 'geoweb' && drug.incheon_stock !== '-' ?
                     `<span class="stock-item">타센터: ${drug.incheon_stock}</span>` : ''}
+                ${drug.notes ? (() => {
+                    const m = drug.notes.match(/^(\d+)\/(\d+)(.+)$/);
+                    return m ? `<span class="stock-item notes-summary"><span style="color:#16a34a;font-weight:600">${m[1]}</span><span style="color:#9ca3af">/${m[2]}</span><span style="color:#9ca3af">${m[3]}</span></span>` : '';
+                })() : ''}
             </div>
         `;
         

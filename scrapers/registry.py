@@ -10,6 +10,7 @@ from scrapers.incheon_scraper import IncheonScraper
 from scrapers.geopharm_scraper import GeoPharmScraper
 from scrapers.boksan_scraper import BoksanScraper
 from scrapers.upharmmall_scraper import UpharmMallScraper
+from scrapers.hmpmall_scraper import HmpMallScraper
 
 # 도매상 등록 순서 = 검색 실행 순서 (지오영은 항상 첫 번째 — 보험코드 수집 역할)
 DISTRIBUTOR_REGISTRY = {
@@ -76,5 +77,18 @@ DISTRIBUTOR_REGISTRY = {
         "default_enabled": False,
         "default_color": "#059669",
         "extra_params": {},
+    },
+    "hmpmall": {
+        "id": "hmpmall",
+        "name": "HMP몰",
+        "korean_key": "HMP몰",
+        "scraper_class": HmpMallScraper,
+        "default_enabled": False,
+        "default_color": "#ea580c",
+        "extra_params": {"region": "41"},
+        "region_options": {
+            "41": "경기",
+            "47": "경북",
+        },
     },
 }

@@ -416,7 +416,8 @@ def search_distributor_sync(dist_id: str, app_state, insurance_codes: Dict[str, 
                             "company": drug.company if hasattr(drug, 'company') else dist_name,
                             "distributor": dist_name,
                             "has_stock": has_stock,
-                            "unit": drug.unit
+                            "unit": drug.unit,
+                            "notes": drug.notes if hasattr(drug, 'notes') and drug.notes != "-" else ""
                         }
                         app_state.add_drug_result(drug_data, has_stock)
 
