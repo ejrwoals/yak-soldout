@@ -8,8 +8,8 @@ class DistributorType(Enum):
     GEOWEB = "지오영"
     BAEKJE = "백제"
     INCHEON = "인천약품"
-    GEOPHARM = "지오팜"
     BOKSAN = "복산"
+    GEOPHARM = "지오팜"
     UPHARMMALL = "유팜몰"
     HMPMALL = "HMP몰"
 

@@ -45,6 +45,15 @@ DISTRIBUTOR_REGISTRY = {
         "default_color": "#d97706",
         "extra_params": {},
     },
+    "boksan": {
+        "id": "boksan",
+        "name": "복산",
+        "korean_key": "복산",
+        "scraper_class": BoksanScraper,
+        "default_enabled": False,
+        "default_color": "#7c3aed",
+        "extra_params": {},
+    },
     "geopharm": {
         "id": "geopharm",
         "name": "지오팜",
@@ -59,15 +68,6 @@ DISTRIBUTOR_REGISTRY = {
             "gwangju": "광주",
             "seoul": "서울",
         },
-    },
-    "boksan": {
-        "id": "boksan",
-        "name": "복산",
-        "korean_key": "복산",
-        "scraper_class": BoksanScraper,
-        "default_enabled": False,
-        "default_color": "#7c3aed",
-        "extra_params": {},
     },
     "upharmmall": {
         "id": "upharmmall",
