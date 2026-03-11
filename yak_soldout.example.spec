@@ -31,11 +31,9 @@ a = Analysis(
     datas=[
         ('templates', 'templates'),
         ('static', 'static'),
-        ('data', 'data'),
         ('build_config.json', '.'),
         ('geoweb-soldout-list.json', '.'),
         ('exclusion-list.json', '.'),
-        ('info.txt', '.'),
         ('web_server.py', '.'),
         ('models', 'models'),
         ('utils', 'utils'),
