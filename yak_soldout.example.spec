@@ -32,6 +32,7 @@ a = Analysis(
         ('templates', 'templates'),
         ('static', 'static'),
         ('data', 'data'),
+        ('build_config.json', '.'),
         ('geoweb-soldout-list.json', '.'),
         ('exclusion-list.json', '.'),
         ('info.txt', '.'),

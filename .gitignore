@@ -209,6 +209,7 @@ __marimo__/
 # data
 data/
 *.json
+!build_config.example.json
 
 # claude
 .claude/

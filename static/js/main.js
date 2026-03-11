@@ -63,13 +63,28 @@ class ModernDrugSearchApp {
         this.setupEventListeners();
         this.setupWebSocketManager();
         this.loadStatus();
-        
+        this.loadBuildInfo();
+
         // 주기적 상태 업데이트
         setInterval(() => this.loadStatus(), 15000);
-        
+
         console.log('🚀 품절 약품 체커가 시작되었습니다');
     }
     
+    async loadBuildInfo() {
+        try {
+            const resp = await fetch('/api/build-info');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const el = document.getElementById('pharmacyLabel');
+            if (el && data.pharmacy_name) {
+                el.textContent = `for ${data.pharmacy_name}`;
+            }
+        } catch (e) {
+            console.warn('빌드 정보 로드 실패:', e);
+        }
+    }
+
     setupEventListeners() {
         // 테마 토글
         this.elements.themeToggle?.addEventListener('click', () => this.toggleTheme());

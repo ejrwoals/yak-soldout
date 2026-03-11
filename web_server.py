@@ -81,6 +81,7 @@ from utils.data_processor import DataProcessor
 from utils.notifications import AlertManager
 from utils.app_state import AppState
 from scrapers.registry import DISTRIBUTOR_REGISTRY
+from models.build_config import get_visible_registry, get_pharmacy_name
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search
 from scrapers.browser_manager import BrowserManager
@@ -143,6 +144,11 @@ async def websocket_endpoint(websocket: WebSocket):
             shutdown_thread.daemon = True
             shutdown_thread.start()
 
+@app.get("/api/build-info")
+async def get_build_info():
+    """빌드 정보 조회 (약국명 등)"""
+    return {"pharmacy_name": get_pharmacy_name()}
+
 @app.get("/api/status")
 async def get_status():
     """현재 상태 조회 (실시간 메모리 기반)"""
@@ -166,7 +172,7 @@ async def get_status():
         # 도매상별 설정/활성화 상태 (레지스트리 루프)
         distributors_config = config_data.get('distributors', {})
         distributor_status = []
-        for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+        for dist_id, dist_info in get_visible_registry().items():
             enabled = distributors_config.get(dist_id, {}).get('enabled', dist_info['default_enabled'])
             configured = bool(app_state.config and app_state.config.has_credentials(dist_id) and enabled)
             distributor_status.append({
@@ -209,7 +215,7 @@ async def start_search():
 
     any_active = any(
         distributors_config.get(dist_id, {}).get('enabled', info['default_enabled'])
-        for dist_id, info in DISTRIBUTOR_REGISTRY.items()
+        for dist_id, info in get_visible_registry().items()
     )
     if not any_active:
         raise HTTPException(status_code=400, detail="활성화된 도매상이 없습니다. 도매상 설정에서 최소 하나를 활성화해주세요")
@@ -253,7 +259,7 @@ async def get_distributor_settings():
 
         # 레지스트리 기반 도매상 리스트 생성
         distributors = []
-        for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+        for dist_id, dist_info in get_visible_registry().items():
             dist_conf = distributors_config.get(dist_id, {})
             entry = {
                 "id": dist_id,
@@ -295,7 +301,7 @@ async def update_distributor_settings(settings: dict):
         distributors_config = config_data.setdefault('distributors', {})
 
         # 도매상 설정 업데이트
-        name_to_id = {info['name']: dist_id for dist_id, info in DISTRIBUTOR_REGISTRY.items()}
+        name_to_id = {info['name']: dist_id for dist_id, info in get_visible_registry().items()}
 
         for dist in distributors:
             dist_id = name_to_id.get(dist['name'])
@@ -469,11 +475,11 @@ async def get_system_settings():
             "alert_exclusion_days": monitoring.get('alert_exclusion_days', 7),
             "distributor_enables": {
                 dist_id: distributors_config.get(dist_id, {}).get('enabled', info['default_enabled'])
-                for dist_id, info in DISTRIBUTOR_REGISTRY.items()
+                for dist_id, info in get_visible_registry().items()
             },
             "distributor_names": {
                 dist_id: info['name']
-                for dist_id, info in DISTRIBUTOR_REGISTRY.items()
+                for dist_id, info in get_visible_registry().items()
             }
         }
     except Exception as e:
@@ -505,7 +511,7 @@ async def update_system_settings(data: dict):
         # 도매상 활성화 상태 적용 (레지스트리 루프)
         if distributor_enables:
             distributors_config = config_data.setdefault('distributors', {})
-            for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+            for dist_id, dist_info in get_visible_registry().items():
                 distributors_config.setdefault(dist_id, {})['enabled'] = \
                     distributor_enables.get(dist_id, dist_info['default_enabled'])
 

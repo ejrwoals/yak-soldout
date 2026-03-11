@@ -162,6 +162,7 @@ yak-soldout/
 ├── web_server.py              # FastAPI 웹 서버 (개발 실행: python web_server.py)
 ├── run_app.py                 # PyInstaller 배포 빌드용 진입점
 ├── config.json                # 도매상 로그인 정보 (직접 생성 필요, JSON 형식)
+├── build_config.json          # 약국별 빌드 설정 (선택사항, PyInstaller 배포 시 사용)
 ├── geoweb-soldout-list.json   # 모니터링할 약품 목록
 ├── exclusion-list.json        # 결과 표시 제외 목록 (자동 생성)
 │
@@ -179,7 +180,8 @@ yak-soldout/
 │
 ├── models/                    # 데이터 구조 및 설정
 │   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
-│   └── config.py              # ConfigManager — config.json 기반 설정 관리 (자동 마이그레이션 포함)
+│   ├── config.py              # ConfigManager — config.json 기반 설정 관리 (자동 마이그레이션 포함)
+│   └── build_config.py        # 빌드 설정 관리 — build_config.json 기반 약국별 커스터마이징
 │
 ├── utils/                     # 유틸리티
 │   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반)
@@ -204,7 +206,7 @@ yak-soldout/
 
 ## 🏗️ 아키텍처: 도매상 레지스트리
 
-`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다.
+`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다. `build_config.json`이 존재하면 `get_visible_registry()` 함수가 빌드 설정에 따라 필터링된 레지스트리를 반환하여, 특정 약국에 불필요한 도매상을 숨길 수 있습니다.
 
 검색 결과 카드는 도매상별 색상으로 시각적으로 구분됩니다. 각 도매상에 `default_color`가 지정되어 있으며, 사용자가 웹 UI의 도매상 설정 모달에서 색상을 변경하면 `config.json`에 저장되어 기본 색상을 덮어씁니다.
 
@@ -248,6 +250,35 @@ DISTRIBUTOR_REGISTRY = {
 - `repeat_interval_minutes`: 검색 반복 간격 (분)
 - `alert_exclusion_days`: 결과 표시 제외 기간 (일) - 고정하지 않은 항목이 자동 삭제되는 기간
 
+### 약국별 빌드 설정 (build_config.json)
+
+특정 약국에 배포할 때 표시할 도매상을 제한하고 약국 이름을 설정할 수 있습니다. 이 파일은 **선택사항**이며, 파일이 없으면 전체 도매상이 표시됩니다 (개발 환경 호환).
+
+```bash
+# 예시 파일을 복사하여 생성
+cp build_config.example.json build_config.json
+```
+
+```json
+{
+  "pharmacy_name": "가나안약국",
+  "distributors": {
+    "geoweb": 1,
+    "baekje": 0,
+    "incheon": 0,
+    "boksan": 0,
+    "geopharm": 1,
+    "upharmmall": 1,
+    "hmpmall": 1
+  }
+}
+```
+
+- **pharmacy_name**: 웹 인터페이스 헤더에 "for XXX약국" 형태로 표시됩니다. 생략하면 표시되지 않습니다.
+- **distributors**: 각 도매상의 표시 여부를 `1`(표시) 또는 `0`(숨김)으로 설정합니다. 누락된 도매상은 기본 표시(1)로 처리됩니다. `0`으로 설정된 도매상은 UI, 설정, 검색에서 완전히 제외됩니다.
+
+PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약국별로 맞춤 배포가 가능합니다.
+
 ## 📊 데이터 파일
 
 ### 필수 파일
@@ -276,6 +307,7 @@ DISTRIBUTOR_REGISTRY = {
 - `GET /api/exclusion-list` - 결과 표시 제외 목록 조회
 - `PUT /api/exclusion-list` - 결과 표시 제외 목록 업데이트
 - `POST /api/exclusion-add` - 개별 약품을 결과 표시 제외 목록에 추가
+- `GET /api/build-info` - 빌드 정보 조회 (약국명 등)
 
 ### WebSocket
 - `WS /ws` - 실시간 로그 스트리밍 및 검색 진행 상황 업데이트

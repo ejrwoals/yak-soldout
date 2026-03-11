@@ -1,0 +1,12 @@
+{
+  "pharmacy_name": "가나안약국",
+  "distributors": {
+    "geoweb": 1,
+    "baekje": 0,
+    "incheon": 0,
+    "boksan": 0,
+    "geopharm": 1,
+    "upharmmall": 1,
+    "hmpmall": 1
+  }
+}

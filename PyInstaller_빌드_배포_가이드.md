@@ -13,6 +13,11 @@ playwright install chromium
 ```
 
 ```powershell
+# 약국별 빌드 설정 (build_config.json 생성)
+# build_config.example.json을 복사하여 대상 약국에 맞게 수정
+Copy-Item build_config.example.json build_config.json
+# build_config.json에서 pharmacy_name과 사용할 도매상(1/0)을 설정
+
 # 이전 빌드 파일 정리 (권한 문제 해결)
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 
@@ -22,7 +27,7 @@ pyinstaller yak_soldout.spec
 # dist 폴더로 이동
 cd dist
 
-# ZIP 파일 생성
+# ZIP 파일 생성 (약국명은 build_config.json의 pharmacy_name에 맞게 변경)
 Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for가나안약국.zip" -Force
 ```
 
@@ -270,6 +275,7 @@ a = Analysis(
         ('templates', 'templates'),
         ('static', 'static'),
         ('data', 'data'),
+        ('build_config.json', '.'),  # 약국별 빌드 설정
         ('geoweb-soldout-list.json', '.'),
         ('exclusion-list.json', '.'),
         ('info.txt', '.'),
@@ -386,7 +392,7 @@ ls dist
 # dist 폴더로 이동
 cd dist
 
-# ZIP 파일 생성
+# ZIP 파일 생성 (약국명은 build_config.json의 pharmacy_name에 맞게 변경)
 Compress-Archive -Path "약품재고검색" -DestinationPath "품절약똑똑이for가나안약국.zip" -Force
 
 # 또는 7zip 사용 (설치된 경우)
