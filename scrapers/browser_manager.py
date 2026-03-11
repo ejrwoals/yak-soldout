@@ -71,20 +71,30 @@ class BrowserManager:
         # PyInstaller 환경에서는 브라우저 실행 파일 경로 직접 지정
         if getattr(sys, 'frozen', False):
             try:
+                import glob
                 base_path = sys._MEIPASS
-                # 가능한 브라우저 경로들 시도
-                possible_paths = [
-                    os.path.join(base_path, 'ms-playwright', 'chromium-1181', 'chrome-win', 'chrome.exe'),
-                    os.path.join(base_path, 'ms-playwright', 'chromium_headless_shell-1181', 'chrome-win', 'headless_shell.exe'),
+                pw_dir = os.path.join(base_path, 'ms-playwright')
+
+                # 버전에 관계없이 동적으로 브라우저 실행 파일 탐색
+                search_patterns = [
+                    os.path.join(pw_dir, 'chromium-*', 'chrome-win', 'chrome.exe'),
+                    os.path.join(pw_dir, 'chromium_headless_shell-*', 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
+                    os.path.join(pw_dir, 'chromium_headless_shell-*', 'chrome-win', 'headless_shell.exe'),
+                    os.path.join(pw_dir, 'chromium-*', 'chrome-linux', 'chrome'),
+                    os.path.join(pw_dir, 'chromium-*', 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
                 ]
-                
-                for browser_path in possible_paths:
-                    if os.path.exists(browser_path):
-                        launch_options['executable_path'] = browser_path
-                        print(f"✅ 브라우저 실행 파일 발견: {browser_path}")
+
+                found = False
+                for pattern in search_patterns:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        launch_options['executable_path'] = matches[0]
+                        print(f"✅ 브라우저 실행 파일 발견: {matches[0]}")
+                        found = True
                         break
-                else:
-                    print("⚠️ 내장 브라우저를 찾을 수 없습니다. 기본 설정으로 시도합니다.")
+
+                if not found:
+                    print(f"⚠️ 내장 브라우저를 찾을 수 없습니다. ms-playwright 내용: {os.listdir(pw_dir) if os.path.exists(pw_dir) else '디렉터리 없음'}")
             except Exception as e:
                 print(f"⚠️ 브라우저 경로 설정 중 오류: {e}")
         
