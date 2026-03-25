@@ -26,6 +26,7 @@ DISTRIBUTOR_REGISTRY = {
         "region_options": {
             "seoul": "서울, 경기, 인천",
             "yeongnam": "영남",
+            "daejeon": "대전",
         },
     },
     "baekje": {

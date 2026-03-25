@@ -115,7 +115,7 @@ cp config.example.json config.json
 
 > **color 필드**: 도매상 구분 색상입니다. 웹 UI의 도매상 설정 모달에서 변경할 수 있으며, 생략 시 레지스트리의 `default_color` 값이 사용됩니다.
 
-> **region 필드**: 일부 도매상(지오영, 지오팜, HMP몰)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천) 또는 `"yeongnam"` (영남), 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택, HMP몰은 `"41"` (경기) 또는 `"47"` (경북)을 선택합니다.
+> **region 필드**: 일부 도매상(지오영, 지오팜, HMP몰)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천), `"yeongnam"` (영남), `"daejeon"` (대전) 중 선택, 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택, HMP몰은 `"41"` (경기) 또는 `"47"` (경북)을 선택합니다.
 
 # 품절 약품 목록
 geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
@@ -242,6 +242,7 @@ DISTRIBUTOR_REGISTRY = {
         "region_options": {                    # 도매상 설정 모달에 드롭다운으로 표시
             "seoul": "서울, 경기, 인천",
             "yeongnam": "영남",
+            "daejeon": "대전",
         },
     },
     # ... 나머지 도매상

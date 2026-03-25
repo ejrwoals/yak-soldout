@@ -11,6 +11,7 @@ class GeowebScraper(BaseScraper):
     REGION_URLS = {
         "seoul": "https://order.geoweb.kr",
         "yeongnam": "https://bpm.geoweb.kr",
+        "daejeon": "https://djn.geoweb.kr",
     }
 
     def __init__(self):
@@ -206,7 +207,7 @@ class GeowebScraper(BaseScraper):
                 return drugs
             
             # 타센터 재고 확인 (영남 지역은 타센터 자체가 없으므로 DOM 조회 스킵)
-            incheon_stock = self._get_incheon_stock() if self.region != "yeongnam" else ""
+            incheon_stock = self._get_incheon_stock() if self.region not in ("yeongnam", "daejeon") else ""
 
             # 비고 정보
             notes = self._get_notes()

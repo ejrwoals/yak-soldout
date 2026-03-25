@@ -534,7 +534,7 @@ def search_geoweb_sync(app_state, drug_list: List[str], excluded_names: List[str
                     main_stock = drug.main_stock if drug.main_stock else "정보없음"
                     # 영남 지역은 타센터가 없으므로 UI에서 숨김 처리
                     geoweb_region = login_extra.get('region', 'seoul')
-                    incheon_stock = "-" if geoweb_region == "yeongnam" else (drug.incheon_stock if drug.incheon_stock else "정보없음")
+                    incheon_stock = "-" if geoweb_region in ("yeongnam", "daejeon") else (drug.incheon_stock if drug.incheon_stock else "정보없음")
                     
                     # 재고 상황을 더 명확하게 표시
                     main_display = "품절" if main_stock == "품절" or main_stock == "0" else f"{main_stock}개"
