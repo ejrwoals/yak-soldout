@@ -12,6 +12,7 @@ class DistributorType(Enum):
     GEOPHARM = "지오팜"
     UPHARMMALL = "유팜몰"
     HMPMALL = "HMP몰"
+    TJPHARM = "티제이팜"
 
 
 @dataclass
