@@ -15,6 +15,7 @@ from typing import Dict, List, Any
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.registry import DISTRIBUTOR_REGISTRY
+from models.build_config import get_visible_registry
 from utils.websocket_manager import broadcast_log
 from utils.notifications import CrossPlatformNotifier
 
@@ -260,8 +261,8 @@ def execute_search_sync(app_state, progress_queue=None):
             if hasattr(drug, 'insurance_code') and drug.insurance_code:
                 insurance_codes[drug.insurance_code] = drug.name
 
-        # 나머지 도매상 — 레지스트리 루프
-        for dist_id, dist_info in DISTRIBUTOR_REGISTRY.items():
+        # 나머지 도매상 — build_config 기반 가시 레지스트리 루프
+        for dist_id, dist_info in get_visible_registry().items():
             if dist_id == 'geoweb':
                 continue
 
