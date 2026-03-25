@@ -1,5 +1,5 @@
-import time
 from typing import List, Dict
+from urllib.parse import urlencode
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from .base_scraper import BaseScraper
 from models.drug_data import Drug, DistributorType
@@ -7,60 +7,65 @@ from models.drug_data import Drug, DistributorType
 
 class BaekjeScraper(BaseScraper):
     """백제약품 웹사이트 스크래퍼"""
-    
+
     def __init__(self):
         super().__init__(DistributorType.BAEKJE)
         self.base_url = "https://www.ibjp.co.kr"
-    
+        self.username = ""
+
     def login(self, page: Page, username: str, password: str) -> bool:
         """백제약품 로그인"""
         try:
             self.page = page
-            
+            self.username = username
+
             # 로그인 페이지로 이동
-            self.page.goto(f"{self.base_url}/login.act")
+            self.page.goto(f"{self.base_url}/dist/login")
             self.page.wait_for_load_state('domcontentloaded', timeout=10000)
-            
-            # 로그인 폼 입력
+
+            # 로그인 폼 입력 (placeholder 기반 selector — 동적 ID 대응)
             id_selector = 'input[placeholder="아이디를 입력해 주세요"]'
             if not self.wait_and_fill(id_selector, username):
                 raise Exception("아이디 입력 실패")
-            
+
             pwd_selector = 'input[placeholder="비밀번호를 입력해 주세요"]'
             if not self.wait_and_fill(pwd_selector, password):
                 raise Exception("비밀번호 입력 실패")
-            
+
             # 로그인 버튼 클릭
             self.page.keyboard.press('Enter')
-            self.page.wait_for_load_state('domcontentloaded', timeout=10000)
-            
-            # 로그인 오류 확인
-            error_selectors = [
-                'div:has-text("아이디")', 'div:has-text("비밀번호")', 
-                'div:has-text("로그인")', 'div:has-text("실패")',
-                '.error', '.alert'
-            ]
-            
-            for error_selector in error_selectors:
-                try:
-                    if self.page.query_selector(error_selector):
-                        error_text = self.get_text_safe(error_selector)
-                        if any(keyword in error_text for keyword in ['실패', '오류', '잘못', '확인']):
-                            raise Exception(f"로그인 실패: {error_text}")
-                except Exception:
-                    continue
-            
-            # 로그인 성공 여부 확인
+
+            # SPA 페이지 전환 대기 — URL 또는 검색창 등장으로 확인
+            try:
+                self.page.wait_for_url("**/dist/comOrd**", timeout=10000)
+            except PlaywrightTimeoutError:
+                raise Exception("로그인 후 페이지 이동 실패")
+
+            # 로그인 성공 여부 확인: 검색창 등장 대기
             main_search_selector = 'input[placeholder="품목명/보험코드 입력"]'
             try:
-                self.page.wait_for_selector(main_search_selector, timeout=2000, state='visible')
+                self.page.wait_for_selector(main_search_selector, timeout=5000, state='visible')
                 print("로그인 성공 확인: 메인 검색창 발견")
             except PlaywrightTimeoutError:
                 raise Exception("로그인 후 메인 페이지 확인 실패")
-            
+
+            # sessionStorage에서 JWT 인증 토큰 추출 (Quasar 프레임워크)
+            raw_token = self.page.evaluate("""() => {
+                const token = sessionStorage.getItem('accessToken');
+                return token || null;
+            }""")
+
+            if raw_token and '|' in raw_token:
+                self.auth_token = raw_token.split('|', 1)[1]
+            else:
+                self.auth_token = raw_token
+
+            if not self.auth_token:
+                raise Exception("인증 토큰 추출 실패")
+
             self.is_logged_in = True
             return True
-            
+
         except Exception as e:
             print(f"백제약품 로그인 오류: {e}")
             return False
@@ -90,67 +95,76 @@ class BaekjeScraper(BaseScraper):
         return []
     
     def _search_by_insurance_code(self, insurance_code: str, original_name: str = '') -> List[Drug]:
-        """보험코드로 검색"""
-        drugs = []
-        
+        """보험코드로 직접 API 호출하여 검색 (브라우저 컨텍스트 내 fetch 사용)"""
         try:
-            # 검색창 입력
-            search_selector = 'input[placeholder="품목명/보험코드 입력"]'
-            if not self.wait_and_fill(search_selector, insurance_code):
-                raise Exception("보험코드 입력 실패")
-            
-            # API 요청 감지 및 검색 실행
-            with self.page.expect_response(lambda response: 'api' in response.url or 'search' in response.url.lower()) as response_info:
-                self.page.keyboard.press('Enter')
-                
-            try:
-                response = response_info.value
-                if response.status == 200:
-                    response_data = response.json()
-                    
-                    # API 결과 추출
-                    api_results = None
-                    if isinstance(response_data, list):
-                        api_results = response_data
-                    elif isinstance(response_data, dict):
-                        for key in ['data', 'items', 'results', 'list', 'products']:
-                            if key in response_data and isinstance(response_data[key], list):
-                                api_results = response_data[key]
-                                break
-                    
-                    if api_results:
-                        return self._parse_api_results(api_results, insurance_code)
-                        
-            except Exception:
-                pass
-                    
+            params = {
+                "keyword": insurance_code,
+                "custCd": self.username,
+                "makerNm": "",
+                "history": "N",
+                "excludingOutOfOtock": "N",
+                "custGbCd": "01",
+                "ordMakerCd": "",
+                "userGbCd": "30",
+                "ing": "N",
+                "eff": "N",
+                "ingno": "AAAAAAAAAAAAA",
+                "effno": "AAAAAAAAAAAAA",
+                "searchAll": "Y",
+                "professionalYn": "N",
+                "generalYn": "N",
+                "paymentYn": "N",
+                "nonPaymentYn": "N",
+                "searchOption": "0",
+            }
+            api_url = f"{self.base_url}/ord/itemSearch?{urlencode(params)}"
+
+            # 브라우저 컨텍스트 내에서 fetch 호출 (JWT 토큰 포함)
+            response_data = self.page.evaluate("""async ([url, token]) => {
+                const res = await fetch(url, {
+                    credentials: 'include',
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+                });
+                if (!res.ok) return null;
+                return await res.json();
+            }""", [api_url, self.auth_token or ''])
+
+            if isinstance(response_data, list):
+                return self._parse_api_results(response_data, insurance_code)
+
         except Exception as e:
             print(f"백제약품 검색 오류 ({insurance_code}): {e}")
-        
-        return drugs
+
+        return []
     
     def _parse_api_results(self, api_data, insurance_code):
-        """직접 API 데이터에서 모든 결과 추출"""
+        """API 응답 데이터에서 약품 정보 추출"""
         drugs = []
         try:
             for item in api_data:
-                if isinstance(item, dict):
-                    # 필드 추출
-                    drug_name = item.get('ITEM_NM', '')
-                    unit = item.get('UNIT', '')
-                    stock = str(item.get('AVAIL_STOCK', ''))
-                    
-                    if drug_name:
-                        drug = self.create_drug(
-                            name=drug_name,
-                            insurance_code=insurance_code,
-                            main_stock=stock or "정보없음",
-                            unit=unit
-                        )
-                        drugs.append(drug)
+                if not isinstance(item, dict):
+                    continue
+
+                drug_name = item.get('ITEM_NM', '')
+                if not drug_name:
+                    continue
+
+                unit = item.get('UNIT', '')
+                stock = str(item.get('AVAIL_STOCK', ''))
+                bohum_cd = item.get('BOHUM_CD', insurance_code)
+                maker_nm = item.get('MAKER_NM', '')
+
+                drug = self.create_drug(
+                    name=drug_name,
+                    insurance_code=bohum_cd or insurance_code,
+                    main_stock=stock or "정보없음",
+                    unit=unit,
+                    company=maker_nm,
+                )
+                drugs.append(drug)
         except Exception as e:
             print(f"API 데이터 파싱 오류: {e}")
-        
+
         return drugs
     
 
