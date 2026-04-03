@@ -123,12 +123,9 @@ class ConfigManager:
             username = dist_data.get('username', '')
             password = dist_data.get('password', '')
 
-            # 빈 값(길이 1 이하) 제거 — geoweb 제외
-            if dist_id != 'geoweb':
-                if len(username) <= 1:
-                    username = ''
-                if len(password) <= 1:
-                    password = ''
+            # 공백만 입력된 경우 빈 값으로 처리
+            username = username.strip()
+            password = password.strip()
 
             # extra_params (region 등)
             extra: Dict[str, str] = {}
