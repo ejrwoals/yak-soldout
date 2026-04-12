@@ -111,7 +111,7 @@ manager = ConnectionManager()
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     """메인 페이지"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -571,24 +571,26 @@ async def add_to_exclusion(data: dict):
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+
     print("🚀 약품 재고 자동 검색 웹 서버 시작")
     print("📱 브라우저를 자동으로 열고 있습니다...")
-    
+
     # 서버 시작 후 브라우저 자동 열기
     def open_browser():
         import time
         time.sleep(1)  # 서버가 완전히 시작될 때까지 잠시 대기
-        webbrowser.open("http://localhost:8000")
-    
+        webbrowser.open(f"http://localhost:{port}")
+
     # 별도 스레드에서 브라우저 열기
     browser_thread = threading.Thread(target=open_browser)
     browser_thread.daemon = True
     browser_thread.start()
-    
+
     uvicorn.run(
         "web_server:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=False,  # reload 모드는 개발 중에 코드를 자주 수정할 경우에 사용하는 모드
         log_level="info"
     )
