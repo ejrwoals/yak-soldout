@@ -6,6 +6,7 @@ Fallback 규칙:
 - distributors 키에 누락된 도매상 → 표시 (기본값 1)
 - 명시적으로 0인 도매상만 숨김
 - pharmacy_name 없음 → "for XXX" 텍스트 미표시
+- primary_distributor 없음 → "geoweb" (기본값)
 """
 import json
 import os
@@ -42,6 +43,18 @@ def get_pharmacy_name() -> str:
     return get_build_config().get("pharmacy_name", "")
 
 
+# 텍스트 검색(약품명→보험코드 수집)을 지원하는 도매상만 기준 도매상이 될 수 있음
+_VALID_PRIMARY_DISTRIBUTORS = {"geoweb", "upharmmall"}
+
+
+def get_primary_distributor() -> str:
+    """기준 도매상 ID 반환. 미설정 또는 유효하지 않으면 'geoweb'."""
+    primary = get_build_config().get("primary_distributor", "geoweb")
+    if primary not in _VALID_PRIMARY_DISTRIBUTORS:
+        return "geoweb"
+    return primary
+
+
 def get_visible_registry() -> Dict[str, Any]:
     """빌드 설정 기반으로 UI에 표시할 도매상만 필터링한 레지스트리 반환."""
     from scrapers.registry import DISTRIBUTOR_REGISTRY
@@ -51,7 +64,8 @@ def get_visible_registry() -> Dict[str, Any]:
         # build_config.json 없거나 distributors 키 없음 → 전체 표시
         return dict(DISTRIBUTOR_REGISTRY)
 
+    primary_id = get_primary_distributor()
     return {
         did: info for did, info in DISTRIBUTOR_REGISTRY.items()
-        if dist_visibility.get(did, 1) != 0
+        if did == primary_id or dist_visibility.get(did, 1) != 0
     }

@@ -160,7 +160,7 @@ class AppConfig:
         """해당 도매상의 인증정보 반환"""
         return self.distributor_credentials.get(dist_id)
 
-    # 지오영은 필수 도매상(보험코드 수집)이므로 하위 호환성 property 유지
+    # 지오영 하위 호환성 property (기준 도매상이 동적으로 바뀌어도 기존 코드 호환)
     @property
     def geoweb_id(self) -> Optional[str]:
         creds = self.distributor_credentials.get('geoweb')

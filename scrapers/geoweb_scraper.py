@@ -67,6 +67,10 @@ class GeowebScraper(BaseScraper):
             print(f"지오영 로그인 오류: {e}")
             return False
     
+    def _search_by_insurance_code(self, insurance_code: str, original_drug_name: str = "") -> List[Drug]:
+        """보험코드로 검색 (2차 도매상으로 사용 시)"""
+        return self.search_drug(insurance_code)
+
     def search_drug(self, drug_name: str) -> List[Drug]:
         """지오영에서 약품 검색"""
         if not self.is_logged_in or not self.page:

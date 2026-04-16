@@ -139,10 +139,13 @@ class ConfigManager:
                     extra=extra,
                 )
 
-        # 필수 값 검증 (지오영)
-        geoweb_creds = distributor_credentials.get('geoweb')
-        if not geoweb_creds or not geoweb_creds.is_valid():
-            raise ValueError("지오영 아이디와 비밀번호는 필수입니다")
+        # 필수 값 검증 (기준 도매상)
+        from models.build_config import get_primary_distributor
+        primary_id = get_primary_distributor()
+        primary_name = registry.get(primary_id, {}).get('name', primary_id)
+        primary_creds = distributor_credentials.get(primary_id)
+        if not primary_creds or not primary_creds.is_valid():
+            raise ValueError(f"{primary_name} 아이디와 비밀번호는 필수입니다")
 
         monitoring = data.get('monitoring', {})
         return AppConfig(

@@ -63,8 +63,10 @@ class UpharmMallScraper(BaseScraper):
             return False
 
     def search_drug(self, drug_name: str) -> List[Drug]:
-        """약품명으로 직접 검색 (유팜몰은 보험코드 검색만 사용하므로 빈 리스트 반환)"""
-        return []
+        """약품명으로 검색 (기준 도매상으로 사용 시 보험코드 수집 역할)"""
+        if not self.is_logged_in or not self.page:
+            raise Exception("로그인이 필요합니다")
+        return self._search_by_insurance_code(drug_name, drug_name)
 
     def search_by_insurance_codes(self, insurance_codes: Dict[str, str]) -> List[Drug]:
         """보험코드 딕셔너리로 약품 일괄 검색"""

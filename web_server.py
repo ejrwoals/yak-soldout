@@ -81,7 +81,7 @@ from utils.data_processor import DataProcessor
 from utils.notifications import AlertManager
 from utils.app_state import AppState
 from scrapers.registry import DISTRIBUTOR_REGISTRY
-from models.build_config import get_visible_registry, get_pharmacy_name
+from models.build_config import get_visible_registry, get_pharmacy_name, get_primary_distributor
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search
 from scrapers.browser_manager import BrowserManager
@@ -147,7 +147,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/build-info")
 async def get_build_info():
     """빌드 정보 조회 (약국명 등)"""
-    return {"pharmacy_name": get_pharmacy_name()}
+    primary_name = DISTRIBUTOR_REGISTRY[get_primary_distributor()]['name']
+    return {"pharmacy_name": get_pharmacy_name(), "primary_distributor_name": primary_name}
 
 @app.get("/api/status")
 async def get_status():
@@ -210,8 +211,10 @@ async def start_search():
     config_data = app_state.config_manager.get_raw_config()
     distributors_config = config_data.get('distributors', {})
 
-    if not app_state.config or not app_state.config.geoweb_id:
-        raise HTTPException(status_code=400, detail="지오영 계정 정보가 설정되지 않았습니다")
+    primary_id = get_primary_distributor()
+    primary_name = DISTRIBUTOR_REGISTRY[primary_id]['name']
+    if not app_state.config or not app_state.config.has_credentials(primary_id):
+        raise HTTPException(status_code=400, detail=f"{primary_name} 계정 정보가 설정되지 않았습니다")
 
     any_active = any(
         distributors_config.get(dist_id, {}).get('enabled', info['default_enabled'])

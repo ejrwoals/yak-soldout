@@ -13,7 +13,7 @@ from scrapers.upharmmall_scraper import UpharmMallScraper
 from scrapers.hmpmall_scraper import HmpMallScraper
 from scrapers.tjpharm_scraper import TjpharmScraper
 
-# 도매상 등록 순서 = 검색 실행 순서 (지오영은 항상 첫 번째 — 보험코드 수집 역할)
+# 도매상 등록 순서 = 검색 실행 순서 (기준 도매상은 build_config의 primary_distributor로 결정)
 DISTRIBUTOR_REGISTRY = {
     "geoweb": {
         "id": "geoweb",

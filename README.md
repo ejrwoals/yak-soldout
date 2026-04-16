@@ -142,11 +142,14 @@ geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림
 #### 🌐 웹 인터페이스 실행 (권장)
 
 ```bash
-# 웹 서버 시작
+# 웹 서버 시작 (기본 포트: 8000)
 python web_server.py
 
 # 브라우저에서 접속
 # http://localhost:8000
+
+# 포트 변경이 필요한 경우 PORT 환경변수 사용
+PORT=3000 python web_server.py
 ```
 
 #### 🔍 디버그 모드 (브라우저 화면 보기)
@@ -159,6 +162,9 @@ HEADLESS=false python web_server.py
 
 # Windows에서는
 set HEADLESS=false && python web_server.py
+
+# 환경변수 조합 사용 가능
+PORT=3000 HEADLESS=false python web_server.py
 ```
 
 ## 📁 프로젝트 구조

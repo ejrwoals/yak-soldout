@@ -18,6 +18,7 @@ class ModernDrugSearchApp {
     constructor() {
         // 상태
         this.isSearching = false;
+        this.primaryDistributorName = '지오영'; // build-info 로드 후 갱신됨
         
         // DOM 요소들
         this.elements = this.initializeElements();
@@ -79,6 +80,15 @@ class ModernDrugSearchApp {
             const el = document.getElementById('pharmacyLabel');
             if (el && data.pharmacy_name) {
                 el.textContent = `for ${data.pharmacy_name}`;
+            }
+            // 기준 도매상 이름 표시
+            const primaryName = data.primary_distributor_name;
+            if (primaryName) {
+                this.primaryDistributorName = primaryName;
+                const label = document.getElementById('primaryDistributorLabel');
+                if (label) label.textContent = `${primaryName} 검색 대상 약품`;
+                const modalTitle = document.getElementById('primaryDistributorModalTitle');
+                if (modalTitle) modalTitle.textContent = `${primaryName} 검색 대상 약품 관리`;
             }
         } catch (e) {
             console.warn('빌드 정보 로드 실패:', e);
@@ -619,7 +629,7 @@ class ModernDrugSearchApp {
             '<i class="bi bi-x-circle text-warning"></i>';
 
         // 도매상 정보 추출 (distributor 필드 사용)
-        const distributor = drug.distributor || '지오영';
+        const distributor = drug.distributor || this.primaryDistributorName;
         const distInfo = getDistributorInfo(distributor);
         const distributorName = distributor;
         const distributorClass = distInfo.id;
@@ -687,7 +697,7 @@ class ModernDrugSearchApp {
                     </div>
                     <div class="drugs-grid">
                         ${foundDrugs.slice(0, 6).map(drug => {
-                            const distributor = drug.distributor || '지오영';
+                            const distributor = drug.distributor || this.primaryDistributorName;
                             const _di = getDistributorInfo(distributor);
                             const distributorName = distributor;
                             const distributorClass = _di.id;

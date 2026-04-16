@@ -1,5 +1,6 @@
 {
   "pharmacy_name": "가나안약국",
+  "primary_distributor": "geoweb",
   "distributors": {
     "geoweb": 1,
     "baekje": 0,
