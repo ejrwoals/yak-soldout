@@ -8,22 +8,25 @@ class DrugListModal {
         this.addDrugForm = document.getElementById('addDrugForm');
         this.newDrugNameInput = document.getElementById('newDrugName');
         this.saveBtn = document.getElementById('saveDrugListBtn');
-        
+        this.previewSearchResults = document.getElementById('previewSearchResults');
+
         // 현재 약품 목록 (로컬 상태)
         this.currentDrugs = [];
         // 원본 약품 목록 (변경사항 추적용)
         this.originalDrugs = [];
         // 새로 추가된 약품 목록 (임시 스타일링용)
         this.newlyAddedDrugs = new Set();
-        
+        // 미리보기 검색 진행 중 여부
+        this.isPreviewSearching = false;
+
         this.init();
     }
-    
+
     init() {
         // 이벤트 리스너 등록
         document.getElementById('drugListCard')?.addEventListener('click', () => this.open());
         document.getElementById('addDrugBtn')?.addEventListener('click', () => this.showAddForm());
-        document.getElementById('confirmAddBtn')?.addEventListener('click', () => this.addDrug());
+        document.getElementById('confirmAddBtn')?.addEventListener('click', () => this.previewSearch());
         document.getElementById('cancelAddBtn')?.addEventListener('click', () => this.hideAddForm());
         document.getElementById('closeDrugListModal')?.addEventListener('click', () => this.confirmClose());
         document.getElementById('cancelDrugListBtn')?.addEventListener('click', () => this.confirmClose());
@@ -42,22 +45,22 @@ class DrugListModal {
                 this.confirmClose();
             }
         });
-        
+
         // 입력 필드에서 Enter 키 처리
         this.newDrugNameInput?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                this.addDrug();
+                this.previewSearch();
             }
         });
     }
-    
+
     async open() {
         try {
             // 현재 약품 목록 로드
             const response = await fetch('/api/drug-list');
             if (!response.ok) throw new Error('약품 목록 로드 실패');
-            
+
             const data = await response.json();
             this.currentDrugs = JSON.parse(JSON.stringify(data.drugs)); // 깊은 복사
             this.originalDrugs = JSON.parse(JSON.stringify(data.drugs)); // 원본도 깊은 복사
@@ -65,16 +68,16 @@ class DrugListModal {
             this.sortDrugs(); // 로드 후 정렬
             this.renderDrugList();
             this.updateSaveButtonState(); // 초기 저장 버튼 상태 설정
-            
+
             // 모달 표시
             this.modal.classList.add('show');
-            
+
         } catch (error) {
             console.error('약품 목록 로드 오류:', error);
             this.app.showError('약품 목록을 불러오는데 실패했습니다');
         }
     }
-    
+
     confirmClose() {
         if (this.hasChanges()) {
             if (!confirm('변경 사항이 저장되지 않았습니다. 그래도 닫으시겠습니까?')) {
@@ -88,38 +91,176 @@ class DrugListModal {
         this.modal?.classList.remove('show');
         this.hideAddForm();
         this.clearAddForm();
+        this.closePreviewSession();
     }
-    
+
+    closePreviewSession() {
+        // 모달 닫힐 때 미리보기 검색 세션 종료 (fire-and-forget)
+        fetch('/api/preview-search/close', { method: 'POST' }).catch(() => {});
+    }
+
     showAddForm() {
         this.addDrugForm.style.display = 'block';
+        this.hideSearchResults();
         this.newDrugNameInput.focus();
     }
-    
+
     hideAddForm() {
         this.addDrugForm.style.display = 'none';
+        this.hideSearchResults();
     }
-    
+
     clearAddForm() {
         this.newDrugNameInput.value = '';
+        this.hideSearchResults();
     }
-    
-    addDrug() {
-        const drugName = this.newDrugNameInput.value.trim();
-        
+
+    // --- 미리보기 검색 ---
+
+    async previewSearch() {
+        const query = this.newDrugNameInput.value.trim();
+
+        if (!query) {
+            this.app.showError('약품명을 입력해주세요');
+            return;
+        }
+
+        if (this.isPreviewSearching) return;
+
+        // 메인 검색 진행 중 체크
+        if (this.app.isSearching) {
+            this.app.showError('검색이 진행 중일 때는 미리보기를 사용할 수 없습니다');
+            this.showSearchFallback(query, '검색 진행 중에는 미리보기를 사용할 수 없습니다. 검색 완료 후 다시 시도하거나, 직접 입력하세요.');
+            return;
+        }
+
+        this.isPreviewSearching = true;
+        this.showSearchLoading();
+
+        try {
+            const response = await fetch('/api/preview-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || '검색 실패');
+            }
+
+            const data = await response.json();
+            this.showSearchResults(data.results, query, data.distributor);
+        } catch (error) {
+            console.error('미리보기 검색 오류:', error);
+            this.showSearchFallback(query, error.message);
+        } finally {
+            this.isPreviewSearching = false;
+        }
+    }
+
+    showSearchLoading() {
+        if (!this.previewSearchResults) return;
+        this.previewSearchResults.style.display = 'block';
+        this.previewSearchResults.innerHTML = `
+            <div class="preview-search-loading">
+                <div class="preview-spinner"></div>
+                <span>도매상에서 검색 중...</span>
+            </div>
+        `;
+    }
+
+    showSearchResults(results, query, distributor) {
+        if (!this.previewSearchResults) return;
+
+        if (!results || results.length === 0) {
+            this.showSearchFallback(query, '검색 결과가 없습니다. 약품명을 확인해주세요.');
+            return;
+        }
+
+        const resultItems = results.map((result, index) => {
+            const stockText = result.stock === '품절' || result.stock === '0' ? '품절' : `${result.stock}개`;
+            const stockClass = result.stock === '품절' || result.stock === '0' ? 'stock-soldout' : 'stock-available';
+            const metaParts = [result.company, result.unit].filter(Boolean).join(' · ');
+
+            return `
+                <div class="preview-search-item" data-index="${index}" onclick="window.drugListModal.selectSearchResult(${index})">
+                    <div class="preview-item-info">
+                        <span class="preview-item-name">${this.escapeHtml(result.name)}</span>
+                        ${metaParts ? `<span class="preview-item-meta">${this.escapeHtml(metaParts)}</span>` : ''}
+                    </div>
+                    <span class="preview-item-stock ${stockClass}">${stockText}</span>
+                </div>
+            `;
+        }).join('');
+
+        this.previewSearchResults.style.display = 'block';
+        this.previewSearchResults.innerHTML = `
+            <div class="preview-search-header">
+                <span>${distributor} 검색 결과 (${results.length}건)</span>
+            </div>
+            <div class="preview-search-items">
+                ${resultItems}
+            </div>
+            <div class="preview-search-fallback">
+                <a href="#" onclick="event.preventDefault(); window.drugListModal.addDrugDirect('${this.escapeAttr(query)}')">
+                    '${this.escapeHtml(query)}' 그대로 추가
+                </a>
+            </div>
+        `;
+
+        // 검색 결과 데이터 저장 (선택 시 사용)
+        this._searchResults = results;
+    }
+
+    showSearchFallback(query, message) {
+        if (!this.previewSearchResults) return;
+        this.previewSearchResults.style.display = 'block';
+        this.previewSearchResults.innerHTML = `
+            <div class="preview-search-error">
+                <p>${this.escapeHtml(message)}</p>
+            </div>
+            <div class="preview-search-fallback">
+                <a href="#" onclick="event.preventDefault(); window.drugListModal.addDrugDirect('${this.escapeAttr(query)}')">
+                    '${this.escapeHtml(query)}' 그대로 추가
+                </a>
+            </div>
+        `;
+    }
+
+    selectSearchResult(index) {
+        if (!this._searchResults || !this._searchResults[index]) return;
+        const result = this._searchResults[index];
+        this.addDrugDirect(result.name);
+    }
+
+    hideSearchResults() {
+        if (this.previewSearchResults) {
+            this.previewSearchResults.style.display = 'none';
+            this.previewSearchResults.innerHTML = '';
+        }
+        this._searchResults = null;
+    }
+
+    // --- 약품 추가 (직접) ---
+
+    addDrugDirect(drugName) {
+        drugName = drugName.trim();
+
         if (!drugName) {
             this.app.showError('약품명을 입력해주세요');
             return;
         }
-        
+
         // 중복 검사 (문자열과 객체 모두 처리)
-        const isDuplicate = this.currentDrugs.some(drug => 
+        const isDuplicate = this.currentDrugs.some(drug =>
             typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
         );
         if (isDuplicate) {
             this.app.showError('이미 등록된 약품입니다');
             return;
         }
-        
+
         // 약품 추가 (배열 맨 앞에 추가) - 새 약품은 객체 형태로 추가
         const kstDate = new Date(Date.now() + (9 * 60 * 60 * 1000)); // UTC + 9시간
         const newDrug = {
@@ -134,12 +275,12 @@ class DrugListModal {
         this.hideAddForm();
         this.clearAddForm();
         this.updateSaveButtonState(); // 저장 버튼 상태 업데이트
-        
+
         this.app.showSuccess(`'${drugName}'이(가) 추가되었습니다`);
     }
-    
+
     removeDrug(drugName) {
-        const index = this.currentDrugs.findIndex(drug => 
+        const index = this.currentDrugs.findIndex(drug =>
             typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
         );
         if (index > -1) {
@@ -151,9 +292,9 @@ class DrugListModal {
             this.app.showSuccess(`'${drugName}'이(가) 삭제되었습니다`);
         }
     }
-    
+
     toggleUrgent(drugName) {
-        const index = this.currentDrugs.findIndex(drug => 
+        const index = this.currentDrugs.findIndex(drug =>
             typeof drug === 'string' ? drug === drugName : drug.drugName === drugName
         );
         if (index > -1) {
@@ -166,24 +307,24 @@ class DrugListModal {
                     dateAdded: kstDate.toISOString().slice(0, 19)
                 };
             }
-            
+
             const drug = this.currentDrugs[index];
             drug.isUrgent = !drug.isUrgent;
-            
+
             // 긴급 상태 변경 시 현재 날짜로 업데이트 (한국 표준시간)
             const kstDate = new Date(Date.now() + (9 * 60 * 60 * 1000)); // UTC + 9시간
             drug.dateAdded = kstDate.toISOString().slice(0, 19); // YYYY-MM-DDTHH:mm:ss 형식
-            
+
             // 긴급 상태 변경 시 목록 다시 정렬
             this.sortDrugs();
             this.renderDrugList();
             this.updateSaveButtonState();
-            
+
             const status = drug.isUrgent ? '긴급 알림' : '일반 알림';
             this.app.showSuccess(`'${drug.drugName}'이(가) ${status}으로 설정되었습니다`);
         }
     }
-    
+
     sortDrugs() {
         // 긴급 항목(상단) -> 일반 항목(하단), 각각 dateAdded 최신순
         this.currentDrugs.sort((a, b) => {
@@ -191,22 +332,22 @@ class DrugListModal {
             const bName = typeof b === 'string' ? b : b.drugName;
             const aUrgent = typeof a === 'object' ? a.isUrgent : false;
             const bUrgent = typeof b === 'object' ? b.isUrgent : false;
-            
+
             // 먼저 긴급 상태로 분류
             if (aUrgent !== bUrgent) {
                 return aUrgent ? -1 : 1; // 긴급 항목이 먼저 (상단)
             }
-            
+
             // 같은 긴급 상태 내에서는 dateAdded 최신순
             const aDate = typeof a === 'object' ? new Date(a.dateAdded) : new Date(0);
             const bDate = typeof b === 'object' ? new Date(b.dateAdded) : new Date(0);
             return bDate - aDate; // 최신 날짜가 먼저 (상단)
         });
     }
-    
+
     renderDrugList() {
         if (!this.drugListContainer) return;
-        
+
         if (this.currentDrugs.length === 0) {
             this.drugListContainer.innerHTML = `
                 <div class="empty-drug-list">
@@ -217,7 +358,7 @@ class DrugListModal {
             `;
             return;
         }
-        
+
         this.drugListContainer.innerHTML = `
             <div class="drug-list-header">
                 <span class="drug-count">총 ${this.currentDrugs.length}개 약품</span>
@@ -228,7 +369,7 @@ class DrugListModal {
                     const isUrgent = typeof drug === 'object' ? drug.isUrgent : false;
                     const isNewlyAdded = this.newlyAddedDrugs.has(drugName);
                     const drugNumber = this.currentDrugs.length - index; // 내림차순 넘버링
-                    
+
                     return `
                     <div class="drug-item ${isNewlyAdded ? 'newly-added' : ''} ${isUrgent ? 'urgent' : ''}" data-drug="${drugName}">
                         <div class="drug-info">
@@ -237,7 +378,7 @@ class DrugListModal {
                             ${isUrgent ? '<i class="bi bi-bell-fill urgent-indicator" title="긴급 알림"></i>' : ''}
                         </div>
                         <div class="drug-actions">
-                            <button class="drug-urgent-btn ${isUrgent ? 'urgent' : ''}" 
+                            <button class="drug-urgent-btn ${isUrgent ? 'urgent' : ''}"
                                     onclick="window.drugListModal.toggleUrgent('${drugName.replace(/'/g, "\\'")}')"
                                     title="${isUrgent ? '일반 알림으로 변경' : '긴급 알림으로 변경'}">
                                 <i class="bi ${isUrgent ? 'bi-bell-fill' : 'bi-bell'}"></i>
@@ -252,61 +393,61 @@ class DrugListModal {
             </div>
         `;
     }
-    
+
     // 변경사항 감지
     hasChanges() {
         // 배열 길이가 다르면 변경됨
         if (this.currentDrugs.length !== this.originalDrugs.length) {
             return true;
         }
-        
+
         // 현재 약품 중 하나라도 원본과 다르거나 없으면 변경됨
         const hasCurrentChanges = this.currentDrugs.some(current => {
             const currentName = typeof current === 'string' ? current : current.drugName;
             const currentUrgent = typeof current === 'object' ? current.isUrgent : false;
-            
+
             const original = this.originalDrugs.find(orig => {
                 const origName = typeof orig === 'string' ? orig : orig.drugName;
                 return origName === currentName;
             });
-            
+
             if (!original) return true; // 원본에 없는 새 항목
-            
+
             const originalUrgent = typeof original === 'object' ? original.isUrgent : false;
-            
+
             // 긴급 상태가 다르면 변경됨
             return currentUrgent !== originalUrgent;
         });
-        
+
         // 원본 약품 중 하나라도 현재에 없으면 변경됨 (삭제된 경우)
         const hasOriginalChanges = this.originalDrugs.some(original => {
             const originalName = typeof original === 'string' ? original : original.drugName;
-            
+
             const current = this.currentDrugs.find(curr => {
                 const currentName = typeof curr === 'string' ? curr : curr.drugName;
                 return currentName === originalName;
             });
-            
+
             return !current;
         });
-        
+
         return hasCurrentChanges || hasOriginalChanges;
     }
-    
+
     // 저장 버튼 상태 업데이트
     updateSaveButtonState() {
         if (!this.saveBtn) return;
-        
+
         const hasChanges = this.hasChanges();
         this.saveBtn.disabled = !hasChanges;
-        
+
         if (hasChanges) {
             this.saveBtn.classList.remove('disabled');
         } else {
             this.saveBtn.classList.add('disabled');
         }
     }
-    
+
     async save() {
         try {
             // 서버로 업데이트된 약품 목록 전송
@@ -317,30 +458,42 @@ class DrugListModal {
                 },
                 body: JSON.stringify({ drugs: this.currentDrugs })
             });
-            
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.detail || '저장 실패');
             }
-            
+
             const baseMsg = '약품 목록이 저장되었습니다';
             this.app.showSuccess(this.app.isSearching ? `${baseMsg}. 다음 검색부터 적용됩니다` : baseMsg);
-            
+
             // 저장 성공 시 원본 데이터 업데이트 및 임시 스타일 제거
             this.originalDrugs = [...this.currentDrugs];
             this.newlyAddedDrugs.clear(); // 새로 추가된 약품 목록 초기화
             this.renderDrugList(); // 스타일 업데이트를 위해 다시 렌더링
             this.updateSaveButtonState();
-            
+
             this.close();
-            
+
             // 상태 새로고침
             setTimeout(() => this.app.loadStatus(), 1000);
-            
+
         } catch (error) {
             console.error('약품 목록 저장 오류:', error);
             this.app.showError(`저장 실패: ${error.message}`);
         }
+    }
+
+    // --- 유틸리티 ---
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    escapeAttr(text) {
+        return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     }
 }
 

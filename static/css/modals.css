@@ -438,6 +438,152 @@
   color: var(--text-primary);
 }
 
+/* 미리보기 검색 결과 */
+.preview-search-results {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.preview-search-header {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  border-radius: 8px 8px 0 0;
+}
+
+.preview-search-items {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.preview-search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  gap: 0.75rem;
+}
+
+.preview-search-item:last-child {
+  border-bottom: none;
+}
+
+.preview-search-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.preview-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-item-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-item-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.preview-item-stock {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.preview-item-stock.stock-available {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.preview-item-stock.stock-soldout {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+[data-theme="dark"] .preview-item-stock.stock-available {
+  background: #064e3b;
+  color: #6ee7b7;
+}
+
+[data-theme="dark"] .preview-item-stock.stock-soldout {
+  background: #7f1d1d;
+  color: #fca5a5;
+}
+
+.preview-search-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.preview-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: preview-spin 0.8s linear infinite;
+}
+
+@keyframes preview-spin {
+  to { transform: rotate(360deg); }
+}
+
+.preview-search-error {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.preview-search-error p {
+  margin: 0;
+}
+
+.preview-search-fallback {
+  padding: 0.625rem 1rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.preview-search-fallback a {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.preview-search-fallback a:hover {
+  color: var(--text-secondary);
+}
+
 /* 약품 목록 컨테이너 */
 .drug-list-container {
   max-height: 400px;

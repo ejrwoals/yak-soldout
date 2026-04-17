@@ -21,7 +21,11 @@ class BaseScraper(ABC):
     def search_drug(self, drug_name: str) -> List[Drug]:
         """약품 검색 (각 사이트별로 구현)"""
         pass
-    
+
+    def search_drug_all(self, drug_name: str) -> List[Drug]:
+        """약품 검색 - 모든 결과 반환 (미리보기용). 기본 구현은 search_drug 위임."""
+        return self.search_drug(drug_name)
+
     def set_page(self, page: Page):
         """페이지 설정"""
         self.page = page

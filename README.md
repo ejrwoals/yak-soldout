@@ -219,7 +219,7 @@ yak-soldout/
 
 ## 🏗️ 아키텍처: 도매상 레지스트리
 
-`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다. `build_config.json`이 존재하면 `get_visible_registry()` 함수가 빌드 설정에 따라 필터링된 레지스트리를 반환하여, 특정 약국에 불필요한 도매상을 숨길 수 있습니다. 단, 기준 도매상은 `build_config.json`에서 `0`으로 설정해도 항상 표시됩니다.
+`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 사이트 URL, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다. `build_config.json`이 존재하면 `get_visible_registry()` 함수가 빌드 설정에 따라 필터링된 레지스트리를 반환하여, 특정 약국에 불필요한 도매상을 숨길 수 있습니다. 단, 기준 도매상은 `build_config.json`에서 `0`으로 설정해도 항상 표시됩니다.
 
 검색 결과 카드는 도매상별 색상으로 시각적으로 구분됩니다. 각 도매상에 `default_color`가 지정되어 있으며, 사용자가 웹 UI의 도매상 설정 모달에서 색상을 변경하면 `config.json`에 저장되어 기본 색상을 덮어씁니다.
 
@@ -228,6 +228,8 @@ yak-soldout/
 ### 기준 도매상 (Primary Distributor)
 
 검색 엔진은 **기준 도매상**을 항상 먼저 검색하여 약품명 텍스트 검색을 수행하고, 그 결과에서 보험코드를 수집합니다. 나머지 도매상은 이 보험코드를 이용해 검색합니다. 기본적으로 지오영이 기준 도매상이며, `build_config.json`의 `primary_distributor` 설정으로 변경할 수 있습니다. 현재 텍스트 검색을 지원하는 도매상은 `geoweb`(지오영)과 `upharmmall`(유팜몰)이며, 이 외의 값이 설정되면 기본값인 `geoweb`으로 동작합니다.
+
+개별 도매상 검색 중 오류가 발생하면 해당 도매상만 건너뛰고 나머지 도매상 검색을 계속 진행합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -248,6 +250,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeowebScraper,
         "default_enabled": True,
         "default_color": "#0d9488",   # 도매상 구분 색상 (카드 보더, 배경 틴트, 배지에 적용)
+        "site_url": "https://order.geoweb.kr",  # 도매상 사이트 URL (설정/약품목록 모달에서 링크로 표시)
         "extra_params": {"region": "seoul"},   # 기본 지역 설정
         "region_options": {                    # 도매상 설정 모달에 드롭다운으로 표시
             "seoul": "서울, 경기, 인천",
@@ -371,6 +374,7 @@ class DistributorType(Enum):
     "scraper_class": NewDistScraper,
     "default_enabled": False,
     "default_color": "#059669",    # 도매상 구분 색상
+    "site_url": "https://example.com",  # 도매상 사이트 URL
     "extra_params": {},
 },
 ```

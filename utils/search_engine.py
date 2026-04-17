@@ -7,6 +7,7 @@
 
 import asyncio
 import json
+import time
 import concurrent.futures
 import queue
 from datetime import datetime
@@ -661,3 +662,110 @@ def search_primary_sync(primary_id: str, app_state, drug_list: List[str], exclud
         browser_mgr.stop()
 
     return all_drugs, errors
+
+
+class PreviewSearchSession:
+    """미리보기 검색 세션 — 브라우저/로그인 상태를 유지하여 반복 검색을 빠르게 처리"""
+
+    # 세션 타임아웃 (초) — 마지막 검색 후 이 시간이 지나면 자동 정리
+    SESSION_TIMEOUT = 120
+
+    def __init__(self):
+        self._browser_mgr = None
+        self._scraper = None
+        self._primary_id = None
+        self._last_used = 0.0
+        # 단일 스레드 executor — Playwright 동기 API는 같은 스레드에서 사용해야 안정적
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    # --- 동기 내부 메서드 (executor 스레드에서 실행) ---
+
+    def _ensure_session(self, app_state):
+        """세션이 없거나 만료되었으면 브라우저 시작 + 로그인"""
+        primary_id = get_primary_distributor()
+
+        # 기존 세션이 유효하면 재사용
+        if (self._browser_mgr and self._scraper
+                and self._scraper.is_logged_in
+                and self._primary_id == primary_id
+                and not self._is_expired()):
+            return
+
+        # 기존 세션 정리 후 새로 시작
+        self._close_internal()
+
+        dist_info = DISTRIBUTOR_REGISTRY[primary_id]
+        ScraperClass = dist_info['scraper_class']
+
+        self._browser_mgr = BrowserManager()
+        self._browser_mgr.start()
+
+        self._scraper = ScraperClass()
+        page = self._browser_mgr.new_page()
+
+        creds = app_state.config.get_credentials(primary_id)
+        login_extra = {k: creds.extra.get(k, v)
+                       for k, v in dist_info.get('extra_params', {}).items()}
+        if not self._scraper.login(page, creds.username, creds.password, **login_extra):
+            self._close_internal()
+            raise Exception("로그인 실패")
+
+        self._primary_id = primary_id
+        self._last_used = time.time()
+        print("✅ 미리보기 검색 세션 시작")
+
+    def _search_internal(self, app_state, query: str) -> dict:
+        """검색 실행 (executor 스레드)"""
+        self._ensure_session(app_state)
+        self._last_used = time.time()
+
+        drugs = self._scraper.search_drug_all(query)
+
+        dist_info = DISTRIBUTOR_REGISTRY[self._primary_id]
+        results = [{
+            "name": drug.name,
+            "insurance_code": drug.insurance_code,
+            "company": drug.company,
+            "unit": drug.unit,
+            "stock": drug.main_stock,
+        } for drug in drugs]
+
+        return {
+            "results": results,
+            "distributor": dist_info['name'],
+            "query": query
+        }
+
+    def _close_internal(self):
+        """브라우저 세션 정리 (executor 스레드)"""
+        if self._browser_mgr:
+            try:
+                self._browser_mgr.stop()
+            except Exception as e:
+                print(f"미리보기 세션 종료 오류: {e}")
+            self._browser_mgr = None
+            self._scraper = None
+            self._primary_id = None
+            print("🔒 미리보기 검색 세션 종료")
+
+    def _is_expired(self) -> bool:
+        return time.time() - self._last_used > self.SESSION_TIMEOUT
+
+    # --- 비동기 공개 메서드 (web_server에서 호출) ---
+
+    async def search(self, app_state, query: str) -> dict:
+        """비동기 검색 — 세션 자동 생성/재사용"""
+        loop = asyncio.get_event_loop()
+        return await asyncio.wait_for(
+            loop.run_in_executor(self._executor, self._search_internal, app_state, query),
+            timeout=30.0
+        )
+
+    async def close(self):
+        """비동기 세션 종료"""
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(self._executor, self._close_internal)
+
+    @property
+    def is_active(self) -> bool:
+        return self._browser_mgr is not None and not self._is_expired()

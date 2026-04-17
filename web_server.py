@@ -83,7 +83,7 @@ from utils.app_state import AppState
 from scrapers.registry import DISTRIBUTOR_REGISTRY
 from models.build_config import get_visible_registry, get_pharmacy_name, get_primary_distributor
 from utils.websocket_manager import ConnectionManager, broadcast_log
-from utils.search_engine import execute_search
+from utils.search_engine import execute_search, PreviewSearchSession
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
@@ -104,6 +104,9 @@ else:
 
 # 전역 앱 상태 인스턴스
 app_state = AppState()
+
+# 미리보기 검색 세션 (브라우저 재사용)
+preview_session = PreviewSearchSession()
 
 # WebSocket 연결 관리자
 manager = ConnectionManager()
@@ -397,6 +400,51 @@ async def update_drug_list(data: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"약품 목록 저장 실패: {str(e)}")
+
+@app.post("/api/preview-search")
+async def preview_search(data: dict):
+    """약품 미리보기 검색 — primary 도매상에서 실시간 검색 (세션 재사용)"""
+    query = data.get('query', '').strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="검색어를 입력해주세요")
+
+    # 메인 검색 중이면 거부
+    if app_state.is_searching:
+        raise HTTPException(status_code=409, detail="검색이 진행 중일 때는 미리보기를 사용할 수 없습니다")
+
+    # 이미 미리보기 검색 중이면 거부
+    if app_state.is_preview_searching:
+        raise HTTPException(status_code=409, detail="이전 미리보기 검색이 진행 중입니다")
+
+    # 자격 증명 확인
+    primary_id = get_primary_distributor()
+    try:
+        creds = app_state.config.get_credentials(primary_id)
+        if not creds.username or not creds.password:
+            raise Exception()
+    except Exception:
+        raise HTTPException(status_code=400,
+            detail="도매상 계정 정보가 설정되지 않았습니다")
+
+    app_state.is_preview_searching = True
+    try:
+        result = await preview_session.search(app_state, query)
+        return result
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="검색 시간이 초과되었습니다")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"검색 실패: {str(e)}")
+    finally:
+        app_state.is_preview_searching = False
+
+@app.post("/api/preview-search/close")
+async def close_preview_search():
+    """미리보기 검색 세션 종료 — 모달 닫힐 때 호출"""
+    try:
+        await preview_session.close()
+        return {"message": "미리보기 세션이 종료되었습니다"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"세션 종료 실패: {str(e)}")
 
 @app.get("/api/exclusion-list")
 async def get_exclusion_list():

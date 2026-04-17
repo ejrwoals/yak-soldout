@@ -98,7 +98,28 @@ class GeowebScraper(BaseScraper):
 
         # 검색 결과 파싱 (빈 리스트는 '진짜' 검색 결과 없음)
         return self._parse_search_results(drug_name)
-    
+
+    def search_drug_all(self, drug_name: str) -> List[Drug]:
+        """미리보기 검색 - 모든 결과 반환"""
+        if not self.is_logged_in or not self.page:
+            raise Exception("로그인이 필요합니다")
+
+        if not self._ensure_main_page():
+            raise Exception("메인 페이지 확인 실패")
+
+        search_selector = '#txt_product'
+        if not self.wait_and_fill(search_selector, drug_name):
+            raise Exception("검색창 입력 실패")
+
+        self.page.keyboard.press('Enter')
+        try:
+            self.page.wait_for_selector('#tbodySearchProduct > tr', timeout=5000, state='attached')
+        except Exception:
+            pass
+
+        self._handle_search_popups()
+        return self._parse_all_search_results(drug_name)
+
     def _handle_geoweb_popups(self):
         """지오영 범용 팝업 처리 - 안전하고 범용적인 접근"""
         try:
@@ -236,7 +257,36 @@ class GeowebScraper(BaseScraper):
             print(f"지오영 검색 결과 파싱 오류: {e}")
         
         return drugs
-    
+
+    def _parse_all_search_results(self, original_drug_name: str) -> List[Drug]:
+        """검색 결과 전체 파싱 (미리보기 검색용)"""
+        drugs = []
+        rows = self.page.query_selector_all('#tbodySearchProduct > tr')
+
+        for row in rows:
+            try:
+                name_el = row.query_selector('td.proName')
+                stock_el = row.query_selector('td.stock')
+                code_el = row.query_selector('td.code')
+                company_el = row.query_selector('td.phaCompany > span')
+
+                drug_name = name_el.text_content().strip() if name_el else ""
+                if not drug_name:
+                    continue
+
+                drug = self.create_drug(
+                    name=drug_name,
+                    insurance_code=code_el.text_content().strip() if code_el else "",
+                    main_stock=stock_el.text_content().strip() if stock_el else "0",
+                    company=company_el.text_content().strip() if company_el else ""
+                )
+                drugs.append(drug)
+            except Exception as e:
+                print(f"미리보기 행 파싱 오류: {e}")
+                continue
+
+        return drugs
+
     def _get_incheon_stock(self) -> str:
         """타센터 재고 확인"""
         try:
