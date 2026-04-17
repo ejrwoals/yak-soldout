@@ -287,13 +287,18 @@ def execute_search_sync(app_state, progress_queue=None):
                 continue
 
             log_message(f"🏢 {dist_name} 검색 시작...")
-            drugs, errs = search_distributor_sync(
-                dist_id, app_state, insurance_codes,
-                excluded_by_distributor.get(dist_name, []),
-                progress_queue, urgent_drugs
-            )
-            all_drugs.extend(drugs)
-            errors.extend(errs)
+            try:
+                drugs, errs = search_distributor_sync(
+                    dist_id, app_state, insurance_codes,
+                    excluded_by_distributor.get(dist_name, []),
+                    progress_queue, urgent_drugs
+                )
+                all_drugs.extend(drugs)
+                errors.extend(errs)
+            except Exception as e:
+                error_msg = f"{dist_name} 검색 실패: {str(e)}"
+                errors.append(error_msg)
+                log_message(f"❌ {error_msg} — 다음 도매상으로 넘어갑니다")
 
         # 결과 분류 (모든 도매상의 excluded 약품명을 합친 리스트로 전달)
         all_excluded_names = []
