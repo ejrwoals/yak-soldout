@@ -115,7 +115,7 @@ cp config.example.json config.json
 
 > **color 필드**: 도매상 구분 색상입니다. 웹 UI의 도매상 설정 모달에서 변경할 수 있으며, 생략 시 레지스트리의 `default_color` 값이 사용됩니다.
 
-> **region 필드**: 일부 도매상(지오영, 지오팜, HMP몰)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천), `"yeongnam"` (영남), `"daejeon"` (대전) 중 선택, 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택, HMP몰은 `"41"` (경기) 또는 `"47"` (경북)을 선택합니다.
+> **region 필드**: 일부 도매상(지오영, 지오팜, HMP몰)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천), `"yeongnam"` (영남), `"daejeon"` (대전) 중 선택하며, 영남/대전 지역은 타센터 재고가 표시되지 않습니다. 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택, HMP몰은 `"41"` (경기) 또는 `"47"` (경북)을 선택합니다.
 
 # 품절 약품 목록
 geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
@@ -183,7 +183,7 @@ yak-soldout/
 │   ├── base_scraper.py        # 기본 스크래퍼 공통 기능
 │   ├── browser_manager.py     # 브라우저 인스턴스 중앙 관리
 │   ├── geoweb_scraper.py      # 지오영 스크래퍼
-│   ├── baekje_scraper.py      # 백제약품 스크래퍼
+│   ├── baekje_scraper.py      # 백제약품 스크래퍼 (JWT 인증 + REST API 기반)
 │   ├── incheon_scraper.py     # 인천약품 스크래퍼
 │   ├── geopharm_scraper.py    # 지오팜 스크래퍼
 │   ├── boksan_scraper.py      # 복산 스크래퍼
@@ -194,7 +194,7 @@ yak-soldout/
 ├── models/                    # 데이터 구조 및 설정
 │   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
 │   ├── config.py              # ConfigManager — config.json 기반 설정 관리 (자동 마이그레이션 포함)
-│   └── build_config.py        # 빌드 설정 관리 — build_config.json 기반 약국별 커스터마이징
+│   └── build_config.py        # 빌드 설정 관리 — build_config.json 기반 약국별 커스터마이징 및 기준 도매상 설정
 │
 ├── utils/                     # 유틸리티
 │   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반)
@@ -219,11 +219,15 @@ yak-soldout/
 
 ## 🏗️ 아키텍처: 도매상 레지스트리
 
-`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다. `build_config.json`이 존재하면 `get_visible_registry()` 함수가 빌드 설정에 따라 필터링된 레지스트리를 반환하여, 특정 약국에 불필요한 도매상을 숨길 수 있습니다.
+`scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`가 모든 도매상 메타데이터의 **Single Source of Truth**입니다. 이 딕셔너리 하나에 도매상 ID, 이름, 한국어 키, 스크래퍼 클래스, 기본 색상, 지역 옵션 등이 정의되어 있으며, 나머지 시스템(설정 파싱, 검색 엔진, API, 프론트엔드)은 모두 이 레지스트리를 참조해 동적으로 동작합니다. `build_config.json`이 존재하면 `get_visible_registry()` 함수가 빌드 설정에 따라 필터링된 레지스트리를 반환하여, 특정 약국에 불필요한 도매상을 숨길 수 있습니다. 단, 기준 도매상은 `build_config.json`에서 `0`으로 설정해도 항상 표시됩니다.
 
 검색 결과 카드는 도매상별 색상으로 시각적으로 구분됩니다. 각 도매상에 `default_color`가 지정되어 있으며, 사용자가 웹 UI의 도매상 설정 모달에서 색상을 변경하면 `config.json`에 저장되어 기본 색상을 덮어씁니다.
 
 일부 도매상은 지역별로 다른 서버를 사용합니다. `region_options`가 정의된 도매상(지오영, 지오팜, HMP몰)은 설정 모달에 지역 선택 드롭다운이 표시되며, 선택한 지역에 따라 스크래퍼가 해당 지역의 서버에 접속합니다. 기본 지역은 `extra_params`의 `region` 값으로 설정됩니다.
+
+### 기준 도매상 (Primary Distributor)
+
+검색 엔진은 **기준 도매상**을 항상 먼저 검색하여 약품명 텍스트 검색을 수행하고, 그 결과에서 보험코드를 수집합니다. 나머지 도매상은 이 보험코드를 이용해 검색합니다. 기본적으로 지오영이 기준 도매상이며, `build_config.json`의 `primary_distributor` 설정으로 변경할 수 있습니다. 현재 텍스트 검색을 지원하는 도매상은 `geoweb`(지오영)과 `upharmmall`(유팜몰)이며, 이 외의 값이 설정되면 기본값인 `geoweb`으로 동작합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -276,6 +280,7 @@ cp build_config.example.json build_config.json
 ```json
 {
   "pharmacy_name": "가나안약국",
+  "primary_distributor": "geoweb",
   "distributors": {
     "geoweb": 1,
     "baekje": 0,
@@ -290,6 +295,7 @@ cp build_config.example.json build_config.json
 ```
 
 - **pharmacy_name**: 웹 인터페이스 헤더에 "for XXX약국" 형태로 표시됩니다. 생략하면 표시되지 않습니다.
+- **primary_distributor**: 기준 도매상 ID (`"geoweb"` 또는 `"upharmmall"`). 생략하면 기본값 `"geoweb"`이 사용됩니다. 기준 도매상은 `distributors`에서 `0`으로 설정해도 항상 표시됩니다.
 - **distributors**: 각 도매상의 표시 여부를 `1`(표시) 또는 `0`(숨김)으로 설정합니다. 누락된 도매상은 기본 표시(1)로 처리됩니다. `0`으로 설정된 도매상은 UI, 설정, 검색에서 완전히 제외됩니다.
 
 PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약국별로 맞춤 배포가 가능합니다.
@@ -322,7 +328,7 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 - `GET /api/exclusion-list` - 결과 표시 제외 목록 조회
 - `PUT /api/exclusion-list` - 결과 표시 제외 목록 업데이트
 - `POST /api/exclusion-add` - 개별 약품을 결과 표시 제외 목록에 추가
-- `GET /api/build-info` - 빌드 정보 조회 (약국명 등)
+- `GET /api/build-info` - 빌드 정보 조회 (약국명, 기준 도매상명 등)
 
 ### WebSocket
 - `WS /ws` - 실시간 로그 스트리밍 및 검색 진행 상황 업데이트

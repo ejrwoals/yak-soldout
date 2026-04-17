@@ -1003,6 +1003,24 @@
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-primary);
+  flex: 1;
+}
+
+.distributor-site-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  transition: color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.distributor-site-link:hover {
+  color: var(--primary);
+  background: var(--bg-primary);
 }
 
 /* ============= 도매상 설정 모달 — 빈 상태 ============= */

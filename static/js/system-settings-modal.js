@@ -114,14 +114,20 @@ class SystemSettingsModal {
 
         // 도매상 활성화 체크박스 렌더링 (API 응답 기반 — 하드코딩 없음)
         const enables = settings.distributor_enables || {};
+        const urls = settings.distributor_urls || {};
         if (this.enablesList) {
             this.enablesList.innerHTML = Object.entries(enables).map(([id, enabled]) => {
                 // 도매상 표시 이름은 distributor_names 맵 또는 id를 그대로 사용
                 const name = (settings.distributor_names || {})[id] || id;
+                const url = urls[id] || '';
+                const siteLink = url
+                    ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="distributor-site-link" title="${url}" onclick="event.stopPropagation()"><i class="bi bi-box-arrow-up-right"></i></a>`
+                    : '';
                 return `
                     <label class="distributor-enable-item">
                         <input type="checkbox" id="sys_enabled_${id}" ${enabled ? 'checked' : ''}>
                         <span>${name}</span>
+                        ${siteLink}
                     </label>
                 `;
             }).join('');

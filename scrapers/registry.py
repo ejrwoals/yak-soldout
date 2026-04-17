@@ -22,6 +22,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeowebScraper,
         "default_enabled": True,
         "default_color": "#0d9488",
+        "site_url": "https://order.geoweb.kr",
         "extra_params": {"region": "seoul"},
         "region_options": {
             "seoul": "서울, 경기, 인천",
@@ -36,6 +37,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": BaekjeScraper,
         "default_enabled": False,
         "default_color": "#3b82f6",
+        "site_url": "https://www.ibjp.co.kr",
         "extra_params": {},
     },
     "incheon": {
@@ -45,6 +47,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": IncheonScraper,
         "default_enabled": False,
         "default_color": "#d97706",
+        "site_url": "https://inchunpharm.com",
         "extra_params": {},
     },
     "boksan": {
@@ -54,6 +57,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": BoksanScraper,
         "default_enabled": False,
         "default_color": "#7c3aed",
+        "site_url": "https://wos.nicepharm.com",
         "extra_params": {},
     },
     "geopharm": {
@@ -63,6 +67,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": GeoPharmScraper,
         "default_enabled": False,
         "default_color": "#e11d48",
+        "site_url": "https://orderpharm.geo-pharm.com",
         "extra_params": {"region": "daegu"},
         "region_options": {
             "daegu": "대구",
@@ -78,6 +83,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": UpharmMallScraper,
         "default_enabled": False,
         "default_color": "#059669",
+        "site_url": "https://www.upharmmall.co.kr",
         "extra_params": {},
     },
     "hmpmall": {
@@ -87,7 +93,8 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": HmpMallScraper,
         "default_enabled": False,
         "default_color": "#ea580c",
-        "extra_params": {"region": "41"},
+        "site_url": "https://www.hmpmall.co.kr",
+        "extra_params": {},
         "region_options": {
             "41": "경기",
             "47": "경북",
@@ -100,6 +107,7 @@ DISTRIBUTOR_REGISTRY = {
         "scraper_class": TjpharmScraper,
         "default_enabled": False,
         "default_color": "#0891b2",
+        "site_url": "https://tjp.co.kr",
         "extra_params": {},
     },
 }

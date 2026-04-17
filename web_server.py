@@ -147,8 +147,12 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/build-info")
 async def get_build_info():
     """빌드 정보 조회 (약국명 등)"""
-    primary_name = DISTRIBUTOR_REGISTRY[get_primary_distributor()]['name']
-    return {"pharmacy_name": get_pharmacy_name(), "primary_distributor_name": primary_name}
+    primary_info = DISTRIBUTOR_REGISTRY[get_primary_distributor()]
+    return {
+        "pharmacy_name": get_pharmacy_name(),
+        "primary_distributor_name": primary_info['name'],
+        "primary_distributor_url": primary_info.get('site_url', ''),
+    }
 
 @app.get("/api/status")
 async def get_status():
@@ -482,6 +486,10 @@ async def get_system_settings():
             },
             "distributor_names": {
                 dist_id: info['name']
+                for dist_id, info in get_visible_registry().items()
+            },
+            "distributor_urls": {
+                dist_id: info.get('site_url', '')
                 for dist_id, info in get_visible_registry().items()
             }
         }

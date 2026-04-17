@@ -81,7 +81,7 @@ class ModernDrugSearchApp {
             if (el && data.pharmacy_name) {
                 el.textContent = `for ${data.pharmacy_name}`;
             }
-            // 기준 도매상 이름 표시
+            // 기준 도매상 이름 및 사이트 링크 표시
             const primaryName = data.primary_distributor_name;
             if (primaryName) {
                 this.primaryDistributorName = primaryName;
@@ -89,6 +89,12 @@ class ModernDrugSearchApp {
                 if (label) label.textContent = `${primaryName} 검색 대상 약품`;
                 const modalTitle = document.getElementById('primaryDistributorModalTitle');
                 if (modalTitle) modalTitle.textContent = `${primaryName} 검색 대상 약품 관리`;
+            }
+            const siteLink = document.getElementById('primaryDistributorSiteLink');
+            if (siteLink && data.primary_distributor_url) {
+                siteLink.href = data.primary_distributor_url;
+                siteLink.title = data.primary_distributor_url;
+                siteLink.style.display = '';
             }
         } catch (e) {
             console.warn('빌드 정보 로드 실패:', e);
