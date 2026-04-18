@@ -76,8 +76,7 @@
     transform: translateX(-50%) translateY(-100%) translateY(-5px);
 }
 
-.summary-card:hover .error-tooltip,
-.summary-card.danger:hover .error-tooltip {
+.stat-item.stat-danger:hover .error-tooltip {
     opacity: 1;
     visibility: visible;
     transform: translateX(-50%) translateY(-100%) translateY(-5px);

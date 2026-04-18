@@ -684,7 +684,7 @@ class ModernDrugSearchApp {
         this.elements.errorCount.textContent = currentErr + 1;
         
         // 오류 툴팁 업데이트
-        const statusCard = this.elements.errorCount?.closest('.summary-card.danger');
+        const statusCard = this.elements.errorCount?.closest('.stat-item.stat-danger');
         window.tooltipManager.updateErrorTooltip(statusCard, this.errorDrugs);
     }
     

@@ -222,12 +222,20 @@ class GeowebScraper(BaseScraper):
             stock_selector = f'{row_selector} > td.stock'
             code_selector = f'{row_selector} > td.code'
             company_selector = f'{row_selector} > td.phaCompany > span'
-            
-            drug_name = self.get_text_safe(name_selector)
+
+            # td.proName 내부의 .classify span(예: "향정" 라벨)은 제외하고 약품명만 추출
+            name_el = self.page.query_selector(name_selector)
+            drug_name = name_el.evaluate(
+                """el => {
+                    const clone = el.cloneNode(true);
+                    clone.querySelectorAll('.classify').forEach(n => n.remove());
+                    return clone.textContent.trim();
+                }"""
+            ) if name_el else ""
             main_stock = self.get_text_safe(stock_selector)
             insurance_code = self.get_text_safe(code_selector)
             company = self.get_text_safe(company_selector)
-            
+
             if not drug_name:
                 return drugs
             
@@ -270,7 +278,14 @@ class GeowebScraper(BaseScraper):
                 code_el = row.query_selector('td.code')
                 company_el = row.query_selector('td.phaCompany > span')
 
-                drug_name = name_el.text_content().strip() if name_el else ""
+                # td.proName 내부의 .classify span(예: "향정" 라벨)은 제외하고 약품명만 추출
+                drug_name = name_el.evaluate(
+                    """el => {
+                        const clone = el.cloneNode(true);
+                        clone.querySelectorAll('.classify').forEach(n => n.remove());
+                        return clone.textContent.trim();
+                    }"""
+                ) if name_el else ""
                 if not drug_name:
                     continue
 

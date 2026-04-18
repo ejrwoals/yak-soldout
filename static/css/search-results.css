@@ -82,20 +82,6 @@
 }
 
 /* 실시간 검색 결과 컬럼 스타일 */
-.results-columns {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
-    margin-top: 1rem;
-}
-
-.results-col {
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--border-color);
-}
-
 .col-header {
     padding: 1rem;
     font-weight: 600;
@@ -109,13 +95,6 @@
 .col-header.success,
 .col-header.warning {
     background: var(--text-secondary);
-}
-
-
-.col-body {
-    padding: 1rem;
-    max-height: 400px;
-    overflow-y: auto;
 }
 
 .drug-result-card {

@@ -129,7 +129,6 @@ class DrugListModal {
 
         // 메인 검색 진행 중 체크
         if (this.app.isSearching) {
-            this.app.showError('검색이 진행 중일 때는 미리보기를 사용할 수 없습니다');
             this.showSearchFallback(query, '검색 진행 중에는 미리보기를 사용할 수 없습니다. 검색 완료 후 다시 시도하거나, 직접 입력하세요.');
             return;
         }
@@ -181,7 +180,7 @@ class DrugListModal {
         const resultItems = results.map((result, index) => {
             const stockText = result.stock === '품절' || result.stock === '0' ? '품절' : `${result.stock}개`;
             const stockClass = result.stock === '품절' || result.stock === '0' ? 'stock-soldout' : 'stock-available';
-            const metaParts = [result.company, result.unit].filter(Boolean).join(' · ');
+            const metaParts = [result.insurance_code, result.company, result.unit].filter(Boolean).join(' · ');
 
             return `
                 <div class="preview-search-item" data-index="${index}" onclick="window.drugListModal.selectSearchResult(${index})">

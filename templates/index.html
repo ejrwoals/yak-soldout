@@ -111,46 +111,32 @@
 
             <!-- 결과 대시보드 -->
             <div class="results-dashboard">
-                <!-- 결과 요약 -->
-                <div class="results-summary">
-                    <div class="summary-card success">
-                        <div class="summary-icon">
-                            <i class="bi bi-check-circle"></i>
-                        </div>
-                        <div class="summary-content">
-                            <h2 id="foundCount">0</h2>
-                            <p>재고 있음</p>
-                        </div>
-                    </div>
-                    
-                    <div class="summary-card warning">
-                        <div class="summary-icon">
-                            <i class="bi bi-x-circle"></i>
-                        </div>
-                        <div class="summary-content">
-                            <h2 id="soldoutCount">0</h2>
-                            <p>품절</p>
-                        </div>
-                    </div>
-                    
-                    <div class="summary-card danger">
-                        <div class="summary-icon">
-                            <i class="bi bi-exclamation-triangle"></i>
-                        </div>
-                        <div class="summary-content">
-                            <h2 id="errorCount">0</h2>
-                            <p>검색 오류</p>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- 상세 결과 -->
                 <div class="detailed-results">
                     <div class="results-header">
                         <h3>검색 결과</h3>
-                        <div class="last-update">
-                            <i class="bi bi-clock-history"></i>
-                            <span id="lastUpdate">-</span>
+                        <div class="results-header-right">
+                            <div class="results-stats">
+                                <span class="stat-item stat-success">
+                                    <i class="bi bi-check-circle"></i>
+                                    <span class="stat-label">재고</span>
+                                    <strong id="foundCount">0</strong>
+                                </span>
+                                <span class="stat-item stat-warning">
+                                    <i class="bi bi-x-circle"></i>
+                                    <span class="stat-label">품절</span>
+                                    <strong id="soldoutCount">0</strong>
+                                </span>
+                                <span class="stat-item stat-danger">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    <span class="stat-label">오류</span>
+                                    <strong id="errorCount">0</strong>
+                                </span>
+                            </div>
+                            <div class="last-update">
+                                <i class="bi bi-clock-history"></i>
+                                <span id="lastUpdate">-</span>
+                            </div>
                         </div>
                     </div>
                     <div id="searchResults" class="results-content">
