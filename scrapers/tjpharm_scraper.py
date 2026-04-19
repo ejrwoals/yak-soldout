@@ -52,6 +52,16 @@ class TjpharmScraper(BaseScraper):
         """단일 약품명 검색 (티제이팜은 보험코드 기반이므로 빈 리스트 반환)"""
         return []
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: /Order/ 페이지에서 검색창 입력 + 검색 버튼 클릭까지."""
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        # login()에서 이미 /Order/로 이동한 상태
+        if not self.wait_and_fill('#search_name_2', query):
+            raise RuntimeError("검색창 입력 실패")
+        self.wait_and_click('#search_div_1 > div:nth-child(3) > button')
+        self._wait_search_settled('#table_id_1')
+
     def search_by_insurance_codes(self, insurance_codes: Dict[str, str]) -> List[Drug]:
         """보험코드로 약품 일괄 검색"""
         if not self.is_logged_in or not self.page:

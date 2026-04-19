@@ -93,6 +93,26 @@ class BaekjeScraper(BaseScraper):
     def search_drug(self, drug_name: str) -> List[Drug]:
         """단일 약품 검색 (백제는 주로 보험코드로 검색하므로 빈 리스트 반환)"""
         return []
+
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 로그인 직후 도달하는 Quasar SPA 검색창에 query fill + Enter.
+
+        백제는 JWT 기반 SPA지만 검색창에 Enter를 주면 SPA가 자체적으로
+        API 호출 + 결과 렌더링을 수행한다. (결과 파싱은 여기서 하지 않음)
+        """
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        search_selector = 'input[placeholder="품목명/보험코드 입력"]'
+        try:
+            self.page.wait_for_selector(search_selector, timeout=5000, state='visible')
+        except Exception:
+            pass
+        if not self.wait_and_fill(search_selector, query):
+            # fill 실패해도 창은 열려있으므로 치명적 아님 — settle만 하고 반환
+            self._wait_search_settled()
+            return
+        self.page.keyboard.press('Enter')
+        self._wait_search_settled()
     
     def _search_by_insurance_code(self, insurance_code: str, original_name: str = '') -> List[Drug]:
         """보험코드로 직접 API 호출하여 검색 (브라우저 컨텍스트 내 fetch 사용)"""

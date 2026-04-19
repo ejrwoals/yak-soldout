@@ -10,7 +10,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
-- 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지오영, 유팜몰, HMP몰 지원)
+- 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지원 도매상 전체)
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
@@ -246,7 +246,9 @@ yak-soldout/
 
 `utils/open_site_session.py`의 `OpenSiteSession` 클래스가 동시 1개의 headed 브라우저 세션을 관리합니다. 로그인·검색이 끝나기 전에는 창을 작은 크기(또는 Windows의 경우 minimized)로 띄워 사용자의 작업을 방해하지 않고, 준비가 끝나면 CDP `Browser.setWindowBounds`로 1280×800 중앙 위치로 창을 드러냅니다. 사용자가 창을 닫거나 `IDLE_TIMEOUT`(기본 10분)이 경과하면 워치독이 세션을 자동 정리합니다.
 
-바로가기 지원 여부는 `scrapers/registry.py`의 각 도매상 항목의 `supports_open_site` 플래그로 결정되며, 현재 지오영·유팜몰·HMP몰이 지원됩니다. 각 스크래퍼는 `BaseScraper.open_for_user_interaction(query, original_drug_name)`를 override하여 "검색 실행까지만" 수행하고 결과 파싱은 하지 않습니다. 공통 후처리 `_wait_search_settled()`로 DOM 렌더링과 networkidle까지 대기해 UX 일관성을 확보합니다.
+바로가기 지원 여부는 `scrapers/registry.py`의 각 도매상 항목의 `supports_open_site` 플래그로 결정됩니다. `True`면 카드에 바로가기 버튼이 표시됩니다. 현재 등록된 8개 도매상(지오영·백제약품·인천약품·지오팜·복산·유팜몰·HMP몰·티제이팜)은 모두 `True`입니다.
+
+각 스크래퍼는 `BaseScraper.open_for_user_interaction(query, original_drug_name)`를 override하여 "검색 실행까지만" 수행하고 결과 파싱은 하지 않습니다. 공통 후처리 `_wait_search_settled(<결과 셀렉터>)`로 DOM 렌더링과 networkidle까지 대기해 UX 일관성을 확보합니다. 도매상별 검색창·결과 셀렉터는 스크래퍼 내부에 정의되어 있으며(예: 지오팜 `#item_name` + iframe 응답, 인천약품 `#tx_insucd`, 복산 `#tx_physic`, 백제 Quasar SPA 검색창 + Enter, 티제이팜 `#search_name_2` + `#table_id_1`), 플랫폼 구조에 맞게 각자 구현됩니다.
 
 프론트엔드는 WebSocket으로 스트리밍되는 재고 카드의 `insurance_code`를 바로가기 쿼리로 사용합니다. 보험코드가 비어 있으면 약품명을 대신 사용합니다.
 
@@ -276,7 +278,7 @@ DISTRIBUTOR_REGISTRY = {
             "yeongnam": "영남",
             "daejeon": "대전",
         },
-        "supports_open_site": True,            # 재고 카드 바로가기(headed 자동 로그인+검색) 지원 여부
+        "supports_open_site": True,            # 재고 카드 바로가기 지원 여부
     },
     # ... 나머지 도매상
 }

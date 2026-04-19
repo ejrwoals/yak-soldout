@@ -132,3 +132,17 @@ class IncheonScraper(BaseScraper):
         백제약품과 동일하게 빈 리스트 반환
         """
         return []
+
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 검색창 입력·조회 버튼 클릭까지만 (결과 파싱 X).
+
+        인천약품은 로그인 성공 시점에 이미 검색창(#tx_insucd)이 보이는 페이지에 있다.
+        """
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        if not self.wait_and_fill('#tx_insucd', query):
+            raise RuntimeError("검색창 입력 실패")
+        self.wait_and_click('#btn_search2')
+        self._wait_search_settled(
+            '#frmOrder > fieldset:nth-child(1) > div > table > tbody > tr'
+        )

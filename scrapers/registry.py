@@ -40,7 +40,7 @@ DISTRIBUTOR_REGISTRY = {
         "default_color": "#3b82f6",
         "site_url": "https://www.ibjp.co.kr",
         "extra_params": {},
-        "supports_open_site": False,
+        "supports_open_site": True,
     },
     "incheon": {
         "id": "incheon",
@@ -51,7 +51,7 @@ DISTRIBUTOR_REGISTRY = {
         "default_color": "#d97706",
         "site_url": "https://inchunpharm.com",
         "extra_params": {},
-        "supports_open_site": False,
+        "supports_open_site": True,
     },
     "boksan": {
         "id": "boksan",
@@ -62,7 +62,7 @@ DISTRIBUTOR_REGISTRY = {
         "default_color": "#7c3aed",
         "site_url": "https://wos.nicepharm.com",
         "extra_params": {},
-        "supports_open_site": False,
+        "supports_open_site": True,
     },
     "geopharm": {
         "id": "geopharm",
@@ -79,7 +79,7 @@ DISTRIBUTOR_REGISTRY = {
             "gwangju": "광주",
             "seoul": "서울",
         },
-        "supports_open_site": False,
+        "supports_open_site": True,
     },
     "upharmmall": {
         "id": "upharmmall",
@@ -116,6 +116,6 @@ DISTRIBUTOR_REGISTRY = {
         "default_color": "#0891b2",
         "site_url": "https://tjp.co.kr",
         "extra_params": {},
-        "supports_open_site": False,
+        "supports_open_site": True,
     },
 }

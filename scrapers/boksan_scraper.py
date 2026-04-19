@@ -65,6 +65,17 @@ class BoksanScraper(BaseScraper):
         """약품명으로 직접 검색 (복산은 보험코드 검색만 사용하므로 빈 리스트 반환)"""
         return []
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 주문 페이지에서 검색창 입력·조회 버튼 클릭까지만 (결과 파싱 X)."""
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        if not self._ensure_order_page():
+            raise RuntimeError("주문 페이지 접근 실패")
+        if not self.wait_and_fill('#tx_physic', query):
+            raise RuntimeError("검색창 입력 실패")
+        self.wait_and_click('#btn_search2')
+        self._wait_search_settled(self.ROW_SELECTOR)
+
     def search_by_insurance_codes(self, insurance_codes: Dict[str, str]) -> List[Drug]:
         """보험코드 딕셔너리로 약품 일괄 검색"""
         if not self.is_logged_in or not self.page:

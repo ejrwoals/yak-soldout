@@ -83,6 +83,28 @@ class GeoPharmScraper(BaseScraper):
         """약품명으로 직접 검색 (지오팜은 보험코드 검색만 지원)"""
         return []
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 주문 페이지에서 검색창 입력·검색 실행까지만 (결과 파싱 X).
+
+        결과는 iframe(#item_list_iframe) 안에 렌더되므로 iframe 응답을 기다린 뒤
+        외부 페이지 컨테이너(#item_list_view)에 대해 settle 처리한다.
+        """
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        self._ensure_order_page()
+        self.page.fill('#item_name', '')
+        if not self.wait_and_fill('#item_name', query):
+            raise RuntimeError("검색창 입력 실패")
+        try:
+            with self.page.expect_response(
+                lambda r: 'sc_item_list_iframe.php' in r.url,
+                timeout=10000,
+            ):
+                self.wait_and_click('#item_list_view > input')
+        except Exception:
+            pass
+        self._wait_search_settled('#item_list_view')
+
     def search_by_insurance_codes(self, insurance_codes: Dict[str, str]) -> List[Drug]:
         """
         보험코드로 약품 검색
