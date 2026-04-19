@@ -184,6 +184,17 @@ class UpharmMallScraper(BaseScraper):
 
         return drug
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 주문 페이지에서 검색창에 입력·검색 실행까지만 수행(결과 파싱 X)."""
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        if not self._ensure_order_page():
+            raise RuntimeError("주문 페이지 접근 실패")
+        if not self.wait_and_fill('#itemName', query):
+            raise RuntimeError("검색창 입력 실패")
+        self.wait_and_click('#btnSearch')
+        self._wait_search_settled(self.ROW_SELECTOR)
+
     def _ensure_order_page(self) -> bool:
         """주문 페이지에 있는지 확인하고, 필요시 이동"""
         try:

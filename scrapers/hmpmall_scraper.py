@@ -134,6 +134,29 @@ class HmpMallScraper(BaseScraper):
 
         return [drug]
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 검색 페이지로 goto만 수행(JSON API 호출로 페이지를 덮어쓰지 않음).
+
+        query가 보험코드가 아닐 수 있으므로 insuranceCode/searchKeyword 둘 다 넣는다.
+        결과는 HTML 검색 결과 페이지에 표시되고, 사용자는 이어서 조작할 수 있다.
+        """
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        params = {
+            'insuranceCode': query,
+            'searchKeyword': query,
+            'headerSearchKeyword': query,
+            'makingId': 'insuranceCode',
+            'skip': '1',
+            'max': '20',
+        }
+        search_url = f"{self.SEARCH_URL}?{urlencode(params)}"
+        try:
+            self.page.goto(search_url, wait_until='domcontentloaded', timeout=15000)
+        except PlaywrightTimeoutError:
+            pass
+        self._wait_search_settled('div.search_product_list_box')
+
     def _extract_product_master_id(self) -> Tuple[Optional[str], Optional[str]]:
         """검색 결과 HTML에서 productMasterId와 fromGubun 추출"""
         try:

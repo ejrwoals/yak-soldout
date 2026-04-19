@@ -9,13 +9,16 @@ from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 class BrowserManager:
     """크로스 플랫폼 브라우저 관리"""
     
-    def __init__(self, headless: bool = None):
+    def __init__(self, headless: bool = None, start_hidden: bool = False):
         # 환경변수 HEADLESS가 설정되어 있으면 우선 적용
         if headless is None:
             env_headless = os.getenv('HEADLESS', 'true').lower()
             self.headless = env_headless not in ('false', '0', 'no')
         else:
             self.headless = headless
+        # headless=False인데도 사용자에게 초기에는 보이지 않게(화면 밖)
+        # 두었다가 나중에 드러내기 위한 옵션.
+        self.start_hidden = start_hidden
         self.playwright = None
         self.browser = None
         self.context = None
@@ -139,9 +142,9 @@ class BrowserManager:
             '--disable-backgrounding-occluded-windows',
             '--disable-renderer-backgrounding',
         ]
-        
+
         system = platform.system()
-        
+
         if system == "Linux":
             args.extend([
                 '--no-sandbox',
@@ -151,7 +154,15 @@ class BrowserManager:
             args.extend([
                 '--no-sandbox',
             ])
-        
+
+        # headed 모드인데 초기에는 눈에 띄지 않게 작게 시작.
+        # 나중에 CDP setWindowBounds로 정상 크기/위치로 복원한다.
+        if self.start_hidden and not self.headless:
+            args.append('--window-size=400,300')
+            # Windows는 창 런치 시 포커스를 가로챌 수 있으므로 minimized로 시작.
+            if system == "Windows":
+                args.append('--start-minimized')
+
         return args
     
     @staticmethod

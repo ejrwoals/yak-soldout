@@ -127,12 +127,6 @@ class DrugListModal {
 
         if (this.isPreviewSearching) return;
 
-        // 메인 검색 진행 중 체크
-        if (this.app.isSearching) {
-            this.showSearchFallback(query, '검색 진행 중에는 미리보기를 사용할 수 없습니다. 검색 완료 후 다시 시도하거나, 직접 입력하세요.');
-            return;
-        }
-
         this.isPreviewSearching = true;
         this.showSearchLoading();
 

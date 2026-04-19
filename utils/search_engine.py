@@ -420,6 +420,7 @@ def search_distributor_sync(dist_id: str, app_state, insurance_codes: Dict[str, 
 
                         drug_data = {
                             "name": f"{drug.name}{unit_display}",
+                            "insurance_code": getattr(drug, 'insurance_code', '') or insurance_code,
                             "main_stock": main_stock,
                             "incheon_stock": "-",
                             "company": drug.company if hasattr(drug, 'company') else dist_name,
@@ -598,6 +599,7 @@ def search_primary_sync(primary_id: str, app_state, drug_list: List[str], exclud
                     # 메모리 상태에 개별 결과 추가
                     drug_data = {
                         "name": drug.name,
+                        "insurance_code": getattr(drug, 'insurance_code', ''),
                         "main_stock": main_stock,
                         "incheon_stock": incheon_stock,
                         "company": getattr(drug, 'company', ''),

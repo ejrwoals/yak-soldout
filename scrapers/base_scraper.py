@@ -26,6 +26,47 @@ class BaseScraper(ABC):
         """약품 검색 - 모든 결과 반환 (미리보기용). 기본 구현은 search_drug 위임."""
         return self.search_drug(drug_name)
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 검색창에 query를 입력·실행하여 사용자가 이어서 조작할 수 있도록 한다.
+        결과 파싱은 하지 않으며, 브라우저는 검색 결과 화면에 머무른다.
+        기본 구현은 search_drug_all 호출이고, 각 스크래퍼가 필요에 따라 override한다.
+
+        override 시 반드시 마지막에 self._wait_search_settled(...)를 호출해서
+        페이지가 안정된 뒤 반환되도록 한다. (바로가기 UX의 일관성을 위한 계약)
+        """
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        try:
+            self.search_drug_all(query)
+        except Exception as e:
+            # 결과 파싱이 실패해도 브라우저는 열려 있으므로 경고만 남기고 삼킨다.
+            print(f"[open_for_user_interaction] 경고(무시): {e}")
+
+    def _wait_search_settled(self, result_selector: str = None, timeout_ms: int = 5000) -> None:
+        """바로가기 공통 표준: 검색 실행 후 결과 페이지가 안정될 때까지 대기.
+
+        1) result_selector가 주어지면 해당 요소가 DOM에 attach 될 때까지 대기
+           (가볍게 결과 영역 렌더링 시작을 확인)
+        2) networkidle 상태까지 대기
+           (XHR/리소스 요청이 잠잠해질 때까지)
+
+        실패해도 예외는 던지지 않는다 — 바로가기는 best-effort 렌더링이고,
+        OpenSiteSession이 최종 settle(프레임 안정화)을 한 번 더 수행한다.
+        """
+        if self.page is None:
+            return
+        if result_selector:
+            try:
+                self.page.wait_for_selector(
+                    result_selector, timeout=timeout_ms, state='attached'
+                )
+            except Exception:
+                pass
+        try:
+            self.page.wait_for_load_state('networkidle', timeout=timeout_ms)
+        except Exception:
+            pass
+
     def set_page(self, page: Page):
         """페이지 설정"""
         self.page = page

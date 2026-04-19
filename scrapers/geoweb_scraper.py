@@ -120,6 +120,18 @@ class GeowebScraper(BaseScraper):
         self._handle_search_popups()
         return self._parse_all_search_results(drug_name)
 
+    def open_for_user_interaction(self, query: str, original_drug_name: str = "") -> None:
+        """바로가기용: 메인 페이지에서 검색창에 입력·검색 실행까지만 수행(결과 파싱 X)."""
+        if not self.is_logged_in or not self.page:
+            raise RuntimeError("로그인이 필요합니다")
+        if not self._ensure_main_page():
+            raise RuntimeError("메인 페이지 확인 실패")
+        if not self.wait_and_fill('#txt_product', query):
+            raise RuntimeError("검색창 입력 실패")
+        self.page.keyboard.press('Enter')
+        self._wait_search_settled('#tbodySearchProduct > tr')
+        self._handle_search_popups()
+
     def _handle_geoweb_popups(self):
         """지오영 범용 팝업 처리 - 안전하고 범용적인 접근"""
         try:

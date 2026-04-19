@@ -84,6 +84,7 @@ from scrapers.registry import DISTRIBUTOR_REGISTRY
 from models.build_config import get_visible_registry, get_pharmacy_name, get_primary_distributor
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search, PreviewSearchSession
+from utils.open_site_session import OpenSiteSession
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
@@ -107,6 +108,9 @@ app_state = AppState()
 
 # 미리보기 검색 세션 (브라우저 재사용)
 preview_session = PreviewSearchSession()
+
+# 바로가기 세션 (재고 카드 → headed 브라우저로 자동 로그인/검색)
+open_site_session = OpenSiteSession()
 
 # WebSocket 연결 관리자
 manager = ConnectionManager()
@@ -189,6 +193,7 @@ async def get_status():
                 "configured": configured,
                 "enabled": enabled,
                 "color": distributors_config.get(dist_id, {}).get('color', dist_info['default_color']),
+                "supports_open_site": dist_info.get('supports_open_site', False),
             })
 
         return {
@@ -408,11 +413,7 @@ async def preview_search(data: dict):
     if not query:
         raise HTTPException(status_code=400, detail="검색어를 입력해주세요")
 
-    # 메인 검색 중이면 거부
-    if app_state.is_searching:
-        raise HTTPException(status_code=409, detail="검색이 진행 중일 때는 미리보기를 사용할 수 없습니다")
-
-    # 이미 미리보기 검색 중이면 거부
+    # 이미 미리보기 검색 중이면 거부 (같은 세션 동시 사용 방지)
     if app_state.is_preview_searching:
         raise HTTPException(status_code=409, detail="이전 미리보기 검색이 진행 중입니다")
 
@@ -445,6 +446,61 @@ async def close_preview_search():
         return {"message": "미리보기 세션이 종료되었습니다"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"세션 종료 실패: {str(e)}")
+
+@app.post("/api/open-distributor-site")
+async def open_distributor_site(data: dict):
+    """재고 카드 바로가기 — headed 브라우저로 자동 로그인+검색"""
+    distributor_id = (data.get('distributor_id') or '').strip()
+    drug_name = (data.get('drug_name') or '').strip()
+    insurance_code = (data.get('insurance_code') or '').strip()
+
+    if not distributor_id:
+        raise HTTPException(status_code=400, detail="distributor_id가 필요합니다")
+    if distributor_id not in DISTRIBUTOR_REGISTRY:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 도매상: {distributor_id}")
+
+    dist_info = DISTRIBUTOR_REGISTRY[distributor_id]
+    if not dist_info.get('supports_open_site', False):
+        raise HTTPException(status_code=400, detail=f"{dist_info['name']}은(는) 바로가기를 지원하지 않습니다")
+
+    if not drug_name and not insurance_code:
+        raise HTTPException(status_code=400, detail="검색어(보험코드 또는 약품명)가 필요합니다")
+
+    if not app_state.config or not app_state.config.has_credentials(distributor_id):
+        raise HTTPException(status_code=400, detail=f"{dist_info['name']} 계정 정보가 설정되지 않았습니다")
+
+    try:
+        result = await open_site_session.open(
+            app_state, distributor_id, drug_name, insurance_code
+        )
+        return result
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="브라우저 세션 시작이 시간 초과되었습니다")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"바로가기 실패: {str(e)}")
+
+@app.post("/api/open-distributor-site/close")
+async def close_open_distributor_site():
+    """바로가기 세션 수동 종료"""
+    try:
+        await open_site_session.close()
+        return {"message": "바로가기 세션이 종료되었습니다"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"세션 종료 실패: {str(e)}")
+
+@app.on_event("shutdown")
+async def _cleanup_sessions_on_shutdown():
+    """서버 종료 시 열려있는 세션 정리 (Unix SIGTERM 경로)"""
+    try:
+        await open_site_session.close()
+    except Exception as e:
+        print(f"shutdown open_site_session 정리 오류(무시): {e}")
+    try:
+        await preview_session.close()
+    except Exception as e:
+        print(f"shutdown preview_session 정리 오류(무시): {e}")
 
 @app.get("/api/exclusion-list")
 async def get_exclusion_list():

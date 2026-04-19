@@ -10,6 +10,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
+- 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지오영, 유팜몰, HMP몰 지원)
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
@@ -198,7 +199,8 @@ yak-soldout/
 │   └── build_config.py        # 빌드 설정 관리 — build_config.json 기반 약국별 커스터마이징 및 기준 도매상 설정
 │
 ├── utils/                     # 유틸리티
-│   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반)
+│   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반) + PreviewSearchSession
+│   ├── open_site_session.py   # 바로가기 headed 브라우저 세션 관리 (OpenSiteSession)
 │   ├── file_manager.py        # 약품 목록 / JSON 파일 I/O
 │   ├── data_processor.py      # 데이터 처리 및 분류
 │   └── notifications.py       # 크로스 플랫폼 알림
@@ -236,7 +238,17 @@ yak-soldout/
 
 약품 목록 모달에서 약품을 추가할 때, 사용자가 입력한 키워드를 **기준 도매상**에 실시간으로 질의하여 후보 약품들의 약품명·보험코드·제약사·규격·현재 재고를 제공하는 기능입니다. 정확한 약품명으로 목록에 등록하도록 돕고, 실수로 잘못된 이름을 추가하는 것을 방지합니다.
 
-`utils/search_engine.py`의 `PreviewSearchSession` 클래스가 이 기능을 담당하며, 브라우저/로그인 세션을 프로세스 수명 동안 유지하여 연속 질의에서 로그인 비용을 발생시키지 않습니다. 메인 검색이 진행 중일 때는 자원 충돌을 피하기 위해 미리보기가 차단되며, 프론트엔드는 이 경우 직접 입력 폴백을 안내합니다.
+`utils/search_engine.py`의 `PreviewSearchSession` 클래스가 이 기능을 담당하며, 브라우저/로그인 세션을 프로세스 수명 동안 유지하여 연속 질의에서 로그인 비용을 발생시키지 않습니다. 메인 검색, 미리보기, 바로가기는 각기 독립된 브라우저 세션을 사용하므로 서로 차단하지 않고 동시에 실행할 수 있습니다.
+
+### 도매상 사이트 바로가기 (Open Site)
+
+재고 카드 우측의 바로가기 아이콘을 누르면, 해당 도매상 사이트를 자동 로그인하고 약품 검색까지 마친 상태의 브라우저 창이 사용자에게 노출됩니다. 사용자는 그 창에서 실제 주문/상세 조회 등을 이어서 수행할 수 있습니다.
+
+`utils/open_site_session.py`의 `OpenSiteSession` 클래스가 동시 1개의 headed 브라우저 세션을 관리합니다. 로그인·검색이 끝나기 전에는 창을 작은 크기(또는 Windows의 경우 minimized)로 띄워 사용자의 작업을 방해하지 않고, 준비가 끝나면 CDP `Browser.setWindowBounds`로 1280×800 중앙 위치로 창을 드러냅니다. 사용자가 창을 닫거나 `IDLE_TIMEOUT`(기본 10분)이 경과하면 워치독이 세션을 자동 정리합니다.
+
+바로가기 지원 여부는 `scrapers/registry.py`의 각 도매상 항목의 `supports_open_site` 플래그로 결정되며, 현재 지오영·유팜몰·HMP몰이 지원됩니다. 각 스크래퍼는 `BaseScraper.open_for_user_interaction(query, original_drug_name)`를 override하여 "검색 실행까지만" 수행하고 결과 파싱은 하지 않습니다. 공통 후처리 `_wait_search_settled()`로 DOM 렌더링과 networkidle까지 대기해 UX 일관성을 확보합니다.
+
+프론트엔드는 WebSocket으로 스트리밍되는 재고 카드의 `insurance_code`를 바로가기 쿼리로 사용합니다. 보험코드가 비어 있으면 약품명을 대신 사용합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -264,6 +276,7 @@ DISTRIBUTOR_REGISTRY = {
             "yeongnam": "영남",
             "daejeon": "대전",
         },
+        "supports_open_site": True,            # 재고 카드 바로가기(headed 자동 로그인+검색) 지원 여부
     },
     # ... 나머지 도매상
 }
@@ -341,6 +354,8 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 - `GET /api/build-info` - 빌드 정보 조회 (약국명, 기준 도매상명 등)
 - `POST /api/preview-search` - 약품 미리보기 검색 (기준 도매상에 실시간 질의)
 - `POST /api/preview-search/close` - 미리보기 검색 세션 브라우저 종료
+- `POST /api/open-distributor-site` - 도매상 사이트 바로가기 (headed 브라우저 자동 로그인+검색)
+- `POST /api/open-distributor-site/close` - 바로가기 세션 수동 종료
 
 ### WebSocket
 - `WS /ws` - 실시간 로그 스트리밍 및 검색 진행 상황 업데이트
@@ -385,6 +400,7 @@ class DistributorType(Enum):
     "default_color": "#059669",    # 도매상 구분 색상
     "site_url": "https://example.com",  # 도매상 사이트 URL
     "extra_params": {},
+    "supports_open_site": False,   # 바로가기 지원 시 True + scraper에 open_for_user_interaction 구현
 },
 ```
 

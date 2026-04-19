@@ -739,6 +739,41 @@ body {
     border-color: var(--success);
 }
 
+.btn-open-site {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+}
+
+.btn-open-site:hover {
+    background: var(--bg-tertiary);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.btn-open-site:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-open-site .bi-arrow-repeat.spin {
+    animation: btn-open-site-spin 0.9s linear infinite;
+}
+
+@keyframes btn-open-site-spin {
+    to { transform: rotate(360deg); }
+}
+
 .empty-state-small {
     text-align: center;
     padding: 2rem 1rem;

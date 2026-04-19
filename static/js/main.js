@@ -6,12 +6,26 @@ let DISTRIBUTOR_MAP = {};
 
 function buildDistributorMap(distributors) {
     DISTRIBUTOR_MAP = Object.fromEntries(
-        (distributors || []).map(d => [d.name, { id: d.id, color: d.color }])
+        (distributors || []).map(d => [d.name, {
+            id: d.id,
+            color: d.color,
+            supports_open_site: !!d.supports_open_site,
+        }])
     );
 }
 
 function getDistributorInfo(distributorName) {
-    return DISTRIBUTOR_MAP[distributorName] || { id: 'unknown', color: '#475569' };
+    return DISTRIBUTOR_MAP[distributorName]
+        || { id: 'unknown', color: '#475569', supports_open_site: false };
+}
+
+function escapeHtmlAttr(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 class ModernDrugSearchApp {
@@ -642,14 +656,22 @@ class ModernDrugSearchApp {
         drugCard.style.setProperty('--dist-color', distInfo.color);
         const distributorBadge = `<span class="distributor-badge">${distributor}</span>`;
 
+        const safeName = escapeHtmlAttr(drug.name);
+        const safeCode = escapeHtmlAttr(drug.insurance_code || '');
+        const safeDistName = escapeHtmlAttr(distributorName);
+        const openSiteBtn = distInfo.supports_open_site ? `
+                    <button class="btn-open-site" onclick="window.modernDrugApp.openDistributorSite('${distInfo.id}', '${safeCode}', '${safeName}', this)" title="${safeDistName}에서 자동 검색 열기">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </button>` : '';
+
         drugCard.innerHTML = `
             <div class="drug-header">
                 <div class="drug-title">
                     ${statusIcon}
                     <h5>${drug.name}</h5>
                 </div>
-                <div class="drug-actions">
-                    <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${drug.name}', '${distributorName}', this)" title="결과 표시 제외 목록에 추가">
+                <div class="drug-actions">${openSiteBtn}
+                    <button class="btn-exclusion" onclick="window.modernDrugApp.addToExclusion('${safeName}', '${safeDistName}', this)" title="결과 표시 제외 목록에 추가">
                         <i class="bi bi-eye-slash"></i>
                     </button>
                 </div>
@@ -925,6 +947,39 @@ class ModernDrugSearchApp {
         };
     }
     
+    // =================== 도매상 사이트 바로가기 ===================
+    async openDistributorSite(distributorId, insuranceCode, drugName, buttonElement) {
+        if (!buttonElement || buttonElement.dataset.busy === '1') return;
+        buttonElement.dataset.busy = '1';
+        buttonElement.disabled = true;
+        const icon = buttonElement.querySelector('i');
+        const originalClass = icon ? icon.className : '';
+        if (icon) icon.className = 'bi bi-arrow-repeat spin';
+
+        try {
+            const response = await fetch('/api/open-distributor-site', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    distributor_id: distributorId,
+                    drug_name: drugName,
+                    insurance_code: insuranceCode,
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.detail || '바로가기 실패');
+            }
+            this.showSuccess(`${data.distributor || '도매상'} 창을 열었습니다`);
+        } catch (err) {
+            this.showError(`바로가기 실패: ${err.message}`);
+        } finally {
+            if (icon) icon.className = originalClass;
+            buttonElement.disabled = false;
+            delete buttonElement.dataset.busy;
+        }
+    }
+
     // =================== 결과 표시 제외 처리 ===================
     async addToExclusion(drugName, distributor, buttonElement) {
         try {
