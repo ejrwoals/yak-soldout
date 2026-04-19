@@ -56,16 +56,27 @@ def get_primary_distributor() -> str:
 
 
 def get_visible_registry() -> Dict[str, Any]:
-    """빌드 설정 기반으로 UI에 표시할 도매상만 필터링한 레지스트리 반환."""
+    """빌드 설정 기반으로 UI에 표시할 도매상만 필터링한 레지스트리 반환.
+
+    primary 도매상이 항상 맨 앞에 오도록 정렬하여 반환한다.
+    """
     from scrapers.registry import DISTRIBUTOR_REGISTRY
 
+    primary_id = get_primary_distributor()
     dist_visibility = get_build_config().get("distributors", {})
+
     if not dist_visibility:
         # build_config.json 없거나 distributors 키 없음 → 전체 표시
-        return dict(DISTRIBUTOR_REGISTRY)
+        visible_ids = list(DISTRIBUTOR_REGISTRY.keys())
+    else:
+        visible_ids = [
+            did for did in DISTRIBUTOR_REGISTRY
+            if did == primary_id or dist_visibility.get(did, 1) != 0
+        ]
 
-    primary_id = get_primary_distributor()
-    return {
-        did: info for did, info in DISTRIBUTOR_REGISTRY.items()
-        if did == primary_id or dist_visibility.get(did, 1) != 0
-    }
+    # primary 도매상이 맨 앞에 오도록 정렬
+    if primary_id in visible_ids:
+        visible_ids.remove(primary_id)
+        visible_ids.insert(0, primary_id)
+
+    return {did: DISTRIBUTOR_REGISTRY[did] for did in visible_ids}
