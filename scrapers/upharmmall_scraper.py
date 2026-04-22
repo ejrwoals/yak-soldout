@@ -196,21 +196,32 @@ class UpharmMallScraper(BaseScraper):
         self._wait_search_settled(self.ROW_SELECTOR)
 
     def _ensure_order_page(self) -> bool:
-        """주문 페이지에 있는지 확인하고, 필요시 이동"""
+        """주문 페이지에 있는지 확인하고, 필요시 이동
+
+        유팜몰은 로그인 성공 시 Member/RedirectWosN.aspx로 먼저 이동한 뒤,
+        해당 페이지의 자동 리다이렉트로 SimpleOrder 페이지에 도달하는 구조.
+        명시적 goto와 자동 리다이렉트가 경쟁하면 세션 쿠키가 깨져 #btnSearch가
+        영영 나오지 않는 실패 케이스가 있었음 → 자동 리다이렉트 완료를 먼저 기다린다.
+        """
+        # RedirectWosN.aspx에 있으면 자동 리다이렉트 완료를 먼저 기다린다
         try:
-            # 검색 버튼이 있는지 확인
-            search_btn = self.page.query_selector('#btnSearch')
-            if search_btn:
-                return True
+            if 'RedirectWosN' in self.page.url:
+                self.page.wait_for_url('**/SimpleOrder*', timeout=10000)
         except Exception:
             pass
 
-        # 주문 페이지로 이동 (ERR_ABORTED 대비 재시도)
+        # #btnSearch가 이미 보이면 이동 완료
+        try:
+            self.page.wait_for_selector('#btnSearch', timeout=3000)
+            print("유팜몰 주문 페이지 이동 완료")
+            return True
+        except Exception:
+            pass
+
+        # 폴백: 명시적 goto (ERR_ABORTED 대비 재시도)
         for attempt in range(2):
             try:
                 self.page.goto(self.ORDER_URL, wait_until='domcontentloaded', timeout=15000)
-
-                # 검색 버튼 확인
                 self.page.wait_for_selector('#btnSearch', timeout=5000)
                 print("유팜몰 주문 페이지 이동 완료")
                 return True
