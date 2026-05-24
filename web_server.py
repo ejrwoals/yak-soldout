@@ -131,22 +131,21 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         should_shutdown = manager.disconnect(websocket)
         if should_shutdown:
-            print("\n🔴 브라우저가 닫혔습니다. 서버를 종료합니다...")
-            # 서버 종료를 위해 별도 스레드에서 시그널 전송
+            # 페이지 새로고침/잠시 끊김으로 인한 오인 종료를 막기 위해
+            # 짧은 grace period 후 다시 연결 수를 확인한다.
             def shutdown_server():
                 import time
-                time.sleep(0.5)  # 로그 출력을 위한 짧은 대기
-                
-                # Windows에서 강제 종료
+                time.sleep(3)
+                if len(manager.active_connections) > 0:
+                    return  # 그 사이 재연결됨 → 셧다운 취소
+
+                print("\n🔴 브라우저가 닫혔습니다. 서버를 종료합니다...")
                 if platform.system() == "Windows":
-                    # 현재 프로세스 ID 가져오기
                     pid = os.getpid()
-                    # 부모 프로세스(reload 모드)까지 함께 종료
                     os.system(f"taskkill /F /PID {pid} /T >nul 2>&1")
                 else:
-                    # Unix 계열에서는 SIGTERM 신호 전송
                     os.kill(os.getpid(), signal.SIGTERM)
-            
+
             shutdown_thread = threading.Thread(target=shutdown_server)
             shutdown_thread.daemon = True
             shutdown_thread.start()

@@ -143,8 +143,13 @@ geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림
 
 #### 🌐 웹 인터페이스 실행 (권장)
 
+개발 환경에서는 `./dev.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, 포트 8000을 점유 중인 좀비 프로세스를 정리한 뒤 `python web_server.py`를 실행합니다.
+
 ```bash
-# 웹 서버 시작 (기본 포트: 8000)
+# 개발 서버 시작 (권장)
+./dev.sh
+
+# 또는 직접 실행
 python web_server.py
 
 # 브라우저에서 접속
@@ -153,6 +158,8 @@ python web_server.py
 # 포트 변경이 필요한 경우 PORT 환경변수 사용
 PORT=3000 python web_server.py
 ```
+
+> `run_app.py`는 PyInstaller 패키지 빌드용 진입점이며, 개발 시에는 위의 `./dev.sh` 또는 `python web_server.py`를 사용하세요.
 
 #### 🔍 디버그 모드 (브라우저 화면 보기)
 
@@ -173,7 +180,8 @@ PORT=3000 HEADLESS=false python web_server.py
 
 ```
 yak-soldout/
-├── web_server.py              # FastAPI 웹 서버 (개발 실행: python web_server.py)
+├── web_server.py              # FastAPI 웹 서버 (개발 실행: ./dev.sh 또는 python web_server.py)
+├── dev.sh                     # 개발 실행 스크립트 (.venv 사용 + 포트 정리 + 서버 실행)
 ├── run_app.py                 # PyInstaller 배포 빌드용 진입점
 ├── config.json                # 도매상 로그인 정보 (직접 생성 필요, JSON 형식)
 ├── build_config.json          # 약국별 빌드 설정 (선택사항, PyInstaller 배포 시 사용)
