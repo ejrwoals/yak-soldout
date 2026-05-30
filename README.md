@@ -20,6 +20,34 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - ⚙️ **설정 관리**: 웹 UI를 통한 도매상 계정, 약품 목록, 결과 표시 제외 목록 관리
 - 🔒 **안전한 스크래핑**: 팝업 자동 처리 및 안전한 요소 클릭 보장
 
+## 🔗 지원 도매상 URL
+
+각 도매상의 사이트 URL은 `scrapers/registry.py`의 `DISTRIBUTOR_REGISTRY`(`site_url` 필드)에서 관리됩니다.
+
+| 도매상 | ID | URL |
+|--------|----|-----|
+| 지오영 | `geoweb` | https://order.geoweb.kr (지역별 상이, 아래 참고) |
+| 백제약품 | `baekje` | https://www.ibjp.co.kr |
+| 인천약품 | `incheon` | https://inchunpharm.com |
+| 지오팜 | `geopharm` | https://orderpharm.geo-pharm.com |
+| 복산 | `boksan` | https://wos.nicepharm.com |
+| 유팜몰 | `upharmmall` | https://www.upharmmall.co.kr |
+| HMP몰 | `hmpmall` | https://www.hmpmall.co.kr |
+| 티제이팜 | `tjpharm` | https://tjp.co.kr |
+
+위 URL은 `site_url` 필드(설정/약품목록 모달의 링크) 기준입니다. 일부 도매상은 지역별로 동작이 갈리는데, 그 방식이 서로 다릅니다.
+
+- **지오영(geoweb)**: 지역마다 접속 도메인 자체가 다릅니다 (`REGION_URLS`, [scrapers/geoweb_scraper.py](scrapers/geoweb_scraper.py)).
+
+  | 지역 | URL |
+  |------|-----|
+  | 서울·경기·인천 (`seoul`) | https://order.geoweb.kr |
+  | 영남 (`yeongnam`) | https://bpm.geoweb.kr |
+  | 대전 (`daejeon`) | https://djn.geoweb.kr |
+
+- **지오팜(geopharm)**: URL은 동일하고, 로그인 시 지역코드만 선택합니다 (`daegu`/`daejeon`/`gwangju`/`seoul`).
+- **HMP몰(hmpmall)**: URL은 동일하고, 검색 API의 `businessSidoCode` 파라미터로만 지역을 구분합니다 (`41`=경기, `47`=경북).
+
 ## 🛠️ 기술 스택
 
 - **Backend**: FastAPI, Python 3.8+
