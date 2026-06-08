@@ -80,6 +80,9 @@ class ModernDrugSearchApp {
         this.loadStatus();
         this.loadBuildInfo();
 
+        // 페이지 재진입(예: 홈 → 체커) 시 진행상황 로그와 검색 결과 복원
+        this.restoreSession();
+
         // 주기적 상태 업데이트
         setInterval(() => this.loadStatus(), 15000);
 
@@ -260,25 +263,27 @@ class ModernDrugSearchApp {
     }
     
     // =================== 로그 관리 ===================
-    addLogMessage(message, type = 'info') {
+    addLogMessage(message, type = 'info', isoTimestamp = null) {
         if (!this.elements.logContainer) return;
-        
+
         // 첫 번째 로그 메시지일 때 placeholder 제거
         const placeholder = this.elements.logContainer.querySelector('.log-placeholder');
         if (placeholder) {
             placeholder.remove();
         }
-        
+
         const logLine = document.createElement('div');
         logLine.className = `log-line log-${type}`;
-        
-        const timestamp = new Date().toLocaleTimeString('ko-KR', {
+
+        // 복원 시에는 원래 발생 시각을, 실시간일 때는 현재 시각을 사용
+        const time = isoTimestamp ? new Date(isoTimestamp) : new Date();
+        const timestamp = time.toLocaleTimeString('ko-KR', {
             hour12: false,
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
         });
-        
+
         logLine.textContent = `[${timestamp}] ${message}`;
         
         this.elements.logContainer.appendChild(logLine);
@@ -297,13 +302,16 @@ class ModernDrugSearchApp {
     
     clearLogs() {
         if (!this.elements.logContainer) return;
-        
+
         this.elements.logContainer.innerHTML = `
             <div class="log-placeholder">
                 <i class="bi bi-clock"></i>
                 <span>로그가 정리되었습니다</span>
             </div>
         `;
+
+        // 서버 버퍼도 비워 페이지 재진입 시 지운 로그가 되살아나지 않도록 함
+        fetch('/api/logs/clear', { method: 'POST' }).catch(() => {});
     }
     
     // =================== 상태 로드 ===================
@@ -329,6 +337,60 @@ class ModernDrugSearchApp {
         }
     }
     
+    // =================== 세션 복원 (페이지 재진입) ===================
+    async restoreSession() {
+        // 1) 진행상황 로그 복원
+        try {
+            const resp = await fetch('/api/logs');
+            if (resp.ok) {
+                const data = await resp.json();
+                (data.logs || []).forEach(entry => {
+                    this.addLogMessage(entry.message, this.getLogType(entry.message), entry.timestamp);
+                });
+            }
+        } catch (e) {
+            console.warn('로그 복원 실패:', e);
+        }
+
+        // 2) 검색 결과 복원 (직전 완료 사이클의 메모리 결과)
+        try {
+            const resp = await fetch('/api/status');
+            if (resp.ok) {
+                const data = await resp.json();
+                this.restoreResults(data.current_search);
+            }
+        } catch (e) {
+            console.warn('검색 결과 복원 실패:', e);
+        }
+    }
+
+    restoreResults(currentSearch) {
+        if (!currentSearch || !this.elements.searchResults) return;
+
+        const found = currentSearch.found_drugs || [];
+        const soldout = currentSearch.soldout_drugs || [];
+        const errors = currentSearch.errors || [];
+
+        // 표시할 결과가 전혀 없으면(아직 시작 안 함/사이클 진행 중) 빈 상태 유지
+        if (found.length === 0 && soldout.length === 0) return;
+
+        // 2열(재고 있음 / 품절) 컨테이너 생성 후 카드 복원
+        this.clearResults();
+        // 저장된 dict 에는 has_stock 키가 없으므로 컬럼별로 명시 주입
+        found.forEach(drug => this.addDrugToResults({ ...drug, has_stock: true }));
+        soldout.forEach(drug => this.addDrugToResults({ ...drug, has_stock: false }));
+
+        // 카운터 복원
+        if (this.elements.foundCount) this.elements.foundCount.textContent = found.length;
+        if (this.elements.soldoutCount) this.elements.soldoutCount.textContent = soldout.length;
+        if (this.elements.errorCount) this.elements.errorCount.textContent = errors.length;
+
+        // 마지막 업데이트 시각 복원
+        if (this.elements.lastUpdate && currentSearch.timestamp) {
+            this.elements.lastUpdate.textContent = new Date(currentSearch.timestamp).toLocaleString('ko-KR');
+        }
+    }
+
     updateFileInfo(files) {
         // 약품 목록 수
         if (this.elements.drugCount) {
@@ -441,18 +503,9 @@ class ModernDrugSearchApp {
     }
     
     onCycleCountdown(message) {
-        // 카운트다운 메시지 처리
+        // 카운트다운 메시지 처리 (버튼 라벨은 '검색 중단'으로 계속 유지)
         if (message && message.remaining_minutes && message.next_cycle) {
             console.log(`⏰ 다음 사이클(#${message.next_cycle})까지 ${message.remaining_minutes}분 남음`);
-            
-            // 버튼 텍스트 업데이트 (카운트다운 표시)
-            const btn = this.elements.actionBtn;
-            if (btn && message.remaining_minutes <= 5) {
-                const label = btn.querySelector('span');
-                if (label) {
-                    label.textContent = `다음 사이클까지 ${message.remaining_minutes}분`;
-                }
-            }
         }
     }
     
@@ -490,38 +543,25 @@ class ModernDrugSearchApp {
     }
     
     onSearchCompleted(data) {
-        this.isSearching = false;
-        this.updateSearchStatus(false);
-        
+        // 반복 모드에서는 한 사이클이 끝나도 검색은 계속 진행된다(중단 전까지).
+        // 따라서 검색 상태/버튼('검색 중단')은 그대로 유지하고 결과만 갱신한다.
+
         // 결과 애니메이션과 함께 업데이트
         this.animateCounter(this.elements.foundCount, data.found_count, 'success');
         this.animateCounter(this.elements.soldoutCount, data.soldout_count, 'warning');
         this.animateCounter(this.elements.errorCount, data.error_count, 'danger');
-        
+
         // 마지막 업데이트 시간
         if (this.elements.lastUpdate) {
             this.elements.lastUpdate.textContent = new Date().toLocaleString('ko-KR');
         }
-        
+
         // 사이클 정보 포함한 로그 메시지
         const cycleInfo = data.cycle_number ? ` (사이클 #${data.cycle_number})` : '';
         this.addLogMessage(`🎉 검색 완료${cycleInfo}! 재고: ${data.found_count}개, 품절: ${data.soldout_count}개`, 'success');
-        
-        // 최신 결과 다시 로드 (약간의 지연 후)
+
+        // 최신 상태/결과 동기화 (약간의 지연 후)
         setTimeout(() => this.loadStatus(), 1500);
-        
-        // 완료 애니메이션 및 버튼 전환
-        this.elements.actionBtn?.classList.remove('searching');
-        this.updateActionButton(false);
-        
-        // 버튼 텍스트를 원래대로 복구 (카운트다운 텍스트가 있었다면)
-        const btn = this.elements.actionBtn;
-        if (btn) {
-            const label = btn.querySelector('span');
-            if (label && label.textContent.includes('다음 사이클까지')) {
-                label.textContent = '검색 중단';  // 계속 실행 중이므로 중단 버튼으로
-            }
-        }
     }
     
 	onSearchStopped() {

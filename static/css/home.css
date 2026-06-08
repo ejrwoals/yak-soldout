@@ -1,0 +1,225 @@
+/* 약국 업무 자동화 홈 (앱 런처) 스타일 */
+
+/* ============= 홈 헤더 ============= */
+.home-header {
+  text-align: center;
+  padding: 3rem 0 2.5rem;
+}
+
+.home-header h1 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.75rem;
+}
+
+.home-header .subtitle {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+}
+
+/* ============= 앱 런처 그리드 ============= */
+.app-launcher {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-bottom: 3rem;
+}
+
+/* ============= 앱 카드 ============= */
+.app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 1.75rem;
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  min-height: 220px;
+}
+
+.app-card:not(.is-placeholder) {
+  cursor: pointer;
+}
+
+.app-card:not(.is-placeholder):hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary);
+}
+
+/* 상단 그라디언트 라인 (활성 카드 호버 시) */
+.app-card:not(.is-placeholder)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-primary);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-card:not(.is-placeholder):hover::before {
+  opacity: 1;
+}
+
+/* 아이콘 */
+.app-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gradient-primary);
+  color: #fff;
+  font-size: 1.6rem;
+  box-shadow: var(--shadow-md);
+}
+
+/* 텍스트 영역 */
+.app-info {
+  flex: 1;
+}
+
+.app-info h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.app-info p {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 액션 (열기) */
+.app-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--primary);
+  font-size: 0.95rem;
+}
+
+.app-action i {
+  transition: transform 0.2s ease;
+}
+
+.app-card:not(.is-placeholder):hover .app-action i {
+  transform: translateX(4px);
+}
+
+/* ============= 자동 검색 라이브 배지 ============= */
+.live-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: var(--gradient-primary);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+  z-index: 1;
+}
+
+.live-badge[hidden] {
+  display: none;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  position: relative;
+}
+
+/* 깜빡이는 펄스 링 */
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #fff;
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(3.2); opacity: 0; }
+}
+
+/* 검색 중인 카드 강조 (은은한 보라빛 발광) */
+.app-card.is-running {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), 0 10px 25px -8px rgba(124, 58, 237, 0.4);
+}
+
+/* 모션 최소화 선호 시 펄스 비활성화 */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::after { animation: none; }
+}
+
+/* ============= 준비 중 (placeholder) 카드 ============= */
+.app-card.is-placeholder {
+  border-style: dashed;
+  background: var(--bg-secondary);
+}
+
+.app-card.is-placeholder .app-icon {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.app-card.is-placeholder .app-info h2,
+.app-card.is-placeholder .app-info p {
+  color: var(--text-muted);
+}
+
+.app-badge {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+}
+
+/* ============= 반응형 ============= */
+@media (max-width: 640px) {
+  .home-header {
+    padding: 2rem 0 1.5rem;
+  }
+  .home-header h1 {
+    font-size: 1.75rem;
+  }
+  .app-launcher {
+    grid-template-columns: 1fr;
+  }
+}

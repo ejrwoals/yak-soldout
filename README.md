@@ -11,7 +11,8 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
 - 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지원 도매상 전체)
-- 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드
+- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
+- 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
 - 📈 **진행 상황 추적**: 약품 검색 진행률 실시간 표시
@@ -242,11 +243,12 @@ yak-soldout/
 │   └── notifications.py       # 크로스 플랫폼 알림
 │
 ├── templates/
-│   └── index.html             # 웹 프론트엔드 HTML 템플릿
+│   ├── home.html              # 홈 화면(앱 런처) HTML 템플릿 (GET /)
+│   └── index.html             # 품절 약 서치앱 대시보드 HTML 템플릿 (GET /checker)
 │
 ├── static/
-│   ├── css/                   # 기능별 CSS 파일
-│   └── js/                    # 모듈별 JavaScript 파일
+│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈 화면 전용)
+│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈 화면, main.js = 대시보드)
 │
 ├── tests/                     # 테스트 (단위 + 통합)
 │   ├── unit/
@@ -263,6 +265,17 @@ yak-soldout/
 검색 결과 카드는 도매상별 색상으로 시각적으로 구분됩니다. 각 도매상에 `default_color`가 지정되어 있으며, 사용자가 웹 UI의 도매상 설정 모달에서 색상을 변경하면 `config.json`에 저장되어 기본 색상을 덮어씁니다.
 
 일부 도매상은 지역별로 다른 서버를 사용합니다. `region_options`가 정의된 도매상(지오영, 지오팜, HMP몰)은 설정 모달에 지역 선택 드롭다운이 표시되며, 선택한 지역에 따라 스크래퍼가 해당 지역의 서버에 접속합니다. 기본 지역은 `extra_params`의 `region` 값으로 설정됩니다.
+
+### 홈 화면과 세션 복원
+
+루트 경로 `/`는 앱 런처 역할의 **홈 화면**(`templates/home.html`, `static/js/home.js`, `static/css/home.css`)이며, 품절 약 서치앱 대시보드는 `/checker`(`templates/index.html`)로 분리되어 있습니다. 대시보드 상단 브랜드를 누르면 홈으로 돌아갑니다.
+
+- **keep-alive WebSocket**: 대시보드에서 홈으로 이동하면 대시보드의 WebSocket이 끊깁니다. 서버는 모든 WebSocket이 끊기면 "브라우저가 닫힘"으로 판단해 종료하므로, 홈 화면도 `/ws`로 keep-alive WebSocket을 열어 이를 방지합니다. 홈은 이 연결로 받은 `cycle_start`/`search_stopped` 메시지와 `/api/status`로 카드의 "검색 중" 배지를 갱신합니다.
+- **로그 히스토리 버퍼**: `ConnectionManager`는 모든 WebSocket 메시지의 단일 통로인 `broadcast_message`에서 로그성 메시지(로그·사이클·검색 완료·긴급 알림 등)를 텍스트로 정규화해 `log_history` 버퍼(최근 300줄)에 누적합니다. 연결 수와 무관하게 누적되며 `GET /api/logs`로 조회, `POST /api/logs/clear`로 비울 수 있습니다.
+- **세션 복원**: 홈 → 대시보드로 다시 진입하면 `main.js`가 `/api/logs`로 진행상황 로그를, `/api/status`의 `current_search`로 직전 완료 사이클의 재고/품절 결과 카드를 복원합니다. 사용자가 대시보드에서 로그를 지우면 서버 버퍼(`/api/logs/clear`)도 함께 비워 재진입 시 되살아나지 않습니다.
+- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
+
+반복 검색 모드에서는 한 사이클이 끝나도(`search_completed`) 검색이 계속 진행되므로, 대시보드의 액션 버튼은 명시적으로 중단하기 전까지 "검색 중단" 상태를 유지합니다.
 
 ### 기준 도매상 (Primary Distributor)
 
@@ -378,10 +391,13 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 ## 🔌 API 엔드포인트
 
 ### REST API
-- `GET /` - 메인 웹 인터페이스
+- `GET /` - 홈 화면 (앱 런처)
+- `GET /checker` - 품절 약 서치앱 대시보드
 - `GET /api/status` - 현재 상태 조회
 - `POST /api/search/start` - 검색 시작
 - `POST /api/search/stop` - 검색 중단
+- `GET /api/logs` - 진행상황 로그 히스토리 조회 (페이지 재진입 시 복원용)
+- `POST /api/logs/clear` - 진행상황 로그 히스토리 비우기
 - `GET /api/distributor-settings` - 도매상 설정 조회
 - `PUT /api/distributor-settings` - 도매상 설정 업데이트
 - `GET /api/drug-list` - 약품 목록 조회
@@ -462,8 +478,8 @@ class DistributorType(Enum):
 
 ### 프론트엔드 수정하기
 - CSS: `static/css/` 디렉터리의 기능별 파일 수정
-- JavaScript: `static/js/` 디렉터리의 모듈별 파일 수정
-- HTML: `templates/index.html` 수정
+- JavaScript: `static/js/` 디렉터리의 모듈별 파일 수정 (`home.js` = 홈 화면, `main.js` = 대시보드)
+- HTML: 홈 화면은 `templates/home.html`, 대시보드는 `templates/index.html` 수정
 
 ## 🐛 문제 해결
 

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>약국 업무 자동화 홈</title>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/main.css" rel="stylesheet">
+    <link href="/static/css/home.css" rel="stylesheet">
+
+    <!-- 깜빡임 방지: 저장된 테마를 즉시 적용 -->
+    <script>
+        (function () {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+    <!-- 상단 네비게이션 -->
+    <nav class="top-nav">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <i class="bi bi-grid-1x2-fill"></i>
+                <span>약국 업무 자동화 <span id="pharmacyLabel" style="color: #6b7280; font-size: 0.8em;"></span></span>
+            </div>
+            <div class="nav-controls">
+                <button id="themeToggle" class="theme-toggle" title="다크모드 전환">
+                    <i class="bi bi-moon"></i>
+                </button>
+                <div class="connection-status">
+                    <div id="connectionDot" class="status-dot"></div>
+                    <span id="connectionText">연결 확인 중...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 메인 컨테이너 -->
+    <main class="main-container">
+        <!-- 홈 헤더 -->
+        <section class="home-header">
+            <h1>약국 업무 자동화 홈</h1>
+            <p class="subtitle">사용할 기능을 선택하세요</p>
+        </section>
+
+        <!-- 앱 런처 -->
+        <section class="app-launcher">
+            <!-- 품절 약 서치앱 (활성) -->
+            <a href="/checker" class="app-card" id="checkerCard">
+                <div class="live-badge" id="checkerLiveBadge" hidden>
+                    <span class="live-dot"></span>
+                    <span>검색 중</span>
+                </div>
+                <div class="app-icon">
+                    <i class="bi bi-capsule"></i>
+                </div>
+                <div class="app-info">
+                    <h2>품절 약 서치앱</h2>
+                    <p>품절 약품의 도매상 재고 상황을 자동으로 확인합니다</p>
+                </div>
+                <div class="app-action">
+                    <span>열기</span>
+                    <i class="bi bi-arrow-right"></i>
+                </div>
+            </a>
+
+            <!-- 준비 중 기능 1 -->
+            <div class="app-card is-placeholder">
+                <div class="app-icon">
+                    <i class="bi bi-plus-lg"></i>
+                </div>
+                <div class="app-info">
+                    <h2>준비 중</h2>
+                    <p>새로운 기능이 곧 추가될 예정입니다</p>
+                </div>
+                <div class="app-badge">Coming soon</div>
+            </div>
+
+            <!-- 준비 중 기능 2 -->
+            <div class="app-card is-placeholder">
+                <div class="app-icon">
+                    <i class="bi bi-plus-lg"></i>
+                </div>
+                <div class="app-info">
+                    <h2>준비 중</h2>
+                    <p>새로운 기능이 곧 추가될 예정입니다</p>
+                </div>
+                <div class="app-badge">Coming soon</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 푸터 -->
+    <footer class="footer">
+        <div class="footer-content">
+            <span>© 약품재고체커 by ChaJM</span>
+        </div>
+    </footer>
+
+    <!-- Custom JS -->
+    <script src="/static/js/home.js"></script>
+</body>
+</html>

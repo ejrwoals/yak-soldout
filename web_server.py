@@ -115,9 +115,31 @@ open_site_session = OpenSiteSession()
 # WebSocket 연결 관리자
 manager = ConnectionManager()
 
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    """정적 파일(JS/CSS)과 페이지를 브라우저가 매번 재검증하도록 한다.
+
+    StaticFiles 는 ETag/Last-Modified 만 보내고 Cache-Control 을 생략하기 때문에
+    브라우저가 휴리스틱 캐싱으로 옛 파일을 그대로 사용하는 문제가 있다. 로컬 단일
+    사용자 앱이므로 코드 수정이 항상 즉시 반영되도록 no-cache 로 강제한다.
+    (no-cache = 사용 전 재검증; 변경 없으면 304 로 저렴하게 끝난다)
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static") or path in ("/", "/checker"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
-async def read_index(request: Request):
-    """메인 페이지"""
+async def read_home(request: Request):
+    """홈 화면 (앱 런처)"""
+    return templates.TemplateResponse(request, "home.html")
+
+@app.get("/checker", response_class=HTMLResponse)
+async def read_checker(request: Request):
+    """품절 약 서치앱 대시보드"""
     return templates.TemplateResponse(request, "index.html")
 
 @app.websocket("/ws")
@@ -211,6 +233,17 @@ async def get_status():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logs")
+async def get_logs():
+    """진행상황 로그 히스토리 조회 (페이지 재진입 시 복원용)"""
+    return {"logs": manager.log_history}
+
+@app.post("/api/logs/clear")
+async def clear_logs():
+    """진행상황 로그 히스토리 비우기 (사용자가 로그를 지울 때)"""
+    manager.log_history.clear()
+    return {"success": True}
 
 @app.post("/api/search/start")
 async def start_search():
