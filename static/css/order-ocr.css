@@ -215,6 +215,108 @@
 }
 .del-row-btn:hover { color: var(--danger); background: var(--bg-tertiary); }
 
+/* ===== 약품 마스터 매칭(오타 보정) UI ===== */
+.review-table td.col-name { min-width: 220px; position: relative; }
+.match-slot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+}
+.match-slot:empty { display: none; }
+.match-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: default;
+}
+.match-matched   { background: rgba(20,184,166,0.15);  color: var(--success); }
+.match-candidate { background: rgba(245,158,11,0.18);  color: #b45309; }
+.match-none      { background: var(--bg-tertiary);     color: var(--text-muted); }
+[data-theme="dark"] .match-candidate { color: #fbbf24; }
+.match-select {
+    flex: 1;
+    min-width: 140px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+.match-select:focus { outline: none; border-color: var(--primary); }
+
+/* 직접 검색 버튼 + 검색 드롭다운 */
+.search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+.search-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+.dm-search {
+    position: absolute;
+    z-index: 50;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    padding: 8px;
+}
+.dm-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.88rem;
+}
+.dm-search-input:focus { outline: none; border-color: var(--primary); background: var(--bg-primary); }
+.dm-search-results {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+.dm-result {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+.dm-result:hover { background: var(--bg-tertiary); }
+.dm-r-name { font-size: 0.86rem; color: var(--text-primary); }
+.dm-r-maker { font-size: 0.74rem; color: var(--text-muted); }
+.dm-empty {
+    padding: 10px 9px;
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    text-align: center;
+}
+
 .review-footer {
     display: flex;
     justify-content: space-between;

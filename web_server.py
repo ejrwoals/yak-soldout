@@ -87,6 +87,7 @@ from utils.search_engine import execute_search, PreviewSearchSession
 from utils.open_site_session import OpenSiteSession
 from utils import ocr_service
 from utils import drug_master
+from utils import drug_matcher
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
@@ -184,6 +185,8 @@ async def order_ocr_extract(image: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR 처리 실패: {str(e)}")
 
+    # 약품 마스터가 등록돼 있으면 각 항목에 오타 보정 매칭 결과를 덧붙인다 (없으면 status='skip')
+    items = await asyncio.to_thread(drug_matcher.attach_matches, items)
     return {"items": items, "count": len(items)}
 
 # ===================== 약품 마스터 (오타 보정용) =====================
@@ -199,6 +202,12 @@ async def read_drug_master(request: Request):
 async def drug_master_status():
     """마스터 등록 현황 (개수/출처/매핑한 컬럼)"""
     return drug_master.status()
+
+@app.get("/api/drug-master/search")
+async def drug_master_search(q: str = ""):
+    """약품 마스터 직접 검색 — OCR 검수 화면에서 후보에 없는 약을 찾을 때 사용"""
+    results = await asyncio.to_thread(drug_matcher.search, q, 20)
+    return {"results": results}
 
 @app.post("/api/drug-master/preview")
 async def drug_master_preview(
@@ -824,8 +833,8 @@ async def add_to_exclusion(data: dict):
 
 
 if __name__ == "__main__":
-    # 기본 포트 8001 (8000은 다른 로컬 프로젝트와 충돌하므로). PORT 환경변수로 덮어쓸 수 있음.
-    port = int(os.environ.get("PORT", 8001))
+    # 기본 포트 8002 (8000/8001은 다른 로컬 프로젝트와 충돌하므로). PORT 환경변수로 덮어쓸 수 있음.
+    port = int(os.environ.get("PORT", 8002))
 
     print("🚀 약품 재고 자동 검색 웹 서버 시작")
     print("📱 브라우저를 자동으로 열고 있습니다...")

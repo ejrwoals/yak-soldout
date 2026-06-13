@@ -7,9 +7,9 @@ set -e
 cd "$(dirname "$0")"
 
 VENV_PYTHON=".venv/bin/python"
-# 8000은 다른 로컬 프로젝트(say-boyak)가 사용하므로 8001 사용.
-# export 해야 web_server.py 가 이 값을 읽는다 (안 하면 좀비 정리만 8001, 서버는 기본값으로 떠 불일치).
-export PORT=8001
+# 8000/8001은 다른 로컬 프로젝트가 사용하므로 8002 사용.
+# export 해야 web_server.py 가 이 값을 읽는다 (안 하면 좀비 정리만 8002, 서버는 기본값으로 떠 불일치).
+export PORT=8002
 
 # 1) .venv 확인
 if [ ! -x "$VENV_PYTHON" ]; then

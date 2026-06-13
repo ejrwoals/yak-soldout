@@ -43,7 +43,7 @@ def check_and_install_playwright():
 def open_browser():
     """브라우저를 열어 애플리케이션 페이지로 이동"""
     time.sleep(2)  # 서버가 시작될 때까지 대기
-    port = int(os.environ.get("PORT", 8001))
+    port = int(os.environ.get("PORT", 8002))
     webbrowser.open(f'http://localhost:{port}')
 
 def main():
@@ -82,7 +82,7 @@ def main():
         uvicorn.run(
             web_server.app,
             host="127.0.0.1",
-            port=int(os.environ.get("PORT", 8001)),
+            port=int(os.environ.get("PORT", 8002)),
             reload=False,
             log_level="info",
             access_log=False,
