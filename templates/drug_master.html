@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>약품 마스터 관리 | 약국 업무 자동화</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <link href="/static/css/main.css" rel="stylesheet">
+    <link href="/static/css/home.css" rel="stylesheet">
+    <!-- 공용 컴포넌트(.btn/.drop-zone/.ocr-card/.status-msg) 재사용 -->
+    <link href="/static/css/order-ocr.css" rel="stylesheet">
+    <link href="/static/css/modals.css" rel="stylesheet">
+    <link href="/static/css/drug-master.css" rel="stylesheet">
+
+    <script>
+        (function () {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+    <nav class="top-nav">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <a href="/order-ocr" class="nav-back" title="주문지 OCR로"><i class="bi bi-arrow-left"></i></a>
+                <i class="bi bi-database"></i>
+                <span>약품 마스터 관리</span>
+            </div>
+            <div class="nav-controls">
+                <button id="themeToggle" class="theme-toggle" title="다크모드 전환">
+                    <i class="bi bi-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-container ocr-container">
+        <section class="home-header">
+            <h1>약품 마스터 관리</h1>
+            <p class="subtitle">취급 약품 목록(엑셀)을 등록하면 OCR 약품명 오타를 보정하는 데 사용됩니다</p>
+        </section>
+
+        <!-- 현재 등록 현황 -->
+        <section class="ocr-card status-card">
+            <div id="masterStatus" class="master-status">
+                <i class="bi bi-hourglass-split"></i> 현황 확인 중…
+            </div>
+        </section>
+
+        <!-- 1) 업로드 -->
+        <section class="ocr-card">
+            <h2 class="card-title"><i class="bi bi-filetype-xlsx"></i> 엑셀 업로드</h2>
+            <div id="dropZone" class="drop-zone drop-zone--compact">
+                <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+                <div id="dropPrompt" class="drop-prompt">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <p><strong>엑셀 파일을 끌어다 놓거나 클릭해서 선택</strong></p>
+                    <p class="hint">.xlsx · .xls (첫 시트, 첫 행을 머리글로 사용)</p>
+                </div>
+                <div id="fileChosen" class="file-chosen" hidden>
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                    <span id="fileName"></span>
+                </div>
+            </div>
+            <div class="ocr-actions">
+                <button id="previewBtn" class="btn btn-primary" disabled>
+                    <i class="bi bi-eye"></i> 컬럼 미리보기
+                </button>
+            </div>
+            <div id="statusMsg" class="status-msg" hidden></div>
+        </section>
+
+    </main>
+
+    <!-- 2) 컬럼 매핑 모달 -->
+    <div id="mapModal" class="modal">
+        <div class="modal-content modal-content--wide">
+            <div class="modal-header">
+                <h2><i class="bi bi-diagram-3"></i> 컬럼 매핑</h2>
+                <button class="modal-close" id="closeMapModal" title="닫기">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 2-1) 머리글(컬럼명) 행 선택 -->
+                <div class="header-pick">
+                    <div class="subhead">
+                        <i class="bi bi-table"></i> 컬럼명이 있는 행을 선택하세요
+                        <span class="hint" id="headerHint"></span>
+                    </div>
+                    <p class="hint">제목/조회일시 같은 윗 행은 <strong>등록에서 제외</strong>됩니다. 컬럼명이 적힌 행을 클릭하세요.</p>
+                    <div class="table-wrap">
+                        <table class="raw-table">
+                            <tbody id="rawBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2-2) 컬럼 지정 -->
+                <div class="subhead"><i class="bi bi-diagram-3"></i> 컬럼 지정 <span class="hint">— <strong>약품명만 필수</strong></span></div>
+                <div class="map-grid">
+                    <label>
+                        <span>약품명 <em class="req">필수</em></span>
+                        <select id="nameCol"></select>
+                    </label>
+                    <label>
+                        <span>보험코드 <em class="opt">선택</em></span>
+                        <select id="codeCol"></select>
+                    </label>
+                    <label>
+                        <span>제약사 <em class="opt">선택</em></span>
+                        <select id="makerCol"></select>
+                    </label>
+                </div>
+
+                <!-- 2-3) 미리보기 -->
+                <div class="subhead"><i class="bi bi-eye"></i> 등록될 데이터 미리보기 <span class="hint" id="totalRows"></span></div>
+                <div class="table-wrap">
+                    <table class="preview-table">
+                        <thead id="previewHead"></thead>
+                        <tbody id="previewBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="modalStatus" class="status-msg" hidden></div>
+                <div class="modal-actions">
+                    <span class="hint" style="margin-right:auto;">기존 마스터가 있으면 <strong>덮어쓰기</strong> 됩니다.</span>
+                    <button id="importBtn" class="btn btn-primary">
+                        <i class="bi bi-database-add"></i> 이 매핑으로 등록
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-content"><span>© 약품재고체커 by ChaJM</span></div>
+    </footer>
+
+    <script src="/static/js/drug-master.js"></script>
+</body>
+</html>

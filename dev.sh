@@ -7,7 +7,9 @@ set -e
 cd "$(dirname "$0")"
 
 VENV_PYTHON=".venv/bin/python"
-PORT=8000
+# 8000은 다른 로컬 프로젝트(say-boyak)가 사용하므로 8001 사용.
+# export 해야 web_server.py 가 이 값을 읽는다 (안 하면 좀비 정리만 8001, 서버는 기본값으로 떠 불일치).
+export PORT=8001
 
 # 1) .venv 확인
 if [ ! -x "$VENV_PYTHON" ]; then
@@ -16,7 +18,7 @@ if [ ! -x "$VENV_PYTHON" ]; then
     exit 1
 fi
 
-# 2) 포트 8000을 점유 중인 좀비 프로세스 정리
+# 2) 해당 포트를 점유 중인 좀비 프로세스 정리 (say-boyak의 8000은 건드리지 않음)
 ZOMBIES=$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$ZOMBIES" ]; then
     echo "⚠️  포트 $PORT 점유 프로세스 정리: $ZOMBIES"

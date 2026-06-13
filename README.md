@@ -11,7 +11,9 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
 - 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지원 도매상 전체)
-- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
+- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"과 "주문지 OCR"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
+- ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. (1단계 로컬 검증 — 아직 저장은 하지 않음)
+- 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 `data/drug_master.json`에 저장하며, 이후 OCR 약품명 오타 보정의 기준 데이터로 사용될 예정입니다.
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
@@ -55,7 +57,8 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - **Web Scraping**: Playwright (Chromium)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Real-time Communication**: WebSocket
-- **Data Processing**: pandas, numpy
+- **OCR / LLM**: Google Gemini (멀티모달, `google-genai` SDK), 키는 `.env`에서 로드(`python-dotenv`)
+- **Data Processing**: pandas, numpy, openpyxl/xlrd (엑셀 파싱)
 - **Testing**: pytest (단위 테스트 & 통합 테스트)
 - **File Handling**: chardet (인코딩 자동 감지)
 
@@ -99,6 +102,12 @@ cp config.example.json config.json
 ```
 
 > **기존 info.txt 사용자**: 기존 `info.txt` 파일이 있으면 첫 실행 시 `config.json`으로 자동 마이그레이션됩니다. 원본은 `info.txt.bak`으로 백업됩니다.
+
+> **손글씨 주문지 OCR 사용 시(`.env`)**: OCR 기능은 Google Gemini API 키가 필요합니다. `.env.example`을 `.env`로 복사한 뒤 [Google AI Studio](https://aistudio.google.com/apikey)에서 발급한 키를 `GEMINI_API_KEY`에 입력하세요. (선택: `GEMINI_MODEL`, 기본값 `gemini-2.5-flash`) 키가 없으면 OCR 기능만 비활성화되고 나머지 기능은 정상 동작합니다.
+>
+> ```bash
+> cp .env.example .env   # .env 를 열어 GEMINI_API_KEY 입력
+> ```
 
 `config.json` 파일 형식:
 ```json
@@ -172,7 +181,7 @@ geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림
 
 #### 🌐 웹 인터페이스 실행 (권장)
 
-개발 환경에서는 `./dev.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, 포트 8000을 점유 중인 좀비 프로세스를 정리한 뒤 `python web_server.py`를 실행합니다.
+개발 환경에서는 `./dev.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, `PORT=8001`을 export한 뒤 해당 포트를 점유 중인 좀비 프로세스를 정리하고 `python web_server.py`를 실행합니다. (기본 포트가 8000에서 **8001**로 변경되었습니다. 8000은 다른 로컬 프로젝트와 충돌하기 때문입니다.)
 
 ```bash
 # 개발 서버 시작 (권장)
@@ -182,7 +191,7 @@ geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림
 python web_server.py
 
 # 브라우저에서 접속
-# http://localhost:8000
+# http://localhost:8001
 
 # 포트 변경이 필요한 경우 PORT 환경변수 사용
 PORT=3000 python web_server.py
@@ -238,17 +247,27 @@ yak-soldout/
 ├── utils/                     # 유틸리티
 │   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반) + PreviewSearchSession
 │   ├── open_site_session.py   # 바로가기 headed 브라우저 세션 관리 (OpenSiteSession)
+│   ├── ocr_service.py         # 손글씨 주문지 OCR — Gemini 호출 및 약품명·포장단위·수량 추출
+│   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드/머리글 추정/컬럼 매핑/제약사 정규화
 │   ├── file_manager.py        # 약품 목록 / JSON 파일 I/O
 │   ├── data_processor.py      # 데이터 처리 및 분류
 │   └── notifications.py       # 크로스 플랫폼 알림
 │
 ├── templates/
 │   ├── home.html              # 홈 화면(앱 런처) HTML 템플릿 (GET /)
-│   └── index.html             # 품절 약 서치앱 대시보드 HTML 템플릿 (GET /checker)
+│   ├── index.html             # 품절 약 서치앱 대시보드 HTML 템플릿 (GET /checker)
+│   ├── order_ocr.html         # 손글씨 주문지 OCR 업로드·검수 화면 (GET /order-ocr)
+│   └── drug_master.html       # 약품 마스터 등록 화면 (GET /drug-master)
 │
 ├── static/
-│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈 화면 전용)
-│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈 화면, main.js = 대시보드)
+│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈, order-ocr.css, drug-master.css 등)
+│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈, main.js = 대시보드, order-ocr.js, drug-master.js)
+│
+├── data/                      # 로컬 데이터 (자동 생성)
+│   └── drug_master.json       # 등록된 약품 마스터 (약품명·보험코드·제약사)
+│
+├── .env                       # OCR용 Gemini API 키 (직접 생성, .env.example 참고, git 미커밋)
+├── docs/                      # 기능 계획·설계 문서 (예: 손글씨-주문지-OCR-기능-계획.md)
 │
 ├── tests/                     # 테스트 (단위 + 통합)
 │   ├── unit/
@@ -273,7 +292,7 @@ yak-soldout/
 - **keep-alive WebSocket**: 대시보드에서 홈으로 이동하면 대시보드의 WebSocket이 끊깁니다. 서버는 모든 WebSocket이 끊기면 "브라우저가 닫힘"으로 판단해 종료하므로, 홈 화면도 `/ws`로 keep-alive WebSocket을 열어 이를 방지합니다. 홈은 이 연결로 받은 `cycle_start`/`search_stopped` 메시지와 `/api/status`로 카드의 "검색 중" 배지를 갱신합니다.
 - **로그 히스토리 버퍼**: `ConnectionManager`는 모든 WebSocket 메시지의 단일 통로인 `broadcast_message`에서 로그성 메시지(로그·사이클·검색 완료·긴급 알림 등)를 텍스트로 정규화해 `log_history` 버퍼(최근 300줄)에 누적합니다. 연결 수와 무관하게 누적되며 `GET /api/logs`로 조회, `POST /api/logs/clear`로 비울 수 있습니다.
 - **세션 복원**: 홈 → 대시보드로 다시 진입하면 `main.js`가 `/api/logs`로 진행상황 로그를, `/api/status`의 `current_search`로 직전 완료 사이클의 재고/품절 결과 카드를 복원합니다. 사용자가 대시보드에서 로그를 지우면 서버 버퍼(`/api/logs/clear`)도 함께 비워 재진입 시 되살아나지 않습니다.
-- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
+- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`, `/order-ocr`, `/drug-master`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
 
 반복 검색 모드에서는 한 사이클이 끝나도(`search_completed`) 검색이 계속 진행되므로, 대시보드의 액션 버튼은 명시적으로 중단하기 전까지 "검색 중단" 상태를 유지합니다.
 
@@ -300,6 +319,24 @@ yak-soldout/
 각 스크래퍼는 `BaseScraper.open_for_user_interaction(query, original_drug_name)`를 override하여 "검색 실행까지만" 수행하고 결과 파싱은 하지 않습니다. 공통 후처리 `_wait_search_settled(<결과 셀렉터>)`로 DOM 렌더링과 networkidle까지 대기해 UX 일관성을 확보합니다. 도매상별 검색창·결과 셀렉터는 스크래퍼 내부에 정의되어 있으며(예: 지오팜 `#item_name` + iframe 응답, 인천약품 `#tx_insucd`, 복산 `#tx_physic`, 백제 Quasar SPA 검색창 + Enter, 티제이팜 `#search_name_2` + `#table_id_1`), 플랫폼 구조에 맞게 각자 구현됩니다.
 
 프론트엔드는 WebSocket으로 스트리밍되는 재고 카드의 `insurance_code`를 바로가기 쿼리로 사용합니다. 보험코드가 비어 있으면 약품명을 대신 사용합니다.
+
+### 손글씨 주문지 OCR (Order OCR)
+
+손으로 작성한 약국 주문지를 사진으로 올리면 약품명·포장단위·주문수량을 구조화 추출하는 기능입니다(`/order-ocr`, `utils/ocr_service.py`).
+
+- **멀티모달 LLM**: `google-genai` SDK로 Google Gemini(`gemini-2.5-flash`, `GEMINI_MODEL`로 변경 가능)를 호출합니다. 응답은 `response_schema`로 `[{drug_name, package_unit, quantity}]` 배열을 강제하고 `temperature=0`으로 안정성을 높입니다.
+- **도메인 프롬프트**: 약국 주문지의 표기 규칙을 학습시킵니다 — 줄 오른쪽의 `AxB`는 'A정짜리 통을 B개 주문'으로 해석해 `package_unit`(예: `30정`)과 `quantity`(예: `2`)로 분리하고, 약품명 뒤 함량/규격(예: `600mg`)은 약품명에 포함하며, 삭제선 품목·머리글·메모는 제외합니다.
+- **Human-in-the-loop 검수**: 추출 결과는 프론트의 편집 가능한 검수 테이블로 표시되어 사용자가 직접 확인·수정합니다. **1단계(로컬 검증)에서는 저장하지 않습니다.** 키 유출 방지를 위해 배포 단계에서는 호출을 서버 측(Supabase Edge Function 등)으로 이전할 예정입니다(`docs/손글씨-주문지-OCR-기능-계획.md`).
+- **키 미설정 처리**: SDK는 지연 임포트하며, `GEMINI_API_KEY`가 없으면 `/api/order-ocr/extract`가 503을 반환할 뿐 앱의 나머지 기능은 정상 동작합니다. 업로드는 JPEG/PNG/WebP/HEIC/HEIF, 최대 15MB로 제한됩니다.
+
+### 약품 마스터 관리 (Drug Master)
+
+약국이 취급하는 전체 약품 목록을 엑셀로 등록하는 기능입니다(`/drug-master`, `utils/drug_master.py`). OCR 약품명의 오타를 fuzzy 매칭으로 보정하기 위한 기준 데이터를 마련하는 단계입니다(보정 로직은 다음 증분).
+
+- **머리글 행 자동 추정**: 실제 약국 엑셀 export는 제목·조회일시 등이 머리글 위에 깔리는 경우가 많습니다. `_guess_header_row`가 `약품명`·`보험코드`·`제약사` 등 키워드가 든 행(또는 비어있지 않은 칸이 가장 많은 행)을 머리글로 추정하며, `/api/drug-master/preview`로 원본 상단 행과 함께 반환합니다. 사용자는 모달에서 머리글 행을 직접 바꿀 수 있습니다.
+- **컬럼 매핑**: 컬럼명이 약국마다 다르므로, 사용자가 약품명(필수)·보험코드(선택)·제약사(선택) 컬럼을 직접 지정해 `/api/drug-master/import`로 등록합니다. 빈 행은 건너뛰고 (약품명, 보험코드) 조합으로 중복을 제거합니다.
+- **제약사 정규화**: `normalize_maker`가 `대웅제약(주)`→`대웅`, `(주)보령`→`보령`처럼 법인/접미 토큰을 제거한 정규화 형태(`maker_norm`)를 함께 저장해, 표기 편차에도 매칭이 가능하게 합니다.
+- **저장**: 결과는 로컬 JSON `data/drug_master.json`에 등록(덮어쓰기)되며, `/api/drug-master`로 등록 현황(개수·출처 파일·매핑한 컬럼)을 조회합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -393,6 +430,12 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 ### REST API
 - `GET /` - 홈 화면 (앱 런처)
 - `GET /checker` - 품절 약 서치앱 대시보드
+- `GET /order-ocr` - 손글씨 주문지 OCR 업로드·검수 화면
+- `POST /api/order-ocr/extract` - 주문지 이미지 → Gemini OCR → 약품명·포장단위·수량 추출
+- `GET /drug-master` - 약품 마스터 등록 화면
+- `GET /api/drug-master` - 약품 마스터 등록 현황 조회
+- `POST /api/drug-master/preview` - 업로드 엑셀 미리보기 (머리글 행 추정 + 컬럼·샘플 반환)
+- `POST /api/drug-master/import` - 선택한 컬럼 매핑으로 약품 마스터 등록(덮어쓰기)
 - `GET /api/status` - 현재 상태 조회
 - `POST /api/search/start` - 검색 시작
 - `POST /api/search/stop` - 검색 중단

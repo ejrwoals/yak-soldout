@@ -55,7 +55,7 @@ if platform.system() == "Windows":
     except Exception as e:
         print(f"⚠️ Windows 호환성 설정 중 오류 (무시 가능): {e}")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -85,6 +85,8 @@ from models.build_config import get_visible_registry, get_pharmacy_name, get_pri
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search, PreviewSearchSession
 from utils.open_site_session import OpenSiteSession
+from utils import ocr_service
+from utils import drug_master
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
@@ -127,7 +129,7 @@ async def no_cache_static(request: Request, call_next):
     """
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static") or path in ("/", "/checker"):
+    if path.startswith("/static") or path in ("/", "/checker", "/order-ocr", "/drug-master"):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -141,6 +143,110 @@ async def read_home(request: Request):
 async def read_checker(request: Request):
     """품절 약 서치앱 대시보드"""
     return templates.TemplateResponse(request, "index.html")
+
+@app.get("/order-ocr", response_class=HTMLResponse)
+async def read_order_ocr(request: Request):
+    """손글씨 주문지 OCR — 업로드 & 검수 화면 (1단계 로컬 검증)"""
+    return templates.TemplateResponse(request, "order_ocr.html")
+
+# 업로드 이미지 허용 형식
+_OCR_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+_OCR_MAX_BYTES = 15 * 1024 * 1024  # 15MB
+
+@app.post("/api/order-ocr/extract")
+async def order_ocr_extract(image: UploadFile = File(...)):
+    """주문지 이미지 → Gemini OCR → [{drug_name, package_unit, quantity}] 추출.
+
+    1단계(로컬 검증): 저장 없이 추출 결과만 반환한다. 사용자는 프론트의 검수
+    테이블에서 확인·수정한다.
+    """
+    if not ocr_service.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="GEMINI_API_KEY 가 설정되지 않았습니다. .env 파일을 확인해주세요.")
+
+    mime = (image.content_type or "").lower()
+    if mime not in _OCR_ALLOWED_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"지원하지 않는 이미지 형식입니다: {mime or '알 수 없음'}")
+
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    if len(data) > _OCR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="이미지가 너무 큽니다 (최대 15MB).")
+
+    try:
+        items = await asyncio.to_thread(ocr_service.extract_order_items, data, mime)
+    except ocr_service.OcrConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR 처리 실패: {str(e)}")
+
+    return {"items": items, "count": len(items)}
+
+# ===================== 약품 마스터 (오타 보정용) =====================
+
+_XLSX_EXTS = (".xlsx", ".xls")
+
+@app.get("/drug-master", response_class=HTMLResponse)
+async def read_drug_master(request: Request):
+    """약품 마스터 관리 — 엑셀 업로드 & 컬럼 매핑 등록 화면"""
+    return templates.TemplateResponse(request, "drug_master.html")
+
+@app.get("/api/drug-master")
+async def drug_master_status():
+    """마스터 등록 현황 (개수/출처/매핑한 컬럼)"""
+    return drug_master.status()
+
+@app.post("/api/drug-master/preview")
+async def drug_master_preview(
+    file: UploadFile = File(...),
+    header_row: Optional[int] = Form(None),
+):
+    """업로드한 엑셀의 컬럼 목록 + 샘플 행 반환 (등록 전 미리보기).
+
+    header_row 미지정 시 머리글 행을 자동 추정한다. 사용자가 머리글 행을 바꾸면
+    그 값으로 다시 호출한다.
+    """
+    if not (file.filename or "").lower().endswith(_XLSX_EXTS):
+        raise HTTPException(status_code=400, detail="엑셀 파일(.xlsx/.xls)만 업로드할 수 있습니다.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    try:
+        return await asyncio.to_thread(drug_master.preview, data, file.filename, header_row)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"미리보기 실패: {str(e)}")
+
+@app.post("/api/drug-master/import")
+async def drug_master_import(
+    file: UploadFile = File(...),
+    name_col: str = Form(...),
+    code_col: str = Form(""),
+    maker_col: str = Form(""),
+    header_row: int = Form(0),
+):
+    """선택한 컬럼 매핑으로 약품 마스터 등록(덮어쓰기)"""
+    if not (file.filename or "").lower().endswith(_XLSX_EXTS):
+        raise HTTPException(status_code=400, detail="엑셀 파일(.xlsx/.xls)만 업로드할 수 있습니다.")
+    if not name_col.strip():
+        raise HTTPException(status_code=400, detail="약품명 컬럼을 선택해주세요.")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    try:
+        return await asyncio.to_thread(
+            drug_master.import_master, data, file.filename,
+            name_col.strip(), code_col.strip(), maker_col.strip(), header_row,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"등록 실패: {str(e)}")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -718,7 +824,8 @@ async def add_to_exclusion(data: dict):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
+    # 기본 포트 8001 (8000은 다른 로컬 프로젝트와 충돌하므로). PORT 환경변수로 덮어쓸 수 있음.
+    port = int(os.environ.get("PORT", 8001))
 
     print("🚀 약품 재고 자동 검색 웹 서버 시작")
     print("📱 브라우저를 자동으로 열고 있습니다...")
