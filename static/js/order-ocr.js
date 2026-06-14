@@ -120,7 +120,12 @@
         tr.querySelector('.f-unit').value = item.package_unit || '';
         tr.querySelector('.f-qty').value = item.quantity || '';
         const slot = tr.querySelector('.match-slot');
-        renderMatch(slot, nameInput, item.match, item.drug_name || '');
+        renderMatch(slot, nameInput, item.match, item.drug_name || '');  // 내부에서 slot 을 비우므로 먼저
+        // 원본에 취소선이 있던 항목 — 버리지 않고 마크만 (사용자가 삭제 여부 결정)
+        if (item.crossed_out) {
+            slot.appendChild(matchBadge('crossed', '취소선',
+                '원본에 취소선이 그어진 항목입니다. 주문에서 뺄지 확인하고, 빼려면 삭제하세요.'));
+        }
         // 마스터가 등록돼 있으면 어느 행이든 '직접 검색' 가능
         if (masterRegistered) addSearchUI(tr.querySelector('.col-name'), slot, nameInput);
         tr.querySelector('.del-row-btn').addEventListener('click', () => {
@@ -242,7 +247,7 @@
         if (match.status === 'matched') {
             // 공식명을 자동 적용 (드롭다운에서 원본으로 되돌릴 수 있음)
             nameInput.value = match.best.name;
-            slot.appendChild(matchBadge('matched', '✓ 마스터 일치 · 공식명 적용', match.best.name));
+            slot.appendChild(matchBadge('matched', '✓ 약품명 일치', match.best.name));
             slot.appendChild(buildApplySelect(nameInput, original, [match.best], match.best.name));
             return;
         }

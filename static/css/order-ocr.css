@@ -236,6 +236,7 @@
 .match-matched   { background: rgba(20,184,166,0.15);  color: var(--success); }
 .match-candidate { background: rgba(245,158,11,0.18);  color: #b45309; }
 .match-none      { background: var(--bg-tertiary);     color: var(--text-muted); }
+.match-crossed   { background: rgba(244,63,94,0.15);   color: var(--danger); }
 [data-theme="dark"] .match-candidate { color: #fbbf24; }
 .match-select {
     flex: 1;
