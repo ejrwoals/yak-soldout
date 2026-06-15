@@ -3,7 +3,10 @@
 
 .ocr-container {
     max-width: 860px;
+    transition: max-width 0.25s ease;
 }
+/* 검수 모드에선 좌우 2단을 위해 컨테이너를 넓힌다 */
+.review-mode .ocr-container { max-width: 1320px; }
 
 /* 카드 컨테이너 */
 .ocr-card {
@@ -129,6 +132,115 @@
     animation: ocr-spin 0.7s linear infinite;
 }
 @keyframes ocr-spin { to { transform: rotate(360deg); } }
+
+/* ============ 검수 2단 레이아웃 ============ */
+.ocr-review { margin-bottom: 20px; }
+.review-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.05fr);
+    gap: 20px;
+    align-items: start;
+}
+
+/* 좌측: 원본 사진 패널 (스크롤해도 따라오도록 sticky) */
+.image-pane {
+    position: sticky;
+    top: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.image-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.img-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.zoom-controls { display: flex; align-items: center; gap: 4px; }
+.zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.zoom-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-tertiary); }
+.zoom-level {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.image-viewport {
+    position: relative;
+    height: calc(100vh - 210px);
+    min-height: 360px;
+    background: var(--bg-secondary);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+}
+.image-viewport.panning { cursor: grabbing; }
+.review-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transform-origin: center center;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.image-hint {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 우측: 검수 테이블 패널 (기존 .ocr-card 와 동일한 카드 스타일) */
+.table-pane {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+}
+
+/* 반응형: 좁은 화면(태블릿 세로/모바일)에서는 세로로 쌓는다 */
+@media (max-width: 900px) {
+    .review-mode .ocr-container { max-width: 860px; }
+    .review-grid { grid-template-columns: 1fr; }
+    .image-pane { position: static; }
+    .image-viewport { height: 52vh; min-height: 280px; }
+}
 
 /* ============ 검수 ============ */
 .review-header { margin-bottom: 16px; }

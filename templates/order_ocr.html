@@ -51,7 +51,7 @@
         </section>
 
         <!-- 1) 업로드 영역 -->
-        <section class="ocr-card">
+        <section id="uploadCard" class="ocr-card">
             <div id="dropZone" class="drop-zone">
                 <input type="file" id="fileInput" accept="image/*" hidden>
                 <img id="previewImg" class="preview-img" hidden alt="업로드한 주문지 미리보기">
@@ -72,52 +72,75 @@
             <div id="statusMsg" class="status-msg" hidden></div>
         </section>
 
-        <!-- 2) 검수 영역 -->
-        <section id="reviewSection" class="ocr-card" hidden>
-            <div class="review-header">
-                <h2><i class="bi bi-pencil-square"></i> 검수 &amp; 수정</h2>
-                <p class="hint">읽어온 내용을 확인하고 잘못된 부분을 직접 고쳐주세요.</p>
-            </div>
+        <!-- 2) 검수 영역 (좌: 원본 사진 / 우: 추출 결과) -->
+        <section id="reviewSection" class="ocr-review" hidden>
+            <div class="review-grid">
+                <!-- 좌측: 원본 사진 (고정 + 확대/이동) -->
+                <aside class="image-pane">
+                    <div class="image-toolbar">
+                        <span class="img-title"><i class="bi bi-image"></i> 원본 주문지</span>
+                        <div class="zoom-controls">
+                            <button id="zoomOutBtn" class="zoom-btn" title="축소"><i class="bi bi-zoom-out"></i></button>
+                            <span id="zoomLevel" class="zoom-level">100%</span>
+                            <button id="zoomInBtn" class="zoom-btn" title="확대"><i class="bi bi-zoom-in"></i></button>
+                            <button id="zoomResetBtn" class="zoom-btn" title="원래대로"><i class="bi bi-arrow-counterclockwise"></i></button>
+                            <button id="reuploadBtn" class="zoom-btn" title="다른 이미지 올리기"><i class="bi bi-arrow-repeat"></i></button>
+                        </div>
+                    </div>
+                    <div id="imageViewport" class="image-viewport">
+                        <img id="reviewImg" class="review-img" alt="원본 주문지" draggable="false">
+                    </div>
+                    <p class="image-hint">휠로 확대 · 드래그로 이동 · 더블클릭하면 원래대로</p>
+                </aside>
 
-            <!-- 주문 컨텍스트(날짜 / 차수) -->
-            <div class="order-meta">
-                <label>
-                    <span>주문 날짜</span>
-                    <input type="date" id="orderDate">
-                </label>
-                <label>
-                    <span>주문 차수</span>
-                    <select id="orderRound">
-                        <option value="1">1차</option>
-                        <option value="2">2차</option>
-                        <option value="3">3차</option>
-                    </select>
-                </label>
-            </div>
+                <!-- 우측: 검수 테이블 -->
+                <div class="table-pane">
+                    <div class="review-header">
+                        <h2><i class="bi bi-pencil-square"></i> 검수 &amp; 수정</h2>
+                        <p id="reviewHint" class="hint">왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.</p>
+                    </div>
 
-            <div class="table-wrap">
-                <table class="review-table">
-                    <thead>
-                        <tr>
-                            <th class="col-idx">#</th>
-                            <th>약품명</th>
-                            <th class="col-unit">포장단위</th>
-                            <th class="col-qty">수량</th>
-                            <th class="col-del"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="reviewBody"></tbody>
-                </table>
-            </div>
+                    <!-- 주문 컨텍스트(날짜 / 차수) -->
+                    <div class="order-meta">
+                        <label>
+                            <span>주문 날짜</span>
+                            <input type="date" id="orderDate">
+                        </label>
+                        <label>
+                            <span>주문 차수</span>
+                            <select id="orderRound">
+                                <option value="1">1차</option>
+                                <option value="2">2차</option>
+                                <option value="3">3차</option>
+                            </select>
+                        </label>
+                    </div>
 
-            <div class="review-footer">
-                <button id="addRowBtn" class="btn btn-ghost">
-                    <i class="bi bi-plus-lg"></i> 행 추가
-                </button>
-                <button id="saveBtn" class="btn btn-primary" disabled
-                        title="저장 기능은 다음 단계(Supabase 연동)에서 추가됩니다">
-                    <i class="bi bi-save"></i> 저장 (다음 단계)
-                </button>
+                    <div class="table-wrap">
+                        <table class="review-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-idx">#</th>
+                                    <th>약품명</th>
+                                    <th class="col-unit">포장단위</th>
+                                    <th class="col-qty">수량</th>
+                                    <th class="col-del"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="reviewBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="review-footer">
+                        <button id="addRowBtn" class="btn btn-ghost">
+                            <i class="bi bi-plus-lg"></i> 행 추가
+                        </button>
+                        <button id="saveBtn" class="btn btn-primary" disabled
+                                title="저장 기능은 다음 단계(Supabase 연동)에서 추가됩니다">
+                            <i class="bi bi-save"></i> 저장 (다음 단계)
+                        </button>
+                    </div>
+                </div>
             </div>
         </section>
     </main>

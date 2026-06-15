@@ -25,10 +25,15 @@
     const clearBtn = document.getElementById('clearBtn');
     const extractBtn = document.getElementById('extractBtn');
     const statusMsg = document.getElementById('statusMsg');
+    const uploadCard = document.getElementById('uploadCard');
     const reviewSection = document.getElementById('reviewSection');
     const reviewBody = document.getElementById('reviewBody');
     const addRowBtn = document.getElementById('addRowBtn');
     const orderDate = document.getElementById('orderDate');
+    // 검수 화면 원본 사진(좌측) 패널
+    const reviewImg = document.getElementById('reviewImg');
+    const imageViewport = document.getElementById('imageViewport');
+    const zoomLevel = document.getElementById('zoomLevel');
 
     let selectedFile = null;
     let previewUrl = null;
@@ -95,9 +100,7 @@
             }
             renderRows(data.items || []);
             const n = data.count || 0;
-            showStatus('success', `${n}개 품목을 읽었습니다. 아래에서 확인·수정해주세요.`);
-            reviewSection.hidden = false;
-            reviewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            enterReview(n);
         } catch (e) {
             showStatus('error', `읽기 실패: ${e.message}`);
         } finally {
@@ -279,6 +282,120 @@
         });
     }
 
+    // =================== 검수 모드 전환 ===================
+    // 추출 성공 시: 업로드 카드를 감추고, 좌(원본 사진)·우(검수표) 2단으로 전환
+    function enterReview(count) {
+        reviewImg.src = previewUrl;
+        resetZoom();
+        const hint = document.getElementById('reviewHint');
+        if (hint) {
+            hint.textContent = (count != null)
+                ? `${count}개 품목을 읽었습니다. 왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.`
+                : '왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.';
+        }
+        document.body.classList.add('review-mode');
+        uploadCard.hidden = true;
+        reviewSection.hidden = false;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // '다른 이미지 올리기' — 업로드 화면으로 복귀
+    function exitReview() {
+        document.body.classList.remove('review-mode');
+        reviewSection.hidden = true;
+        uploadCard.hidden = false;
+        clearFile();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // =================== 원본 사진 확대 / 이동 ===================
+    const Z = { scale: 1, tx: 0, ty: 0, min: 1, max: 6 };
+    function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+    function applyTransform() {
+        reviewImg.style.transform = `translate(${Z.tx}px, ${Z.ty}px) scale(${Z.scale})`;
+        if (zoomLevel) zoomLevel.textContent = Math.round(Z.scale * 100) + '%';
+    }
+    function resetZoom() { Z.scale = 1; Z.tx = 0; Z.ty = 0; applyTransform(); }
+
+    // 커서(또는 핀치 중심) 아래 지점을 고정한 채 배율 변경.
+    // transform-origin 이 center 이므로 화면 오프셋 = 기준점*scale + translate.
+    function zoomAt(factor, clientX, clientY) {
+        const rect = imageViewport.getBoundingClientRect();
+        const ox = (clientX == null ? 0 : clientX - (rect.left + rect.width / 2));
+        const oy = (clientY == null ? 0 : clientY - (rect.top + rect.height / 2));
+        const newScale = clamp(Z.scale * factor, Z.min, Z.max);
+        const bx = (ox - Z.tx) / Z.scale;
+        const by = (oy - Z.ty) / Z.scale;
+        Z.tx = ox - bx * newScale;
+        Z.ty = oy - by * newScale;
+        Z.scale = newScale;
+        if (Z.scale === 1) { Z.tx = 0; Z.ty = 0; }  // 원배율이면 항상 중앙 정렬
+        applyTransform();
+    }
+
+    function bindImageViewer() {
+        document.getElementById('zoomInBtn').addEventListener('click', () => zoomAt(1.25, null, null));
+        document.getElementById('zoomOutBtn').addEventListener('click', () => zoomAt(1 / 1.25, null, null));
+        document.getElementById('zoomResetBtn').addEventListener('click', resetZoom);
+        document.getElementById('reuploadBtn').addEventListener('click', exitReview);
+        imageViewport.addEventListener('dblclick', resetZoom);
+
+        // 휠로 확대/축소 (커서 위치 기준)
+        imageViewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+        }, { passive: false });
+
+        // 마우스 드래그로 이동
+        let dragging = false, lastX = 0, lastY = 0;
+        imageViewport.addEventListener('mousedown', (e) => {
+            dragging = true; lastX = e.clientX; lastY = e.clientY;
+            imageViewport.classList.add('panning');
+            e.preventDefault();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            Z.tx += e.clientX - lastX; Z.ty += e.clientY - lastY;
+            lastX = e.clientX; lastY = e.clientY;
+            applyTransform();
+        });
+        window.addEventListener('mouseup', () => {
+            dragging = false; imageViewport.classList.remove('panning');
+        });
+
+        // 터치(태블릿): 한 손가락 이동 / 두 손가락 핀치 확대
+        let touchMode = null, tLastX = 0, tLastY = 0, startDist = 0, startScale = 1, pinchX = 0, pinchY = 0;
+        const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+        imageViewport.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchMode = 'pan'; tLastX = e.touches[0].clientX; tLastY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+                touchMode = 'pinch';
+                startDist = dist(e.touches); startScale = Z.scale;
+                pinchX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                pinchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            }
+        }, { passive: false });
+        imageViewport.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (touchMode === 'pan' && e.touches.length === 1) {
+                Z.tx += e.touches[0].clientX - tLastX; Z.ty += e.touches[0].clientY - tLastY;
+                tLastX = e.touches[0].clientX; tLastY = e.touches[0].clientY;
+                applyTransform();
+            } else if (touchMode === 'pinch' && e.touches.length === 2) {
+                const target = startScale * (dist(e.touches) / startDist);
+                zoomAt(clamp(target, Z.min, Z.max) / Z.scale, pinchX, pinchY);
+            }
+        }, { passive: false });
+        imageViewport.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) touchMode = null;
+            else if (e.touches.length === 1) {
+                touchMode = 'pan'; tLastX = e.touches[0].clientX; tLastY = e.touches[0].clientY;
+            }
+        });
+    }
+
     // =================== 이벤트 바인딩 ===================
     function bindUpload() {
         dropZone.addEventListener('click', () => fileInput.click());
@@ -358,6 +475,7 @@
             orderDate.value = local.toISOString().slice(0, 10);
         }
         bindUpload();
+        bindImageViewer();
         loadMasterStatus();
         connectWebSocket(); // 서버 자동 종료 방지 (keep-alive)
     });
