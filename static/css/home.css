@@ -108,6 +108,24 @@
   line-height: 1.5;
 }
 
+/* 카드 내 재고 요약 (직전 검색 결과) */
+.card-summary {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.card-summary[hidden] {
+  display: none;
+}
+
+.card-summary-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 /* 액션 (열기 + 검색 버튼) */
 .app-action {
   display: flex;

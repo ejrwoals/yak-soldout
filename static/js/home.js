@@ -71,9 +71,46 @@
             if (!resp.ok) return;
             const data = await resp.json();
             setSearching(!!data.is_searching);
+            renderSummaryFromSearch(data.current_search);
         } catch (e) {
             console.warn('검색 상태 조회 실패:', e);
         }
+    }
+
+    // =================== 재고 요약 표시 ===================
+    // 직전 검색 사이클의 재고/품절/오류 건수를 홈 카드에 노출한다.
+    function renderSummary(found, soldout, errors) {
+        const summary = document.getElementById('checkerSummary');
+        if (!summary) return;
+
+        const foundEl = document.getElementById('homeFoundCount');
+        const soldoutEl = document.getElementById('homeSoldoutCount');
+        const errorEl = document.getElementById('homeErrorCount');
+        if (foundEl) foundEl.textContent = found;
+        if (soldoutEl) soldoutEl.textContent = soldout;
+        if (errorEl) errorEl.textContent = errors;
+
+        summary.hidden = false;
+    }
+
+    // /api/status 의 current_search(메모리 결과)에서 요약 복원
+    function renderSummaryFromSearch(currentSearch) {
+        if (!currentSearch) return;
+        const found = (currentSearch.found_drugs || []).length;
+        const soldout = (currentSearch.soldout_drugs || []).length;
+        const errors = (currentSearch.errors || []).length;
+        // 아직 한 번도 결과가 없으면(시작 전) 요약을 숨긴 채 유지
+        if (found === 0 && soldout === 0 && errors === 0) return;
+        renderSummary(found, soldout, errors);
+    }
+
+    // 카운터 1개를 delta 만큼 증가 (약품 단위 실시간 집계용)
+    function bumpCount(id, delta) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = (parseInt(el.textContent, 10) || 0) + delta;
+        const summary = document.getElementById('checkerSummary');
+        if (summary) summary.hidden = false;
     }
 
     // =================== 홈 검색 버튼 ===================
@@ -108,13 +145,28 @@
         // 검색 시작(사이클 시작) → 동작 중 표시, 중단 → 표시 해제
         if (msg.type === 'cycle_start') {
             setSearching(true);
+            renderSummary(0, 0, 0); // 새 사이클 시작: 0부터 실시간 집계
         } else if (msg.type === 'search_stopped') {
             setSearching(false);
+        } else if (msg.type === 'drug_found') {
+            // 약품 단위 실시간 집계 (has_stock=재고 / 그 외=품절)
+            bumpCount(msg.drug && msg.drug.has_stock ? 'homeFoundCount' : 'homeSoldoutCount', 1);
+        } else if (msg.type === 'drug_soldout') {
+            bumpCount('homeSoldoutCount', 1);
+        } else if (msg.type === 'drug_error') {
+            bumpCount('homeErrorCount', 1);
         } else if (msg.type === 'urgent_alert' && msg.drug) {
             onUrgentAlert(msg.drug);
+        } else if (msg.type === 'search_completed' && msg.data) {
+            // 사이클 완료 시 최종 건수로 확정 (반복 모드에서는 검색 표시는 유지)
+            renderSummary(
+                msg.data.found_count || 0,
+                msg.data.soldout_count || 0,
+                msg.data.error_count || 0
+            );
         }
-        // search_completed 는 반복 모드에서 사이클 사이 대기 상태로,
-        // 검색은 계속 진행되므로 표시를 유지한다.
+        // search_completed 후에도 반복 모드에서는 사이클 사이 대기 상태로,
+        // 검색은 계속 진행되므로 '검색 중' 표시를 유지한다.
     }
 
     // =================== 긴급 알림 (홈 화면) ===================

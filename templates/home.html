@@ -64,6 +64,25 @@
                 <div class="app-info">
                     <h2>품절 약 서치앱</h2>
                     <p>품절 약품의 도매상 재고 상황을 자동으로 확인합니다</p>
+                    <div class="card-summary" id="checkerSummary" hidden>
+                        <div class="card-summary-stats">
+                            <span class="stat-item stat-success">
+                                <i class="bi bi-check-circle"></i>
+                                <span class="stat-label">재고</span>
+                                <strong id="homeFoundCount">0</strong>
+                            </span>
+                            <span class="stat-item stat-warning">
+                                <i class="bi bi-x-circle"></i>
+                                <span class="stat-label">품절</span>
+                                <strong id="homeSoldoutCount">0</strong>
+                            </span>
+                            <span class="stat-item stat-danger">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <span class="stat-label">오류</span>
+                                <strong id="homeErrorCount">0</strong>
+                            </span>
+                        </div>
+                    </div>
                 </div>
                 <div class="app-action">
                     <div class="action-open">
@@ -87,8 +106,10 @@
                     <p>손글씨 주문지를 사진으로 올리면 약품명·포장단위·수량을 읽어옵니다</p>
                 </div>
                 <div class="app-action">
-                    <span>열기</span>
-                    <i class="bi bi-arrow-right"></i>
+                    <div class="action-open">
+                        <span>열기</span>
+                        <i class="bi bi-arrow-right"></i>
+                    </div>
                 </div>
             </a>
 
