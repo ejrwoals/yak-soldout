@@ -14,7 +14,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"과 "주문지 OCR"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
 - ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용합니다. 한 줄도 빠뜨리지 않도록 흐린 글씨·취소선 줄까지 모두 추출하되 취소선 항목은 빼지 않고 "취소선" 배지로만 표시하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. (1단계 로컬 검증 — 아직 저장은 하지 않음)
 - 🔤 **OCR 약품명 오타 보정**: 약품 마스터가 등록돼 있으면, OCR로 읽은 약품명을 한글 자모(초/중/종성) 기반 fuzzy 매칭으로 마스터와 대조해 검수 테이블 각 행에 결과 배지를 표시합니다 — "약품명 일치"(공식 전체명 자동 적용, 원본으로 되돌리기 가능), "확인 필요"(후보 드롭다운에서 선택), "미등록". 용량(600mg≠300mg)·접두(짧은 손글씨명↔긴 공식명) 인식, 제형 접미·제약사 접두 제거를 반영하며, 후보에 없으면 행별 "직접 검색" 박스로 마스터 DB를 직접 조회할 수 있습니다.
-- 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 `data/drug_master.json`에 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다.
+- 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 SQLite DB(`drug_master` 테이블)에 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다.
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
@@ -59,6 +59,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Real-time Communication**: WebSocket
 - **OCR / LLM**: Google Gemini (멀티모달, `google-genai` SDK), 키는 `.env`에서 로드(`python-dotenv`)
+- **Data Storage**: SQLite (Python 표준 `sqlite3`, WAL 모드) — 약품 목록·결과 표시 제외 목록·도매상 자격증명·약품 마스터·검색 세션/결과를 단일 `data/yak_soldout.db`에 통합 저장
 - **Fuzzy Matching**: rapidfuzz (한글 자모 분해 기반 약품명 오타 보정)
 - **Data Processing**: pandas, numpy, openpyxl/xlrd (엑셀 파싱)
 - **Testing**: pytest (단위 테스트 & 통합 테스트)
@@ -95,13 +96,15 @@ python -m playwright install chromium
 
 ### 2. 설정 파일 준비
 
-프로젝트 루트 디렉터리에 다음 파일들을 생성하세요:
+프로젝트 루트 디렉터리에 다음 파일을 생성하세요:
 
 ```bash
 # 로그인 정보 설정 (config.example.json을 참고하여 생성)
 cp config.example.json config.json
 # config.json 파일을 열어 실제 도매상 계정 정보 입력
 ```
+
+> **데이터 저장소(SQLite)**: 도매상 자격증명, 모니터링할 약품 목록, 결과 표시 제외 목록, 약품 마스터, 검색 세션/결과는 모두 `data/yak_soldout.db` (SQLite)에 저장됩니다. DB 파일과 스키마는 첫 실행 시 자동 생성되므로 직접 만들 필요가 없습니다. `config.json`은 이제 도매상 자격증명이 아닌 `monitoring` 설정만 보관합니다(도매상 자격증명/색상/지역은 DB의 `distributors` 테이블로 이전됨). 과거에 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `data/drug_master.json`, `config.json`의 distributors)을 쓰던 환경이라면 첫 실행 시 해당 JSON이 DB로 자동 시딩(멱등)됩니다.
 
 > **기존 info.txt 사용자**: 기존 `info.txt` 파일이 있으면 첫 실행 시 `config.json`으로 자동 마이그레이션됩니다. 원본은 `info.txt.bak`으로 백업됩니다.
 
@@ -155,29 +158,13 @@ cp config.example.json config.json
 }
 ```
 
+> **distributors 시딩**: `config.json`의 `distributors`는 첫 실행 시 DB의 `distributors` 테이블로 시딩되며(테이블이 비어 있을 때만), 이후에는 DB가 정본이 됩니다. 시딩 후 `config.json`에서 `distributors`는 제거되고 `monitoring`만 남습니다. 도매상 자격증명·색상·지역 변경은 웹 UI 설정 모달을 통해 DB에 저장됩니다.
+
 > **color 필드**: 도매상 구분 색상입니다. 웹 UI의 도매상 설정 모달에서 변경할 수 있으며, 생략 시 레지스트리의 `default_color` 값이 사용됩니다.
 
 > **region 필드**: 일부 도매상(지오영, 지오팜, HMP몰)은 지역별로 다른 서버를 사용합니다. 웹 UI의 도매상 설정 모달에서 드롭다운으로 선택할 수 있으며, 생략 시 레지스트리의 `extra_params` 기본값이 사용됩니다. 지오영은 `"seoul"` (서울/경기/인천), `"yeongnam"` (영남), `"daejeon"` (대전) 중 선택하며, 영남/대전 지역은 타센터 재고가 표시되지 않습니다. 지오팜은 `"daegu"`, `"daejeon"`, `"gwangju"`, `"seoul"` 중 선택, HMP몰은 `"41"` (경기) 또는 `"47"` (경북)을 선택합니다.
 
-# 품절 약품 목록
-geoweb-soldout-list.json 파일 안에 JSON 형태로 약품명과 긴급 알림 설정 입력
-```json
-[
-  {
-    "drugName": "디카맥스1000정(PTP) 90T 다림바이오텍",
-    "isUrgent": false,
-    "dateAdded": "2025-08-17T10:00:00"
-  },
-  {
-    "drugName": "디카맥스디정(PTP) 90T 다림바이오텍", 
-    "isUrgent": true,
-    "dateAdded": "2025-08-17T10:00:00"
-  }
-]
-```
-
-# 결과 표시 제외 목록 (선택사항, JSON 형식으로 자동 생성됨)
-# exclusion-list.json 파일이 웹 인터페이스를 통해 자동 관리됩니다
+> **품절 약품 목록 / 결과 표시 제외 목록**: 모니터링할 약품 목록과 결과 표시 제외 목록은 모두 SQLite DB(`data/yak_soldout.db`의 `watch_list`·`exclusion_list` 테이블)에 저장되며 웹 인터페이스를 통해 관리합니다. 별도의 JSON 파일을 만들 필요가 없습니다. (과거 `geoweb-soldout-list.json`·`exclusion-list.json`을 사용하던 환경은 첫 실행 시 DB로 자동 시딩됩니다.)
 
 ### 3. 실행 방법
 
@@ -223,10 +210,9 @@ yak-soldout/
 ├── web_server.py              # FastAPI 웹 서버 (개발 실행: ./dev.sh 또는 python web_server.py)
 ├── dev.sh                     # 개발 실행 스크립트 (.venv 사용 + 포트 정리 + 서버 실행)
 ├── run_app.py                 # PyInstaller 배포 빌드용 진입점
-├── config.json                # 도매상 로그인 정보 (직접 생성 필요, JSON 형식)
+├── config.json                # monitoring 설정 (직접 생성, distributors는 첫 실행 시 DB로 시딩)
 ├── build_config.json          # 약국별 빌드 설정 (선택사항, PyInstaller 배포 시 사용)
-├── geoweb-soldout-list.json   # 모니터링할 약품 목록
-├── exclusion-list.json        # 결과 표시 제외 목록 (자동 생성)
+├── db.py                      # SQLite 데이터 액세스 레이어 (스키마/마이그레이션/JSON 시딩)
 │
 ├── scrapers/                  # Playwright 기반 도매상 스크래퍼
 │   ├── registry.py            # 도매상 레지스트리 — Single Source of Truth
@@ -252,7 +238,7 @@ yak-soldout/
 │   ├── ocr_service.py         # 손글씨 주문지 OCR — Gemini 호출 및 약품명·포장단위·수량 추출
 │   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드/머리글 추정/컬럼 매핑/제약사 정규화
 │   ├── drug_matcher.py        # OCR 약품명 오타 보정 — 한글 자모 fuzzy 매칭(rapidfuzz) + 마스터 직접 검색
-│   ├── file_manager.py        # 약품 목록 / JSON 파일 I/O
+│   ├── file_manager.py        # 약품 목록 / 결과 표시 제외 목록 I/O (DB 위임)
 │   ├── data_processor.py      # 데이터 처리 및 분류
 │   └── notifications.py       # 크로스 플랫폼 알림
 │
@@ -267,7 +253,7 @@ yak-soldout/
 │   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈, main.js = 대시보드, order-ocr.js, drug-master.js)
 │
 ├── data/                      # 로컬 데이터 (자동 생성)
-│   └── drug_master.json       # 등록된 약품 마스터 (약품명·보험코드·제약사)
+│   └── yak_soldout.db         # SQLite DB — 약품 목록·제외 목록·도매상·약품 마스터·검색 세션/결과
 │
 ├── .env                       # OCR용 Gemini API 키 (직접 생성, .env.example 참고, git 미커밋)
 ├── docs/                      # 기능 계획·설계 문서 (예: 손글씨-주문지-OCR-기능-계획.md)
@@ -341,7 +327,7 @@ OCR로 읽은 약품명을 등록된 약품 마스터와 대조해 오타를 잡
 - **용량 인식**: 브랜드는 같아도 용량(규격) 숫자가 다르면(600mg≠300mg) 점수를 제한해 '일치'가 아닌 '확인 필요'로 처리합니다.
 - **검수 화면 표시**: `/api/order-ocr/extract`가 각 항목에 매칭 결과(`match`)를 덧붙이며, 검수 테이블 각 행이 상태 배지를 보여줍니다 — `matched`(유사도 ≥90, "✓ 약품명 일치" 배지로 공식 전체명을 자동 적용하고 드롭다운으로 원본 복원 가능), `candidate`(70~90, 후보 드롭다운 제시), `none`(미등록), `skip`(마스터 미등록 → 표시 없음). 원본에 취소선이 있던 항목(`crossed_out`)은 빨간 "취소선" 배지를 추가로 달아 목록에 남겨두며, 사용자가 빼려면 직접 삭제합니다.
 - **직접 검색**: 후보에 원하는 약이 없으면 행별 "직접 검색" 박스로 `GET /api/drug-master/search`를 호출해 마스터 DB를 이름 부분일치(우선) + 자모 fuzzy(보충)로 직접 조회·선택합니다.
-- **인덱스 캐시**: 마스터 파일(`data/drug_master.json`)의 mtime을 기준으로 자모 인덱스를 캐싱하고, 파일이 바뀌면 자동 재구축합니다.
+- **인덱스 캐시**: 약품 마스터(DB `drug_master` 테이블)를 기준으로 자모 인덱스를 캐싱하고, 마스터가 재임포트되면(DB의 등록 수·시각 기반 캐시 키 변경) 자동 재구축합니다.
 
 ### 약품 마스터 관리 (Drug Master)
 
@@ -350,7 +336,7 @@ OCR로 읽은 약품명을 등록된 약품 마스터와 대조해 오타를 잡
 - **머리글 행 자동 추정**: 실제 약국 엑셀 export는 제목·조회일시 등이 머리글 위에 깔리는 경우가 많습니다. `_guess_header_row`가 `약품명`·`보험코드`·`제약사` 등 키워드가 든 행(또는 비어있지 않은 칸이 가장 많은 행)을 머리글로 추정하며, `/api/drug-master/preview`로 원본 상단 행과 함께 반환합니다. 사용자는 모달에서 머리글 행을 직접 바꿀 수 있습니다.
 - **컬럼 매핑**: 컬럼명이 약국마다 다르므로, 사용자가 약품명(필수)·보험코드(선택)·제약사(선택) 컬럼을 직접 지정해 `/api/drug-master/import`로 등록합니다. 빈 행은 건너뛰고 (약품명, 보험코드) 조합으로 중복을 제거합니다.
 - **제약사 정규화**: `normalize_maker`가 `대웅제약(주)`→`대웅`, `(주)보령`→`보령`처럼 법인/접미 토큰을 제거한 정규화 형태(`maker_norm`)를 함께 저장해, 표기 편차에도 매칭이 가능하게 합니다.
-- **저장**: 결과는 로컬 JSON `data/drug_master.json`에 등록(덮어쓰기)되며, `/api/drug-master`로 등록 현황(개수·출처 파일·매핑한 컬럼)을 조회합니다.
+- **저장**: 결과는 SQLite DB의 `drug_master` 테이블에 전체 교체(재임포트=DELETE 후 INSERT)로 등록되며, `/api/drug-master`로 등록 현황(개수·출처 파일)을 조회합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -425,19 +411,23 @@ cp build_config.example.json build_config.json
 
 PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약국별로 맞춤 배포가 가능합니다.
 
-## 📊 데이터 파일
+## 📊 데이터 저장 (SQLite)
 
-### 필수 파일
+애플리케이션 데이터는 단일 SQLite 파일 `data/yak_soldout.db`에 통합 저장됩니다. DB 파일·스키마는 첫 실행 시 자동 생성되며, 데이터 액세스 레이어는 `db.py`가 담당합니다.
 
-1. **config.json**: 도매상 로그인 정보 및 모니터링 설정 (JSON 형식)
-2. **geoweb-soldout-list.json**: 모니터링할 약품 목록 (JSON 형식, 긴급 알림 설정 포함)
+- **동시성**: FastAPI 라우트(asyncio)와 백그라운드 검색 스레드(ThreadPoolExecutor)가 동시에 접근하므로, WAL 저널 모드 + `busy_timeout` + 스레드별 연결(thread-local)로 read/write 충돌을 회피합니다.
+- **스키마 버전 관리**: `PRAGMA user_version` 값으로 스키마 버전을 추적하며, 구버전 DB는 시작 시 자동 마이그레이션합니다.
+- **JSON → DB 시딩**: 과거 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `data/drug_master.json`, `config.json`의 `distributors`)이 있으면 첫 실행 시 DB로 시딩합니다. 멱등(대상 테이블이 비어 있을 때만 시딩)이라 반복 실행해도 중복되지 않습니다.
 
-### 자동 생성 파일
+### 테이블
 
-1. **exclusion-list.json**: 결과 표시에서 제외할 약품 목록 (도매상별 독립 관리)
-   - 웹 인터페이스에서 약품 카드의 눈 모양 아이콘(👁️‍🗨️)을 클릭하여 추가
-   - 도매상별로 독립적으로 작동 (지오영/백제약품 별도 관리)
-   - 백제약품의 경우 규격 정보까지 포함하여 정확한 매칭
+- **drug_master**: 약품 마스터 (약품명·보험코드·제약사·정규화 제약사명). 재임포트 시 전체 교체.
+- **watch_list**: 모니터링할 품절 약품 목록 (약품명·긴급 알림 여부·추가일시). 웹 UI로 관리.
+- **exclusion_list**: 결과 표시 제외 목록 — 도매상별로 독립 관리(`(drug_name, distributor)` 유니크). 웹에서 약품 카드의 눈 모양 아이콘(👁️‍🗨️)으로 추가하며, 백제약품은 규격 정보까지 포함해 정확히 매칭합니다.
+- **distributors**: 도매상 자격증명·활성화 여부·색상·지역. 웹 설정 모달로 관리.
+- **search_sessions / search_results**: 검색 사이클(시작 시각·소요·상태)과 그 결과(약품별 재고/품절·도매상별 행)를 영속화합니다.
+
+> **config.json**: 이제 도매상 자격증명이 아닌 `monitoring` 설정(`repeat_interval_minutes`, `alert_exclusion_days`)만 보관합니다. 도매상 자격증명·색상·지역은 `distributors` 테이블로 이전되었습니다.
 
 ## 🔌 API 엔드포인트
 
@@ -518,21 +508,11 @@ class DistributorType(Enum):
 
 **3단계**: 스크래퍼 파일 생성 (`scrapers/newdist_scraper.py`) — `BaseScraper` 상속 후 `login()`, `search_by_insurance_codes()` 등 구현
 
-**4단계**: `config.json`에 도매상 설정 추가
+**4단계**: 도매상 자격증명 입력
 
-```json
-{
-  "distributors": {
-    "newdist": {
-      "enabled": false,
-      "username": "",
-      "password": ""
-    }
-  }
-}
-```
+레지스트리에 항목이 추가되면 웹 UI 설정 모달에 신규 도매상이 자동으로 나타납니다. 여기서 자격증명을 입력하면 DB의 `distributors` 테이블에 저장됩니다. (초기 시딩이 필요하면 `config.json`의 `distributors`에 항목을 넣어두면 첫 실행 시 DB로 시딩됩니다.)
 
-이 4단계만으로 웹 UI, 검색 엔진, 설정 파싱, API 응답이 모두 자동으로 신규 도매상을 지원합니다.
+이 단계만으로 웹 UI, 검색 엔진, 설정 파싱, API 응답이 모두 자동으로 신규 도매상을 지원합니다.
 
 ### 프론트엔드 수정하기
 - CSS: `static/css/` 디렉터리의 기능별 파일 수정

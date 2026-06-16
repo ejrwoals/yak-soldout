@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Dict, Any
 from .drug_data import AppConfig, DistributorCredentials
 
+import db
+
 # 순환 임포트 방지를 위해 함수 내부에서 registry 임포트
 def _get_registry():
     from scrapers.registry import DISTRIBUTOR_REGISTRY
@@ -99,24 +101,88 @@ class ConfigManager:
         with open(self.config_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def get_raw_config(self) -> Dict[str, Any]:
-        """config.json의 원시 데이터 반환 (API 엔드포인트용)"""
+    # ------------------------------------------------------------------
+    # distributors: DB(distributors 테이블) / monitoring: config.json
+    # (SQLite 마이그레이션 — 자격증명·활성화·색상·지역은 DB로 이전)
+    # ------------------------------------------------------------------
+    def _read_monitoring(self) -> Dict[str, Any]:
         try:
-            return self._read_config_json()
+            return self._read_config_json().get('monitoring', {})
         except FileNotFoundError:
-            return {"distributors": {}, "monitoring": {}}
+            return {}
+
+    def _write_monitoring(self, monitoring: Dict[str, Any]):
+        """config.json은 monitoring만 보관 (distributors는 DB로 이전)."""
+        try:
+            existing = self._read_config_json()
+        except FileNotFoundError:
+            existing = {}
+        existing['monitoring'] = monitoring
+        existing.pop('distributors', None)  # DB로 이전됨 — 파일에서 제거
+        self._write_config_json(existing)
+
+    def _read_distributors_from_db(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for r in db.query_all(
+            "SELECT dist_key, enabled, username, password, color, region FROM distributors"
+        ):
+            entry: Dict[str, Any] = {
+                "enabled": bool(r["enabled"]),
+                "username": r["username"] or "",
+                "password": r["password"] or "",
+            }
+            # color/region은 값이 있을 때만 포함 (없으면 라우트가 레지스트리 기본값 사용)
+            if r["color"] is not None:
+                entry["color"] = r["color"]
+            if r["region"] is not None:
+                entry["region"] = r["region"]
+            result[r["dist_key"]] = entry
+        return result
+
+    def _save_distributors_to_db(self, distributors: Dict[str, Any]):
+        with db.transaction() as conn:
+            for dist_key, d in (distributors or {}).items():
+                if not isinstance(d, dict):
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO distributors (dist_key, enabled, username, password, color, region)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(dist_key) DO UPDATE SET
+                        enabled  = excluded.enabled,
+                        username = excluded.username,
+                        password = excluded.password,
+                        color    = excluded.color,
+                        region   = excluded.region
+                    """,
+                    (
+                        dist_key,
+                        1 if d.get('enabled', True) else 0,
+                        d.get('username', ''),
+                        d.get('password', ''),
+                        d.get('color'),
+                        d.get('region'),
+                    ),
+                )
+
+    def get_raw_config(self) -> Dict[str, Any]:
+        """원시 설정 반환 (API 엔드포인트용). distributors=DB, monitoring=config.json."""
+        return {
+            "distributors": self._read_distributors_from_db(),
+            "monitoring": self._read_monitoring(),
+        }
 
     def save_raw_config(self, data: Dict[str, Any]):
-        """config.json에 원시 데이터 저장 (API 엔드포인트용)"""
-        self._write_config_json(data)
+        """원시 설정 저장 (API 엔드포인트용). distributors→DB, monitoring→config.json."""
+        self._save_distributors_to_db(data.get('distributors', {}))
+        self._write_monitoring(data.get('monitoring', {}))
 
     def load_config(self) -> AppConfig:
-        """config.json에서 설정 로드"""
-        data = self._read_config_json()
+        """설정 로드 (distributors=DB, monitoring=config.json)"""
         registry = _get_registry()
 
         distributor_credentials: Dict[str, DistributorCredentials] = {}
-        distributors = data.get('distributors', {})
+        distributors = self._read_distributors_from_db()
 
         for dist_id, dist_info in registry.items():
             dist_data = distributors.get(dist_id, {})
@@ -147,7 +213,7 @@ class ConfigManager:
         if not primary_creds or not primary_creds.is_valid():
             raise ValueError(f"{primary_name} 아이디와 비밀번호는 필수입니다")
 
-        monitoring = data.get('monitoring', {})
+        monitoring = self._read_monitoring()
         return AppConfig(
             distributor_credentials=distributor_credentials,
             repeat_interval_minutes=monitoring.get('repeat_interval_minutes', 30),

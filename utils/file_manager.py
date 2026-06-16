@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+import db
+
 def resource_path(relative_path):
     """개발 및 PyInstaller 환경 모두에서 리소스의 절대 경로를 가져옵니다."""
     try:
@@ -37,60 +39,37 @@ class FileManager:
             return 'utf-8'
     
     def read_drug_list(self, filename: str = "geoweb-soldout-list.json") -> List[str]:
-        """품절 약품 목록 파일 읽기 (JSON 형식)"""
-        file_path = self.app_directory / filename
-        
-        if not file_path.exists():
-            # JSON 파일이 없으면 빈 파일 생성
-            self.write_drug_list([], filename)
-            return []
-        
+        """모니터링 대상 약품명 목록 (watch_list, drugName 문자열만)
+
+        filename 인자는 기존 시그니처 호환용으로만 남겨둠 (DB에서 조회).
+        """
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                if isinstance(data, list):
-                    # 객체 형태라면 drugName 추출, 문자열이라면 그대로 반환
-                    return [
-                        item.get('drugName', item) if isinstance(item, dict) else item 
-                        for item in data
-                    ]
-                return []
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"약품 목록 JSON 파일 읽기 오류: {e}")
+            rows = db.query_all("SELECT drug_name FROM watch_list ORDER BY drug_name")
+            return [r["drug_name"] for r in rows]
+        except Exception as e:
+            print(f"약품 목록 읽기 오류: {e}")
             return []
-    
+
     def read_drug_list_json(self, filename: str = "geoweb-soldout-list.json") -> List[Dict[str, Any]]:
-        """품절 약품 목록 파일 읽기 (전체 JSON 객체 반환)"""
-        file_path = self.app_directory / filename
-        
-        if not file_path.exists():
-            # JSON 파일이 없으면 빈 파일 생성
-            self.write_drug_list_json([], filename)
-            return []
-        
+        """모니터링 대상 약품 목록 (watch_list, 전체 객체)"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                if isinstance(data, list):
-                    # 문자열 데이터를 객체로 변환
-                    result = []
-                    for item in data:
-                        if isinstance(item, str):
-                            result.append({
-                                "drugName": item,
-                                "isUrgent": False,
-                                "dateAdded": datetime.now().isoformat()[:19]
-                            })
-                        elif isinstance(item, dict):
-                            result.append(item)
-                    return result
-                return []
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"약품 목록 JSON 파일 읽기 오류: {e}")
+            rows = db.query_all(
+                "SELECT drug_name, is_urgent, date_added FROM watch_list ORDER BY drug_name"
+            )
+            return [
+                {
+                    "drugName": r["drug_name"],
+                    "isUrgent": bool(r["is_urgent"]),
+                    "dateAdded": r["date_added"],
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            print(f"약품 목록 읽기 오류: {e}")
             return []
-    
+
     def write_drug_list(self, drug_list: List[str], filename: str = "geoweb-soldout-list.json"):
-        """품절 약품 목록 파일 쓰기 (이전 버전 호환용)"""
+        """품절 약품 목록 쓰기 (이전 버전 호환용 — 문자열 리스트)"""
         # 문자열 리스트를 객체 리스트로 변환
         drug_objects = []
         for drug in drug_list:
@@ -102,75 +81,94 @@ class FileManager:
                 })
             else:
                 drug_objects.append(drug)
-        
+
         self.write_drug_list_json(drug_objects, filename)
-    
+
     def write_drug_list_json(self, drug_list: List[Dict[str, Any]], filename: str = "geoweb-soldout-list.json"):
-        """품절 약품 목록 파일 쓰기 (JSON 형식)"""
-        file_path = self.app_directory / filename
-        
-        # 중복 제거 및 정렬 (drugName 기준)
+        """모니터링 대상 약품 목록 전체 교체 (watch_list)
+
+        전체 리스트를 받아 테이블 내용을 통째로 교체한다(라우트가 read→modify→write
+        패턴으로 호출하므로). drugName 기준으로 중복 제거하며, 기존 insurance_code
+        링크는 약품명으로 보존한다.
+        """
+        # 중복 제거 (drugName 기준, 첫 항목 유지)
         seen = set()
         unique_drugs = []
         for drug in drug_list:
-            drug_name = drug.get('drugName', '')
+            drug_name = (drug.get('drugName', '') or '').strip()
             if drug_name and drug_name not in seen:
                 seen.add(drug_name)
                 unique_drugs.append(drug)
-        
-        # drugName으로 정렬
-        unique_drugs.sort(key=lambda x: x.get('drugName', ''))
-        
+
         try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                json.dump(unique_drugs, file, ensure_ascii=False, indent=2)
+            with db.transaction() as conn:
+                # 기존 insurance_code 링크 보존용 매핑
+                existing = {
+                    r["drug_name"]: r["insurance_code"]
+                    for r in conn.execute("SELECT drug_name, insurance_code FROM watch_list")
+                }
+                conn.execute("DELETE FROM watch_list")
+                for drug in unique_drugs:
+                    name = (drug.get('drugName', '') or '').strip()
+                    conn.execute(
+                        """INSERT INTO watch_list (drug_name, insurance_code, is_urgent, date_added)
+                           VALUES (?, ?, ?, ?)""",
+                        (
+                            name,
+                            existing.get(name),
+                            1 if drug.get('isUrgent') else 0,
+                            drug.get('dateAdded') or datetime.now().isoformat()[:19],
+                        ),
+                    )
         except Exception as e:
-            print(f"약품 목록 JSON 파일 쓰기 오류: {e}")
-    
-    
+            print(f"약품 목록 쓰기 오류: {e}")
+
+
     def read_alert_exclusions_json(self, filename: str = "exclusion-list.json") -> List[Dict[str, Any]]:
-        """JSON 형식의 결과 표시 제외 목록 파일 읽기"""
-        file_path = self.app_directory / filename
-        
-        if not file_path.exists():
-            # 파일이 없으면 빈 배열로 초기화
-            self.write_alert_exclusions_json([], filename)
-            return []
-        
+        """결과 표시 제외 목록 조회 (exclusion_list)
+
+        정렬: 비고정 항목(상단) → 고정 항목(하단), 각각 날짜 내림차순.
+        """
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                return data if isinstance(data, list) else []
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"JSON 파일 읽기 오류: {e}")
-            return []
-    
-    def write_alert_exclusions_json(self, exclusion_list: List[Dict[str, Any]], filename: str = "exclusion-list.json"):
-        """JSON 형식의 결과 표시 제외 목록 파일 쓰기"""
-        file_path = self.app_directory / filename
-        
-        # 정렬: 비핀 항목(상단) -> 핀 항목(하단), 각각 날짜 최신순
-        def sort_key(item):
-            is_pinned = item.get('isPinned', False)
-            date_str = item.get('date', '1970-01-01T00:00:00')
-            try:
-                # ISO 형식 날짜를 파싱하여 정렬 키로 사용
-                from datetime import datetime
-                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                # 핀된 항목은 나중에 오도록 (1), 비핀 항목은 먼저 오도록 (0)
-                # 날짜는 최신순이므로 음수로 변환
-                return (1 if is_pinned else 0, -date_obj.timestamp())
-            except:
-                # 날짜 파싱 실패 시 기본값
-                return (1 if is_pinned else 0, 0)
-        
-        sorted_list = sorted(exclusion_list, key=sort_key)
-        
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                json.dump(sorted_list, file, ensure_ascii=False, indent=2)
+            rows = db.query_all(
+                """SELECT drug_name, distributor, date, is_pinned
+                   FROM exclusion_list
+                   ORDER BY is_pinned, date DESC"""
+            )
+            return [
+                {
+                    "date": r["date"],
+                    "distributor": r["distributor"],
+                    "drugName": r["drug_name"],
+                    "isPinned": bool(r["is_pinned"]),
+                }
+                for r in rows
+            ]
         except Exception as e:
-            print(f"JSON 파일 쓰기 오류: {e}")
+            print(f"결과 표시 제외 목록 읽기 오류: {e}")
+            return []
+
+    def write_alert_exclusions_json(self, exclusion_list: List[Dict[str, Any]], filename: str = "exclusion-list.json"):
+        """결과 표시 제외 목록 전체 교체 (exclusion_list)"""
+        try:
+            with db.transaction() as conn:
+                conn.execute("DELETE FROM exclusion_list")
+                for item in exclusion_list:
+                    name = (item.get('drugName', '') or '').strip()
+                    if not name:
+                        continue
+                    conn.execute(
+                        """INSERT OR IGNORE INTO exclusion_list (drug_name, distributor, date, is_pinned)
+                           VALUES (?, ?, ?, ?)""",
+                        (
+                            name,
+                            item.get('distributor', '') or '',
+                            item.get('date', '') or datetime.now().isoformat()[:19],
+                            1 if item.get('isPinned') else 0,
+                        ),
+                    )
+        except Exception as e:
+            print(f"결과 표시 제외 목록 쓰기 오류: {e}")
     
     
     

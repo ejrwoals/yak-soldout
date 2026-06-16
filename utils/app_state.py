@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import List, Optional, Any
 from pathlib import Path
 
+import db
 from models.config import ConfigManager, AppConfig
 from utils.file_manager import FileManager
 from utils.data_processor import DataProcessor
@@ -21,6 +22,15 @@ class AppState:
     def __init__(self):
         self.config_manager = ConfigManager()
         self.app_dir = self.config_manager.get_app_directory()
+
+        # SQLite 스키마 생성 + JSON→DB 초기 시딩 (멱등) — 다른 데이터 접근 전에 수행
+        try:
+            seeded = db.init_db(self.app_dir)
+            if any(seeded.values()):
+                print(f"🗄️ DB 초기 시딩 완료: {seeded}")
+        except Exception as e:
+            print(f"DB 초기화 오류: {e}")
+
         self.file_manager = FileManager(self.app_dir)
         self.data_processor = DataProcessor()
         self.config: Optional[AppConfig] = None

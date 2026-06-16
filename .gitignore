@@ -220,4 +220,7 @@ info.txt
 info.txt.bak
 config.json
 
+# JSON→SQLite 마이그레이션 백업 (로컬 안전망, 비밀번호 평문 포함 가능)
+*.json.bak
+
 .DS_Store

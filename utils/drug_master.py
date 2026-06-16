@@ -6,23 +6,18 @@
 업로드한 엑셀의 컬럼명은 사용자마다 다를 수 있으므로, 어떤 컬럼이 약품명인지
 사용자가 직접 선택(매핑)하게 한 뒤 등록한다.
 
-이 단계에서는 Supabase 없이 로컬 JSON(data/drug_master.json)에 저장한다.
-이후 OCR 결과의 약품명을 이 마스터와 fuzzy 매칭하여 오타를 보정한다(다음 증분).
+저장소는 SQLite의 `drug_master` 테이블(db.py). 업로드한 엑셀을 파싱해 전체 교체(재임포트)한다.
+이후 OCR 결과의 약품명을 이 마스터와 fuzzy 매칭하여 오타를 보정한다.
 """
 
 import io
-import json
-import os
 import re
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
-# 저장 위치
-_DATA_DIR = Path("data")
-_MASTER_PATH = _DATA_DIR / "drug_master.json"
+import db
 
 # 미리보기로 보여줄 샘플 행 수
 PREVIEW_ROWS = 5
@@ -182,41 +177,44 @@ def import_master(
     if not drugs:
         raise ValueError("선택한 컬럼에서 유효한 약품명을 찾지 못했습니다.")
 
-    payload = {
-        "imported_at": datetime.now().isoformat(timespec="seconds"),
-        "source_filename": filename,
-        "header_row": max(0, int(header_row)),
-        "columns": {"name": name_col, "insurance_code": code_col or "", "maker": maker_col or ""},
-        "count": len(drugs),
-        "drugs": drugs,
-    }
-    _DATA_DIR.mkdir(exist_ok=True)
-    with open(_MASTER_PATH, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    # 약품 마스터 전체 교체 (DB drug_master 테이블)
+    imported_at = datetime.now().isoformat(timespec="seconds")
+    stored = db.replace_drug_master(drugs, filename, imported_at)
 
-    return {"count": len(drugs), "source_filename": filename}
+    return {"count": stored, "source_filename": filename}
 
 
 def load_master() -> Optional[dict]:
-    """저장된 약품 마스터 전체를 반환. 없으면 None."""
-    if not _MASTER_PATH.exists():
+    """저장된 약품 마스터 전체를 반환(매칭용). 비어 있으면 None.
+
+    반환 형태는 기존 JSON 구조와 호환: {drugs, count, source_filename, imported_at}.
+    """
+    drugs = db.load_drug_master()
+    if not drugs:
         return None
-    try:
-        with open(_MASTER_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return None
+    meta = db.drug_master_meta()
+    return {
+        "drugs": drugs,
+        "count": meta["count"],
+        "source_filename": meta["source_file"],
+        "imported_at": meta["imported_at"],
+    }
+
+
+def cache_key() -> tuple:
+    """매처 캐시 무효화용 신호 (임포트마다 변함)."""
+    return db.drug_master_cache_key()
 
 
 def status() -> dict:
     """마스터 등록 현황 요약 (목록 본문 제외)."""
-    data = load_master()
-    if not data:
+    meta = db.drug_master_meta()
+    if not meta["count"]:
         return {"registered": False, "count": 0}
     return {
         "registered": True,
-        "count": data.get("count", len(data.get("drugs", []))),
-        "source_filename": data.get("source_filename", ""),
-        "imported_at": data.get("imported_at", ""),
-        "columns": data.get("columns", {}),
+        "count": meta["count"],
+        "source_filename": meta["source_file"],
+        "imported_at": meta["imported_at"],
+        "columns": {},
     }

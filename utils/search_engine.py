@@ -13,6 +13,7 @@ import queue
 from datetime import datetime
 from typing import Dict, List, Any
 
+import db
 from scrapers.browser_manager import BrowserManager
 from scrapers.registry import DISTRIBUTOR_REGISTRY
 from models.build_config import get_visible_registry, get_primary_distributor
@@ -202,8 +203,18 @@ def execute_search_sync(app_state, progress_queue=None):
                 progress_queue.put_nowait(msg)
             except:
                 pass
-    
+
+    # 검색 사이클 기록용 (search_sessions / search_results)
+    session_id = None
+    t0 = time.time()
+
     try:
+        # 검색 사이클 세션 시작
+        try:
+            session_id = db.start_search_session(datetime.now().isoformat()[:19])
+        except Exception as e:
+            log_message(f"⚠️ 검색 세션 생성 실패(기록 생략): {e}")
+
         # 데이터 로드
         drug_list = app_state.file_manager.read_drug_list()
         drug_list_json = app_state.file_manager.read_drug_list_json()
@@ -226,14 +237,17 @@ def execute_search_sync(app_state, progress_queue=None):
         
         log_message(f"📋 검색할 약품 수: {len(drug_list)}개")
         
-        # 결과 표시 제외 목록 처리 (JSON 형식, 도매상별로 구분)
-        cleaned_exclusions, excluded_by_distributor = \
-            app_state.data_processor.process_alert_exclusions(exclusion_list, app_state.config.alert_exclusion_days)
+        # 만료된 제외 항목(비고정 & 기간 초과)을 DB에서 직접 삭제
+        removed = db.delete_expired_exclusions(
+            app_state.config.alert_exclusion_days, datetime.now().isoformat()
+        )
+        if removed:
+            exclusion_list = app_state.file_manager.read_alert_exclusions_json()
+            log_message(f"🧹 만료된 제외 항목 {removed}개 자동 삭제")
 
-        # 만료된 항목이 있으면 파일에서 제거
-        if len(cleaned_exclusions) != len(exclusion_list):
-            app_state.file_manager.write_alert_exclusions_json(cleaned_exclusions)
-            log_message(f"🧹 만료된 제외 항목 {len(exclusion_list) - len(cleaned_exclusions)}개 자동 삭제")
+        # 도매상별 제외 약품명 매핑 생성 (만료 삭제 후 남은 목록 기준)
+        _, excluded_by_distributor = \
+            app_state.data_processor.process_alert_exclusions(exclusion_list, app_state.config.alert_exclusion_days)
 
         # 웹 스크래핑 실행
         all_drugs = []
@@ -325,9 +339,23 @@ def execute_search_sync(app_state, progress_queue=None):
         # 메모리 상태 최종 업데이트
         app_state.current_search["found_drugs"] = result_dict['found_drugs']
         app_state.current_search["soldout_drugs"] = result_dict['soldout_drugs']
-        
+
+        # 사이클 결과를 DB에 기록 (세션 단위 단일 트랜잭션)
+        if session_id is not None:
+            try:
+                db.save_search_results(
+                    session_id,
+                    result_dict['found_drugs'],
+                    result_dict['soldout_drugs'],
+                    errors,
+                    round(time.time() - t0, 2),
+                    status="completed",
+                )
+            except Exception as e:
+                log_message(f"⚠️ 검색 결과 DB 저장 실패: {e}")
+
         return result_dict
-        
+
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
@@ -338,6 +366,11 @@ def execute_search_sync(app_state, progress_queue=None):
         print(f"DEBUG - 상세 스택트레이스:\n{error_details}")
         app_state.current_search["status"] = "error"
         app_state.current_search["errors"].append(str(e))
+        if session_id is not None:
+            try:
+                db.fail_search_session(session_id, round(time.time() - t0, 2))
+            except Exception:
+                pass
         return None
 
 

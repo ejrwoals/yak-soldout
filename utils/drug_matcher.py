@@ -2,7 +2,7 @@
 """
 약품명 fuzzy 매칭 (2단계: OCR 오타 보정)
 
-OCR 로 읽은 약품명을 등록된 약품 마스터(data/drug_master.json)와 비교해
+OCR 로 읽은 약품명을 등록된 약품 마스터(DB drug_master 테이블)와 비교해
 오타를 잡아낸다. 한글은 단순 글자 단위 편집거리로는 부정확하므로 자모(초/중/종성)로
 분해한 뒤 유사도를 계산한다.
 
@@ -13,7 +13,6 @@ OCR 로 읽은 약품명을 등록된 약품 마스터(data/drug_master.json)와
 자동 교정은 하지 않는다(Human-in-the-loop). 매칭 결과만 검수 화면에 후보로 제시한다.
 """
 
-import os
 import re
 
 from rapidfuzz import fuzz, process
@@ -114,21 +113,16 @@ def _query_core(name: str) -> str:
     return _CORE_CUT.sub("", s).strip()
 
 
-# (mtime, entries, jamo_list) 캐시 — 마스터 파일이 바뀌면 재구축
-_cache = {"mtime": None, "entries": None, "jamo": None}
-
-
-def _master_mtime():
-    p = drug_master._MASTER_PATH
-    return os.path.getmtime(p) if p.exists() else None
+# (key, entries, jamo_list) 캐시 — 마스터(DB)가 바뀌면 재구축
+_cache = {"key": None, "entries": None, "jamo": None}
 
 
 def _get_index():
-    """마스터를 (entries, 자모열 리스트)로 인덱싱. 파일 변경 시 갱신."""
-    mtime = _master_mtime()
-    if mtime is None:
+    """마스터를 (entries, 자모열 리스트)로 인덱싱. DB 변경 시 갱신."""
+    key = drug_master.cache_key()
+    if not key[0]:  # count == 0 → 마스터 미등록
         return None, None
-    if _cache["mtime"] == mtime and _cache["entries"] is not None:
+    if _cache["key"] == key and _cache["entries"] is not None:
         return _cache["entries"], _cache["jamo"]
 
     data = drug_master.load_master()
@@ -151,7 +145,7 @@ def _get_index():
         # 매칭(브랜드 유사도)은 숫자·제형 뗀 형태로
         jamo.append(decompose(_strip_form(core)))
 
-    _cache.update(mtime=mtime, entries=entries, jamo=jamo)
+    _cache.update(key=key, entries=entries, jamo=jamo)
     return entries, jamo
 
 
