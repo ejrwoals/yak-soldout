@@ -108,22 +108,67 @@
   line-height: 1.5;
 }
 
-/* 액션 (열기) */
+/* 액션 (열기 + 검색 버튼) */
 .app-action {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   font-weight: 600;
   color: var(--primary);
   font-size: 0.95rem;
 }
 
-.app-action i {
+.action-open {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-open i {
   transition: transform 0.2s ease;
 }
 
-.app-card:not(.is-placeholder):hover .app-action i {
+.app-card:not(.is-placeholder):hover .action-open i {
   transform: translateX(4px);
+}
+
+/* 홈 화면 검색 시작/중단 버튼 */
+.home-search-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border: 1.5px solid var(--primary);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.home-search-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+}
+
+.home-search-btn.is-searching {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.home-search-btn.is-searching:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+}
+
+.home-search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ============= 자동 검색 라이브 배지 ============= */

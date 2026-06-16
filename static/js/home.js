@@ -44,11 +44,24 @@
     }
 
     // =================== 자동 검색 동작 표시 ===================
-    function setSearching(isSearching) {
+    let searchingState = false;
+
+    function setSearching(searching) {
+        searchingState = searching;
         const badge = document.getElementById('checkerLiveBadge');
         const card = document.getElementById('checkerCard');
-        if (badge) badge.hidden = !isSearching;
-        if (card) card.classList.toggle('is-running', isSearching);
+        const btn = document.getElementById('homeSearchBtn');
+
+        if (badge) badge.hidden = !searching;
+        if (card) card.classList.toggle('is-running', searching);
+
+        if (btn) {
+            btn.classList.toggle('is-searching', searching);
+            const icon = btn.querySelector('i');
+            const label = btn.querySelector('span');
+            if (icon) icon.className = searching ? 'bi bi-stop-circle' : 'bi bi-play-circle';
+            if (label) label.textContent = searching ? '검색 중단' : '검색 시작';
+        }
     }
 
     // 현재 검색 상태를 서버에서 조회 (최초 진입 / 재연결 시 동기화)
@@ -63,7 +76,28 @@
         }
     }
 
-    // WebSocket 메시지로 실시간 상태 갱신
+    // =================== 홈 검색 버튼 ===================
+    async function toggleSearch() {
+        const btn = document.getElementById('homeSearchBtn');
+        if (btn) btn.disabled = true;
+        try {
+            const url = searchingState ? '/api/search/stop' : '/api/search/start';
+            const resp = await fetch(url, { method: 'POST' });
+            if (resp.ok) {
+                const msg = searchingState ? '검색을 중단했습니다' : '검색을 시작했습니다';
+                window.notificationManager?.showSuccess(msg);
+            } else {
+                const data = await resp.json().catch(() => ({}));
+                window.notificationManager?.showError(data.detail || '요청 실패');
+            }
+        } catch (e) {
+            window.notificationManager?.showError('서버 연결 오류');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // =================== WebSocket 메시지 처리 ===================
     function handleWsMessage(raw) {
         let msg;
         try {
@@ -76,9 +110,51 @@
             setSearching(true);
         } else if (msg.type === 'search_stopped') {
             setSearching(false);
+        } else if (msg.type === 'urgent_alert' && msg.drug) {
+            onUrgentAlert(msg.drug);
         }
         // search_completed 는 반복 모드에서 사이클 사이 대기 상태로,
         // 검색은 계속 진행되므로 표시를 유지한다.
+    }
+
+    // =================== 긴급 알림 (홈 화면) ===================
+    function onUrgentAlert(drug) {
+        const name = drug.name + (drug.unit ? ` [${drug.unit}]` : '');
+
+        // 윈도우(브라우저) 알림
+        if ('Notification' in window) {
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().then(p => {
+                    if (p === 'granted') showBrowserNotification(drug, name);
+                });
+            } else if (Notification.permission === 'granted') {
+                showBrowserNotification(drug, name);
+            }
+        }
+
+        // 토스트 알림
+        window.notificationManager?.showNotification(
+            `🚨 긴급 재고 발견: ${name} (${drug.distributor})`,
+            'warning',
+            8000
+        );
+    }
+
+    function showBrowserNotification(drug, name) {
+        const stockInfo = drug.main_stock || '';
+        const incheonInfo = drug.incheon_stock && drug.incheon_stock !== '-'
+            ? ` / 타센터: ${drug.incheon_stock}` : '';
+        const notification = new Notification('🚨 긴급 재고 알림', {
+            body: `${name}\n재고: ${stockInfo}${incheonInfo}\n도매상: ${drug.distributor}`,
+            icon: '/static/favicon.ico',
+            tag: `urgent-${drug.name}`,
+            requireInteraction: true
+        });
+        notification.onclick = () => {
+            window.location.href = '/checker';
+            notification.close();
+        };
+        setTimeout(() => notification.close(), 10000);
     }
 
     // =================== Keep-alive WebSocket ===================
@@ -128,5 +204,12 @@
         loadBuildInfo();
         syncSearchStatus(); // 첫 진입 시 즉시 반영
         connectWebSocket();
+
+        // 홈 검색 버튼 - stopPropagation으로 카드 링크 이동 방지
+        document.getElementById('homeSearchBtn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            toggleSearch();
+        });
     });
 })();
