@@ -124,11 +124,6 @@
         tr.querySelector('.f-qty').value = item.quantity || '';
         const slot = tr.querySelector('.match-slot');
         renderMatch(slot, nameInput, item.match, item.drug_name || '');  // 내부에서 slot 을 비우므로 먼저
-        // 원본에 취소선이 있던 항목 — 버리지 않고 마크만 (사용자가 삭제 여부 결정)
-        if (item.crossed_out) {
-            slot.appendChild(matchBadge('crossed', '취소선',
-                '원본에 취소선이 그어진 항목입니다. 주문에서 뺄지 확인하고, 빼려면 삭제하세요.'));
-        }
         // 마스터가 등록돼 있으면 어느 행이든 '직접 검색' 가능
         if (masterRegistered) addSearchUI(tr.querySelector('.col-name'), slot, nameInput);
         tr.querySelector('.del-row-btn').addEventListener('click', () => {
@@ -186,6 +181,7 @@
                     if (r.maker) li.querySelector('.dm-r-maker').textContent = r.maker;
                     li.addEventListener('click', () => {
                         nameInput.value = r.name;   // 검색 선택은 정식 전체명으로
+                        markUserConfirmed(slot);    // 직접 검색으로 고름 → 확인 표시
                         close();
                     });
                     list.appendChild(li);
@@ -222,8 +218,18 @@
         return b;
     }
 
+    // 사용자가 드롭다운/직접 검색으로 약품을 직접 골랐을 때 배지를 '사용자 확인'으로 교체.
+    // 어디까지 검토·확정했는지 한눈에 보이도록 한다.
+    function markUserConfirmed(slot) {
+        const badge = matchBadge('confirmed', '✓ 사용자 확인',
+            '사용자가 직접 선택해 확인한 항목입니다');
+        const old = slot.querySelector('.match-badge');
+        if (old) old.replaceWith(badge);
+        else slot.prepend(badge);
+    }
+
     // 원본/후보 중 고르는 드롭다운. 적용 값은 마스터의 공식 전체명(c.name).
-    function buildApplySelect(nameInput, original, options, preselectName) {
+    function buildApplySelect(slot, nameInput, original, options, preselectName) {
         const sel = document.createElement('select');
         sel.className = 'match-select';
         const keep = document.createElement('option');
@@ -238,7 +244,10 @@
             sel.appendChild(o);
         });
         if (preselectName) sel.value = preselectName;
-        sel.addEventListener('change', () => { nameInput.value = sel.value; });
+        sel.addEventListener('change', () => {
+            nameInput.value = sel.value;
+            markUserConfirmed(slot);   // 사용자가 직접 고름 → 확인 표시
+        });
         return sel;
     }
 
@@ -251,7 +260,7 @@
             // 공식명을 자동 적용 (드롭다운에서 원본으로 되돌릴 수 있음)
             nameInput.value = match.best.name;
             slot.appendChild(matchBadge('matched', '✓ 약품명 일치', match.best.name));
-            slot.appendChild(buildApplySelect(nameInput, original, [match.best], match.best.name));
+            slot.appendChild(buildApplySelect(slot, nameInput, original, [match.best], match.best.name));
             return;
         }
         if (match.status === 'none') {
@@ -262,7 +271,7 @@
         // candidate — 비슷한 약품이 있음. 사용자가 고르면 공식명으로 교체
         slot.appendChild(matchBadge('candidate', '확인 필요',
             '비슷한 약품이 있습니다. 맞는 것을 선택하면 약품명이 바뀝니다'));
-        slot.appendChild(buildApplySelect(nameInput, original, match.candidates || [], null));
+        slot.appendChild(buildApplySelect(slot, nameInput, original, match.candidates || [], null));
     }
 
     function renderRows(items) {

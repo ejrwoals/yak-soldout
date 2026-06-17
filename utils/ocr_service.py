@@ -25,18 +25,16 @@ _PROMPT = """당신은 한국 약국의 손글씨 주문지를 판독하는 OCR 
 첨부된 이미지는 약사가 손으로 작성한 의약품 주문 목록입니다.
 이미지는 보통 2단(왼쪽/오른쪽 열)으로 작성되어 있을 수 있습니다. 각 줄이 한 주문 품목입니다.
 
-각 품목을 다음 4개 필드로 추출하세요:
+각 품목을 다음 3개 필드로 추출하세요:
 - drug_name: 약품명. 약품명 뒤에 함량/규격(예: 500mg, 300mg, 60mg, 500/50, 4 등)이
   적혀 있으면 그것까지 약품명에 포함하세요. 예: "리포덱스 600mg", "낙센에스 500/50".
 - package_unit: 한 통(병/박스)에 든 포장 단위.
 - quantity: 주문할 통(병/박스)의 개수.
-- crossed_out: 그 줄에 취소선(글자 위를 가로지르는 줄)이 그어져 있으면 true, 아니면 false.
 
 ★ 누락 금지 (가장 중요):
 손으로 적힌 모든 줄을 한 줄도 빠뜨리지 말고 추출하세요.
 - 왼쪽 열을 맨 위부터 맨 아래까지 전부, 그다음 오른쪽 열을 맨 위부터 맨 아래까지 전부.
-- 글씨가 흐리거나, 취소선이 그어졌거나, 동그라미 등 주석이 있어도 모두 포함하세요.
-  (취소선이 있는 줄은 빼지 말고 crossed_out=true 로 표시만 하세요.)
+- 글씨가 흐리거나, 동그라미 등 주석이 있어도 모두 포함하세요.
 
 ★ 주문 수량 표기 규칙 (가장 중요):
 주문량은 보통 줄 맨 오른쪽에 "AxB" 형태로 적힙니다 (예: 30X2, 100X3, 14X20).
@@ -83,7 +81,6 @@ def _build_schema(types):
                 "drug_name": types.Schema(type=types.Type.STRING),
                 "package_unit": types.Schema(type=types.Type.STRING),
                 "quantity": types.Schema(type=types.Type.STRING),
-                "crossed_out": types.Schema(type=types.Type.BOOLEAN),
             },
             required=["drug_name", "package_unit", "quantity"],
         ),
@@ -154,6 +151,5 @@ def extract_order_items(image_bytes: bytes, mime_type: str) -> list[dict]:
             "drug_name": str(row.get("drug_name", "")).strip(),
             "package_unit": str(row.get("package_unit", "")).strip(),
             "quantity": str(row.get("quantity", "")).strip(),
-            "crossed_out": bool(row.get("crossed_out", False)),
         })
     return items
