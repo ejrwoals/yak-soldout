@@ -1,5 +1,5 @@
-// 손글씨 주문지 OCR 페이지 로직 (1단계: 업로드 → 추출 → 검수)
-// 저장은 다음 단계(Supabase 연동)에서 추가된다.
+// 손글씨 주문지 OCR 페이지 로직 (업로드 → 추출 → 검수 → 저장)
+// 검수 완료분은 로컬 SQLite(orders/order_items)에 (날짜, 차수) 단위로 저장한다.
 
 (function () {
     'use strict';
@@ -29,7 +29,10 @@
     const reviewSection = document.getElementById('reviewSection');
     const reviewBody = document.getElementById('reviewBody');
     const addRowBtn = document.getElementById('addRowBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const saveStatus = document.getElementById('saveStatus');
     const orderDate = document.getElementById('orderDate');
+    const orderRound = document.getElementById('orderRound');
     // 검수 화면 원본 사진(좌측) 패널
     const reviewImg = document.getElementById('reviewImg');
     const imageViewport = document.getElementById('imageViewport');
@@ -291,10 +294,75 @@
         });
     }
 
+    // =================== 저장 ===================
+    // 검수표의 각 행을 {drug_name, package_unit, quantity} 로 수집 (약품명이 빈 행은 제외)
+    function collectItems() {
+        return [...reviewBody.querySelectorAll('tr')].map((tr) => ({
+            drug_name: tr.querySelector('.f-name').value.trim(),
+            package_unit: tr.querySelector('.f-unit').value.trim(),
+            quantity: tr.querySelector('.f-qty').value.trim(),
+        })).filter((it) => it.drug_name);
+    }
+
+    function showSaveStatus(kind, text) {
+        saveStatus.hidden = false;
+        saveStatus.className = `status-msg ${kind}`;
+        saveStatus.textContent = text;
+    }
+    function hideSaveStatus() { saveStatus.hidden = true; }
+
+    // 검수 완료분을 서버에 저장. (날짜,차수) 중복이면 409 → 사용자 확인 후 덮어쓰기 재요청.
+    async function save() {
+        const items = collectItems();
+        if (!items.length) {
+            showSaveStatus('error', '저장할 품목이 없습니다. 약품명을 입력해주세요.');
+            return;
+        }
+        await postSave(items, false);
+    }
+
+    async function postSave(items, overwrite) {
+        const payload = {
+            order_date: orderDate.value,
+            order_round: orderRound.value,
+            items,
+            overwrite,
+        };
+        const form = new FormData();
+        form.append('payload', JSON.stringify(payload));
+        if (selectedFile) form.append('image', selectedFile);  // 원본 이미지 동봉
+
+        saveBtn.disabled = true;
+        showSaveStatus('loading', '저장 중입니다…');
+        try {
+            const resp = await fetch('/api/order-ocr/save', { method: 'POST', body: form });
+            const data = await resp.json().catch(() => ({}));
+
+            if (resp.status === 409 && data.conflict) {
+                // 같은 (날짜,차수) 주문이 이미 있음 — 사용자 동의를 받아 덮어쓰기
+                hideSaveStatus();
+                const ok = window.confirm(
+                    `${data.detail}\n\n기존 주문을 덮어쓰고 이 내용으로 저장할까요?`);
+                if (ok) { await postSave(items, true); return; }
+                showSaveStatus('error', '저장을 취소했습니다.');
+                return;
+            }
+            if (!resp.ok) throw new Error(data.detail || `요청 실패 (${resp.status})`);
+
+            showSaveStatus('success',
+                `저장되었습니다 — ${data.order_date} ${data.order_round}차 · ${data.count}개 품목`);
+        } catch (e) {
+            showSaveStatus('error', `저장 실패: ${e.message}`);
+        } finally {
+            saveBtn.disabled = false;
+        }
+    }
+
     // =================== 검수 모드 전환 ===================
     // 추출 성공 시: 업로드 카드를 감추고, 좌(원본 사진)·우(검수표) 2단으로 전환
     function enterReview(count) {
         reviewImg.src = previewUrl;
+        hideSaveStatus();
         resetZoom();
         const hint = document.getElementById('reviewHint');
         if (hint) {
@@ -431,6 +499,7 @@
             reviewBody.appendChild(makeRow({}));
             renumber();
         });
+        saveBtn.addEventListener('click', save);
     }
 
     // =================== Keep-alive WebSocket ===================

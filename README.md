@@ -11,8 +11,9 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
 - 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지원 도매상 전체)
-- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"과 "주문지 OCR"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
-- ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용합니다. 한 줄도 빠뜨리지 않도록 흐린 글씨·동그라미 주석이 있는 줄까지 모두 추출하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. (1단계 로컬 검증 — 아직 저장은 하지 않음)
+- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱", "주문지 OCR", "주문 기록"이 활성화되어 있고 나머지는 "준비 중" 카드로 표시됩니다. 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
+- ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용합니다. 한 줄도 빠뜨리지 않도록 흐린 글씨·동그라미 주석이 있는 줄까지 모두 추출하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. 검수 완료분은 (주문일자, 차수) 단위로 로컬 SQLite에 원본 이미지와 함께 저장합니다.
+- 📅 **주문 기록 (달력 조회)**: 저장된 주문지 내역을 달력 UI로 조회·관리하는 화면(`/orders`). 주문이 있는 날짜는 표시되며, 날짜를 클릭하면 그날의 차수별 주문이 품목 테이블·원본 이미지 썸네일·삭제 버튼이 달린 카드로 펼쳐집니다.
 - 🔤 **OCR 약품명 오타 보정**: 약품 마스터가 등록돼 있으면, OCR로 읽은 약품명을 한글 자모(초/중/종성) 기반 fuzzy 매칭으로 마스터와 대조해 검수 테이블 각 행에 결과 배지를 표시합니다 — "약품명 일치"(공식 전체명 자동 적용, 원본으로 되돌리기 가능), "확인 필요"(후보 드롭다운에서 선택), "미등록". 용량(600mg≠300mg)·접두(짧은 손글씨명↔긴 공식명) 인식, 제형 접미·제약사 접두 제거를 반영하며, 후보에 없으면 행별 "직접 검색" 박스로 마스터 DB를 직접 조회할 수 있습니다.
 - 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 SQLite DB(`drug_master` 테이블)에 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다.
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
@@ -59,7 +60,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Real-time Communication**: WebSocket
 - **OCR / LLM**: Google Gemini (멀티모달, `google-genai` SDK), 키는 `.env`에서 로드(`python-dotenv`)
-- **Data Storage**: SQLite (Python 표준 `sqlite3`, WAL 모드) — 약품 목록·결과 표시 제외 목록·도매상 자격증명·약품 마스터·검색 세션/결과를 단일 `data/yak_soldout.db`에 통합 저장
+- **Data Storage**: SQLite (Python 표준 `sqlite3`, WAL 모드) — 약품 목록·결과 표시 제외 목록·도매상 자격증명·약품 마스터·검색 세션/결과·주문 기록을 단일 `data/yak_soldout.db`에 통합 저장 (주문지 원본 이미지는 `data/order_images/`에 별도 보관)
 - **Fuzzy Matching**: rapidfuzz (한글 자모 분해 기반 약품명 오타 보정)
 - **Data Processing**: pandas, numpy, openpyxl/xlrd (엑셀 파싱)
 - **Testing**: pytest (단위 테스트 & 통합 테스트)
@@ -245,15 +246,17 @@ yak-soldout/
 ├── templates/
 │   ├── home.html              # 홈 화면(앱 런처) HTML 템플릿 (GET /)
 │   ├── index.html             # 품절 약 서치앱 대시보드 HTML 템플릿 (GET /checker)
-│   ├── order_ocr.html         # 손글씨 주문지 OCR 업로드·검수 화면 (GET /order-ocr)
+│   ├── order_ocr.html         # 손글씨 주문지 OCR 업로드·검수·저장 화면 (GET /order-ocr)
+│   ├── order_history.html     # 주문 기록 달력 조회 화면 (GET /orders)
 │   └── drug_master.html       # 약품 마스터 등록 화면 (GET /drug-master)
 │
 ├── static/
-│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈, order-ocr.css, drug-master.css 등)
-│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈, main.js = 대시보드, order-ocr.js, drug-master.js)
+│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈, order-ocr.css, order-history.css, drug-master.css 등)
+│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈, main.js = 대시보드, order-ocr.js, order-history.js, drug-master.js)
 │
 ├── data/                      # 로컬 데이터 (자동 생성)
-│   └── yak_soldout.db         # SQLite DB — 약품 목록·제외 목록·도매상·약품 마스터·검색 세션/결과
+│   ├── yak_soldout.db         # SQLite DB — 약품 목록·제외 목록·도매상·약품 마스터·검색 세션/결과·주문 기록
+│   └── order_images/          # 저장된 주문지의 원본 이미지 파일
 │
 ├── .env                       # OCR용 Gemini API 키 (직접 생성, .env.example 참고, git 미커밋)
 ├── docs/                      # 기능 계획·설계 문서 (예: 손글씨-주문지-OCR-기능-계획.md)
@@ -281,7 +284,7 @@ yak-soldout/
 - **keep-alive WebSocket**: 대시보드에서 홈으로 이동하면 대시보드의 WebSocket이 끊깁니다. 서버는 모든 WebSocket이 끊기면 "브라우저가 닫힘"으로 판단해 종료하므로, 홈 화면도 `/ws`로 keep-alive WebSocket을 열어 이를 방지합니다. 홈은 이 연결로 받은 `cycle_start`/`search_stopped` 메시지와 `/api/status`로 카드의 "검색 중" 배지를 갱신합니다.
 - **로그 히스토리 버퍼**: `ConnectionManager`는 모든 WebSocket 메시지의 단일 통로인 `broadcast_message`에서 로그성 메시지(로그·사이클·검색 완료·긴급 알림 등)를 텍스트로 정규화해 `log_history` 버퍼(최근 300줄)에 누적합니다. 연결 수와 무관하게 누적되며 `GET /api/logs`로 조회, `POST /api/logs/clear`로 비울 수 있습니다.
 - **세션 복원**: 홈 → 대시보드로 다시 진입하면 `main.js`가 `/api/logs`로 진행상황 로그를, `/api/status`의 `current_search`로 직전 완료 사이클의 재고/품절 결과 카드를 복원합니다. 사용자가 대시보드에서 로그를 지우면 서버 버퍼(`/api/logs/clear`)도 함께 비워 재진입 시 되살아나지 않습니다.
-- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`, `/order-ocr`, `/drug-master`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
+- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`, `/order-ocr`, `/drug-master`, `/orders`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
 
 반복 검색 모드에서는 한 사이클이 끝나도(`search_completed`) 검색이 계속 진행되므로, 대시보드의 액션 버튼은 명시적으로 중단하기 전까지 "검색 중단" 상태를 유지합니다.
 
@@ -316,8 +319,17 @@ yak-soldout/
 - **멀티모달 LLM**: `google-genai` SDK로 Google Gemini(`gemini-2.5-flash`, `GEMINI_MODEL`로 변경 가능)를 호출합니다. 응답은 `response_schema`로 `[{drug_name, package_unit, quantity}]` 배열을 강제하고 `temperature=0`으로 안정성을 높입니다.
 - **도메인 프롬프트**: 약국 주문지의 표기 규칙을 학습시킵니다 — 줄 오른쪽의 `AxB`는 'A정짜리 통을 B개 주문'으로 해석해 `package_unit`(예: `30정`)과 `quantity`(예: `2`)로 분리하고, 약품명 뒤 함량/규격(예: `600mg`)은 약품명에 포함하며, 머리글·날짜·메모 등 주문 품목이 아닌 줄은 제외합니다.
 - **누락 방지(recall-first)**: 한 줄도 빠뜨리지 않도록 왼쪽 열을 위에서 아래로, 그다음 오른쪽 열을 전부 추출합니다. 글씨가 흐리거나 동그라미 등 주석이 있어도 모두 포함합니다.
-- **Human-in-the-loop 검수**: 추출이 끝나면 화면이 업로드 카드를 감추고 **좌우 2단 검수 레이아웃**으로 전환됩니다 — 왼쪽은 원본 사진을 sticky로 고정한 패널, 오른쪽은 편집 가능한 검수 테이블입니다. 왼쪽 사진은 원본과 대조하며 확인할 수 있도록 확대(휠/버튼, 커서·핀치 중심 고정)·이동(드래그/태블릿 터치)·원래대로(더블클릭/버튼) 및 '다른 이미지 올리기'(재업로드) 조작을 지원하고, 읽어온 품목 수는 검수 헤더로 옮겨 대조 중에도 보이게 했습니다. 화면이 좁으면(≤900px) 자동으로 위아래 세로 배치로 바뀝니다. **1단계(로컬 검증)에서는 저장하지 않습니다.** 키 유출 방지를 위해 배포 단계에서는 호출을 서버 측(Supabase Edge Function 등)으로 이전할 예정입니다(`docs/손글씨-주문지-OCR-기능-계획.md`).
+- **Human-in-the-loop 검수**: 추출이 끝나면 화면이 업로드 카드를 감추고 **좌우 2단 검수 레이아웃**으로 전환됩니다 — 왼쪽은 원본 사진을 sticky로 고정한 패널, 오른쪽은 편집 가능한 검수 테이블입니다. 왼쪽 사진은 원본과 대조하며 확인할 수 있도록 확대(휠/버튼, 커서·핀치 중심 고정)·이동(드래그/태블릿 터치)·원래대로(더블클릭/버튼) 및 '다른 이미지 올리기'(재업로드) 조작을 지원하고, 읽어온 품목 수는 검수 헤더로 옮겨 대조 중에도 보이게 했습니다. 화면이 좁으면(≤900px) 자동으로 위아래 세로 배치로 바뀝니다.
+- **저장(로컬 SQLite)**: 검수가 끝나면 "저장" 버튼으로 `POST /api/order-ocr/save`를 호출해 (주문일자, 차수) 단위로 주문을 저장합니다. 약품명이 빈 행은 제외한 품목(`drug_name`·`package_unit`·`quantity`)이 `orders`/`order_items` 테이블에, 업로드한 원본 이미지는 `data/order_images/`에 `'(날짜_차수)'` 이름으로 함께 저장됩니다. 같은 (날짜, 차수) 주문이 이미 있으면 서버가 HTTP 409를 반환하고, 프론트가 사용자에게 덮어쓰기 동의를 받아 `overwrite=true`로 재요청하면 기존 주문을 교체합니다. (현재는 로컬 저장 전용입니다. 키 유출 방지를 위해 OCR 호출 자체는 배포 단계에서 서버 측(Supabase Edge Function 등)으로 이전할 예정입니다 — `docs/손글씨-주문지-OCR-기능-계획.md`.)
 - **키 미설정 처리**: SDK는 지연 임포트하며, `GEMINI_API_KEY`가 없으면 `/api/order-ocr/extract`가 503을 반환할 뿐 앱의 나머지 기능은 정상 동작합니다. 업로드는 JPEG/PNG/WebP/HEIC/HEIF, 최대 15MB로 제한됩니다.
+
+### 주문 기록 (Order History)
+
+저장된 주문지 내역을 달력 UI로 조회·관리하는 화면입니다(`/orders`, `templates/order_history.html`, `static/js/order-history.js`, `static/css/order-history.css`).
+
+- **달력 조회**: `GET /api/orders`로 저장된 주문 요약을 받아 주문이 있는 날짜를 달력에 표시합니다. 날짜를 클릭하면 그날의 차수(1~3차)별 주문이 카드로 펼쳐집니다.
+- **상세 카드**: 각 카드는 `GET /api/orders/{id}`로 받은 품목 테이블(약품명·포장단위·수량)과 원본 주문지 이미지 썸네일(`GET /api/orders/{id}/image`), 삭제 버튼을 표시합니다.
+- **삭제**: `DELETE /api/orders/{id}`는 주문과 품목(FK CASCADE)을 지우고 `data/order_images/`의 원본 이미지 파일도 함께 정리합니다.
 
 ### OCR 약품명 오타 보정 (Drug Matcher)
 
@@ -426,6 +438,7 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 - **exclusion_list**: 결과 표시 제외 목록 — 도매상별로 독립 관리(`(drug_name, distributor)` 유니크). 웹에서 약품 카드의 눈 모양 아이콘(👁️‍🗨️)으로 추가하며, 백제약품은 규격 정보까지 포함해 정확히 매칭합니다.
 - **distributors**: 도매상 자격증명·활성화 여부·색상·지역. 웹 설정 모달로 관리.
 - **search_sessions / search_results**: 검색 사이클(시작 시각·소요·상태)과 그 결과(약품별 재고/품절·도매상별 행)를 영속화합니다.
+- **orders / order_items**: 주문지 OCR 검수 완료분. `orders`는 주문 1건(주문일자·차수·원본 이미지 파일명·저장 시각, `(order_date, order_round)` 유니크)이고 `order_items`는 그 품목(약품명·포장단위·수량·표시 순서, `order_id` FK + ON DELETE CASCADE)입니다. 원본 이미지 파일은 `data/order_images/`에 별도 보관합니다.
 
 > **config.json**: 이제 도매상 자격증명이 아닌 `monitoring` 설정(`repeat_interval_minutes`, `alert_exclusion_days`)만 보관합니다. 도매상 자격증명·색상·지역은 `distributors` 테이블로 이전되었습니다.
 
@@ -434,8 +447,14 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 ### REST API
 - `GET /` - 홈 화면 (앱 런처)
 - `GET /checker` - 품절 약 서치앱 대시보드
-- `GET /order-ocr` - 손글씨 주문지 OCR 업로드·검수 화면
+- `GET /order-ocr` - 손글씨 주문지 OCR 업로드·검수·저장 화면
 - `POST /api/order-ocr/extract` - 주문지 이미지 → Gemini OCR → 약품명·포장단위·수량 추출 (마스터 등록 시 항목별 오타 보정 매칭 결과 포함)
+- `POST /api/order-ocr/save` - 검수 완료된 주문을 로컬 SQLite에 저장(원본 이미지 동봉, `(날짜,차수)` 중복 시 409 → `overwrite=true`로 덮어쓰기)
+- `GET /orders` - 주문 기록 달력 조회 화면
+- `GET /api/orders` - 저장된 주문 요약 목록 (달력 표시용)
+- `GET /api/orders/{id}` - 주문 1건 상세 (메타 + 품목 목록)
+- `GET /api/orders/{id}/image` - 주문에 저장된 원본 주문지 이미지 파일
+- `DELETE /api/orders/{id}` - 주문 1건 삭제 (품목 CASCADE + 원본 이미지 파일 정리)
 - `GET /drug-master` - 약품 마스터 등록 화면
 - `GET /api/drug-master` - 약품 마스터 등록 현황 조회
 - `GET /api/drug-master/search` - 약품 마스터 직접 검색 (OCR 검수 화면의 "직접 검색"용, `q` 파라미터)

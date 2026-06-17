@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주문 기록 | 약국 업무 자동화</title>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Custom CSS -->
+    <link href="/static/css/main.css" rel="stylesheet">
+    <link href="/static/css/home.css" rel="stylesheet">
+    <link href="/static/css/order-history.css" rel="stylesheet">
+
+    <!-- 깜빡임 방지: 저장된 테마를 즉시 적용 -->
+    <script>
+        (function () {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+    <!-- 상단 네비게이션 -->
+    <nav class="top-nav">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <a href="/" class="nav-back" title="홈으로"><i class="bi bi-arrow-left"></i></a>
+                <i class="bi bi-clock-history"></i>
+                <span>주문 기록</span>
+            </div>
+            <div class="nav-controls">
+                <a href="/order-ocr" class="theme-toggle" title="새 주문지 OCR" style="text-decoration:none;">
+                    <i class="bi bi-file-earmark-text"></i>
+                </a>
+                <button id="themeToggle" class="theme-toggle" title="다크모드 전환">
+                    <i class="bi bi-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 메인 컨테이너 -->
+    <main class="main-container oh-container">
+        <section class="home-header">
+            <h1>주문 기록</h1>
+            <p class="subtitle">달력에서 날짜를 선택해 저장된 주문지 내역을 확인하세요</p>
+        </section>
+
+        <div class="oh-grid">
+            <!-- 좌측: 달력 -->
+            <section class="oh-calendar-pane">
+                <div class="cal-header">
+                    <button id="prevMonth" class="cal-nav-btn" title="이전 달"><i class="bi bi-chevron-left"></i></button>
+                    <h2 id="calTitle" class="cal-title">—</h2>
+                    <button id="nextMonth" class="cal-nav-btn" title="다음 달"><i class="bi bi-chevron-right"></i></button>
+                    <button id="todayBtn" class="cal-today-btn">오늘</button>
+                </div>
+                <div class="cal-weekdays">
+                    <span class="cal-sun">일</span><span>월</span><span>화</span>
+                    <span>수</span><span>목</span><span>금</span><span class="cal-sat">토</span>
+                </div>
+                <div id="calGrid" class="cal-grid"></div>
+                <p class="cal-legend"><span class="cal-dot"></span> 주문이 저장된 날</p>
+            </section>
+
+            <!-- 우측: 선택한 날짜의 주문 상세 -->
+            <section class="oh-detail-pane">
+                <div id="detailEmpty" class="detail-empty">
+                    <i class="bi bi-calendar-week"></i>
+                    <p>달력에서 날짜를 선택하면<br>그날의 주문이 여기에 표시됩니다</p>
+                </div>
+                <div id="detailContent" hidden>
+                    <h3 id="detailDate" class="detail-date"></h3>
+                    <div id="orderList" class="order-list"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <span>© 약품재고체커 by ChaJM</span>
+        </div>
+    </footer>
+
+    <script src="/static/js/order-history.js"></script>
+</body>
+</html>

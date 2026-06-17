@@ -24,7 +24,8 @@ from typing import Any, Dict, List, Optional, Sequence
 #  v1: 최초 스키마
 #  v2: drug_master.insurance_code 를 nullable·비유니크로 완화(코드 컬럼 미매핑/규격별 코드중복 허용),
 #      watch_list 의 미사용 FK 제거
-SCHEMA_VERSION = 2
+#  v3: 주문지 OCR 저장용 orders/order_items 추가 (신규 테이블이라 IF NOT EXISTS로 생성, 별도 마이그레이션 불필요)
+SCHEMA_VERSION = 3
 
 # 날짜/시간 ISO 포맷 (전 테이블 공통, T 포함, 초 단위)
 ISO_LEN = 19
@@ -158,6 +159,26 @@ CREATE TABLE IF NOT EXISTS search_results (
 
 CREATE INDEX IF NOT EXISTS idx_search_results_session ON search_results(session_id);
 CREATE INDEX IF NOT EXISTS idx_search_results_drug    ON search_results(drug_name);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_date  TEXT NOT NULL,                 -- 주문일자 YYYY-MM-DD
+    order_round INTEGER NOT NULL,              -- 주문차수 1~3
+    image_path  TEXT,                          -- 원본 주문지 이미지 파일명(data/order_images 기준)
+    created_at  TEXT NOT NULL,                 -- 저장 시각(ISO)
+    UNIQUE(order_date, order_round)            -- (날짜,차수) = 한 주문
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id     INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    drug_name    TEXT NOT NULL,                -- 검수 후 확정 약품명
+    package_unit TEXT,                         -- 포장단위
+    quantity     TEXT,                         -- 주문 수량(OCR 안정성 위해 문자열)
+    position     INTEGER NOT NULL DEFAULT 0    -- 검수표 표시 순서
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 """
 
 
@@ -512,6 +533,130 @@ def fail_search_session(session_id: int, duration_sec: float = None) -> None:
         "UPDATE search_sessions SET status = 'error', duration_sec = ? WHERE id = ?",
         (duration_sec, session_id),
     )
+
+
+# ----------------------------------------------------------------------------
+# 주문지 OCR 저장 (orders / order_items)
+# ----------------------------------------------------------------------------
+def order_image_dir() -> Path:
+    """원본 주문지 이미지를 보관할 디렉터리(없으면 생성). DB와 같은 data/ 아래에 둔다."""
+    d = _db_path().parent / "order_images"
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def order_exists(order_date: str, order_round: int) -> bool:
+    """같은 (날짜, 차수) 주문이 이미 저장돼 있는지 여부."""
+    row = query_one(
+        "SELECT 1 FROM orders WHERE order_date = ? AND order_round = ?",
+        (order_date, order_round),
+    )
+    return row is not None
+
+
+def save_order(order_date: str, order_round: int, items: List[Dict[str, Any]],
+               image_path: Optional[str], created_at: str) -> int:
+    """검수 완료된 주문 1건을 저장하고 order_id 반환.
+
+    같은 (날짜, 차수) 주문이 이미 있으면 기존 주문을 삭제하고 새로 저장한다(덮어쓰기).
+    order_items 는 orders FK의 ON DELETE CASCADE로 함께 정리되므로 별도 삭제가 필요 없다.
+    호출 전에 덮어쓰기 동의는 라우트(409 → 사용자 확인)에서 받는다.
+    """
+    with transaction() as conn:
+        existing = conn.execute(
+            "SELECT id FROM orders WHERE order_date = ? AND order_round = ?",
+            (order_date, order_round),
+        ).fetchone()
+        if existing:
+            conn.execute("DELETE FROM orders WHERE id = ?", (existing["id"],))
+        cur = conn.execute(
+            "INSERT INTO orders (order_date, order_round, image_path, created_at) VALUES (?, ?, ?, ?)",
+            (order_date, order_round, image_path, created_at),
+        )
+        order_id = cur.lastrowid
+        rows = [
+            (order_id, it.get("drug_name", ""), it.get("package_unit", "") or None,
+             it.get("quantity", "") or None, i)
+            for i, it in enumerate(items)
+        ]
+        if rows:
+            conn.executemany(
+                """INSERT INTO order_items (order_id, drug_name, package_unit, quantity, position)
+                   VALUES (?, ?, ?, ?, ?)""",
+                rows,
+            )
+        return order_id
+
+
+def list_orders() -> List[Dict[str, Any]]:
+    """저장된 모든 주문 요약을 최신순으로 반환 (달력 표시용).
+
+    각 주문의 품목 수(item_count)와 이미지 보유 여부(has_image)를 함께 준다.
+    """
+    rows = query_all(
+        """SELECT o.id, o.order_date, o.order_round, o.image_path, o.created_at,
+                  COUNT(oi.id) AS item_count
+           FROM orders o
+           LEFT JOIN order_items oi ON oi.order_id = o.id
+           GROUP BY o.id
+           ORDER BY o.order_date DESC, o.order_round ASC"""
+    )
+    return [
+        {
+            "id": r["id"],
+            "order_date": r["order_date"],
+            "order_round": r["order_round"],
+            "item_count": r["item_count"],
+            "has_image": bool(r["image_path"]),
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+
+
+def get_order(order_id: int) -> Optional[Dict[str, Any]]:
+    """주문 1건의 상세(메타 + 품목 목록). 없으면 None."""
+    o = query_one(
+        "SELECT id, order_date, order_round, image_path, created_at FROM orders WHERE id = ?",
+        (order_id,),
+    )
+    if o is None:
+        return None
+    items = query_all(
+        """SELECT drug_name, package_unit, quantity
+           FROM order_items WHERE order_id = ? ORDER BY position""",
+        (order_id,),
+    )
+    return {
+        "id": o["id"],
+        "order_date": o["order_date"],
+        "order_round": o["order_round"],
+        "image_path": o["image_path"],
+        "created_at": o["created_at"],
+        "items": [
+            {
+                "drug_name": it["drug_name"],
+                "package_unit": it["package_unit"] or "",
+                "quantity": it["quantity"] or "",
+            }
+            for it in items
+        ],
+    }
+
+
+def delete_order(order_id: int) -> Optional[str]:
+    """주문 1건 삭제(품목은 FK CASCADE).
+
+    반환:
+      - 주문이 없으면 None (호출 측 404 처리)
+      - 삭제 성공 시 image_path 문자열. 이미지가 없던 주문이면 빈 문자열("").
+    호출 측은 반환된 파일명으로 원본 이미지 파일도 함께 정리한다.
+    """
+    row = query_one("SELECT image_path FROM orders WHERE id = ?", (order_id,))
+    if row is None:
+        return None
+    execute("DELETE FROM orders WHERE id = ?", (order_id,))
+    return row["image_path"] or ""
 
 
 def delete_expired_exclusions(exclusion_days: int, now_iso: str) -> int:

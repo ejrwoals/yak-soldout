@@ -57,7 +57,7 @@ if platform.system() == "Windows":
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import uvicorn
@@ -88,6 +88,7 @@ from utils.open_site_session import OpenSiteSession
 from utils import ocr_service
 from utils import drug_master
 from utils import drug_matcher
+import db
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
 from scrapers.baekje_scraper import BaekjeScraper
@@ -130,7 +131,7 @@ async def no_cache_static(request: Request, call_next):
     """
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static") or path in ("/", "/checker", "/order-ocr", "/drug-master"):
+    if path.startswith("/static") or path in ("/", "/checker", "/order-ocr", "/drug-master", "/orders"):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -149,6 +150,11 @@ async def read_checker(request: Request):
 async def read_order_ocr(request: Request):
     """손글씨 주문지 OCR — 업로드 & 검수 화면 (1단계 로컬 검증)"""
     return templates.TemplateResponse(request, "order_ocr.html")
+
+@app.get("/orders", response_class=HTMLResponse)
+async def read_order_history(request: Request):
+    """주문 기록 — 달력으로 과거 주문지 내역 조회"""
+    return templates.TemplateResponse(request, "order_history.html")
 
 # 업로드 이미지 허용 형식
 _OCR_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
@@ -188,6 +194,129 @@ async def order_ocr_extract(image: UploadFile = File(...)):
     # 약품 마스터가 등록돼 있으면 각 항목에 오타 보정 매칭 결과를 덧붙인다 (없으면 status='skip')
     items = await asyncio.to_thread(drug_matcher.attach_matches, items)
     return {"items": items, "count": len(items)}
+
+
+# mime → 저장 확장자 (원본 이미지 보관용)
+_OCR_MIME_EXT = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+    "image/heic": ".heic", "image/heif": ".heif",
+}
+
+@app.post("/api/order-ocr/save")
+async def order_ocr_save(payload: str = Form(...), image: UploadFile = File(None)):
+    """검수 완료된 주문을 로컬 SQLite(orders/order_items)에 저장한다.
+
+    - (날짜, 차수)가 이미 있으면 409(conflict)를 돌려주고, 프론트가 사용자 확인을 받아
+      overwrite=true 로 재요청하면 기존 주문을 덮어쓴다.
+    - 원본 이미지는 data/order_images 아래에 '(날짜_차수)' 이름으로 함께 보관한다.
+    """
+    try:
+        body = json.loads(payload)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="잘못된 요청 형식입니다.")
+
+    order_date = (body.get("order_date") or "").strip()
+    if not order_date:
+        raise HTTPException(status_code=400, detail="주문 날짜가 없습니다.")
+    try:
+        order_round = int(body.get("order_round"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="주문 차수가 올바르지 않습니다.")
+    if order_round not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail="주문 차수는 1~3 이어야 합니다.")
+
+    # 약품명이 빈 행은 저장에서 제외
+    items = []
+    for it in (body.get("items") or []):
+        if not isinstance(it, dict):
+            continue
+        name = (it.get("drug_name") or "").strip()
+        if not name:
+            continue
+        items.append({
+            "drug_name": name,
+            "package_unit": (it.get("package_unit") or "").strip(),
+            "quantity": (it.get("quantity") or "").strip(),
+        })
+    if not items:
+        raise HTTPException(status_code=400, detail="저장할 품목이 없습니다.")
+
+    # 중복 주문 — 동의 없이는 덮어쓰지 않고 409로 사용자 확인을 요청
+    overwrite = bool(body.get("overwrite"))
+    exists = await asyncio.to_thread(db.order_exists, order_date, order_round)
+    if exists and not overwrite:
+        return JSONResponse(
+            status_code=409,
+            content={"conflict": True,
+                     "detail": f"{order_date} {order_round}차 주문이 이미 저장돼 있습니다."})
+
+    # 원본 이미지 저장 — '(날짜_차수)' 이름으로 보관, 덮어쓰기 시 이전 이미지 교체
+    image_name = None
+    if image is not None:
+        raw = await image.read()
+        if raw:
+            if len(raw) > _OCR_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="이미지가 너무 큽니다 (최대 15MB).")
+            ext = _OCR_MIME_EXT.get((image.content_type or "").lower(), ".img")
+            stem = f"{order_date}_{order_round}차"
+            img_dir = db.order_image_dir()
+            for old in img_dir.glob(f"{stem}.*"):  # 확장자가 달라진 경우까지 정리
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+            image_name = f"{stem}{ext}"
+            (img_dir / image_name).write_bytes(raw)
+
+    created_at = datetime.now().isoformat(timespec="seconds")
+    try:
+        order_id = await asyncio.to_thread(
+            db.save_order, order_date, order_round, items, image_name, created_at)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"주문 저장 실패: {str(e)}")
+
+    return {"saved": True, "order_id": order_id, "count": len(items),
+            "order_date": order_date, "order_round": order_round}
+
+
+@app.get("/api/orders")
+async def order_list():
+    """저장된 주문 요약 목록 (달력 표시용)."""
+    orders = await asyncio.to_thread(db.list_orders)
+    return {"orders": orders}
+
+@app.get("/api/orders/{order_id}")
+async def order_detail(order_id: int):
+    """주문 1건의 상세(메타 + 품목 목록)."""
+    order = await asyncio.to_thread(db.get_order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    return order
+
+@app.get("/api/orders/{order_id}/image")
+async def order_image(order_id: int):
+    """주문에 저장된 원본 주문지 이미지 파일을 반환."""
+    order = await asyncio.to_thread(db.get_order, order_id)
+    if order is None or not order.get("image_path"):
+        raise HTTPException(status_code=404, detail="이미지가 없습니다.")
+    path = db.order_image_dir() / order["image_path"]
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="이미지 파일이 없습니다.")
+    return FileResponse(str(path))
+
+@app.delete("/api/orders/{order_id}")
+async def order_delete(order_id: int):
+    """주문 1건 삭제 (품목은 CASCADE, 원본 이미지 파일도 함께 정리)."""
+    image_path = await asyncio.to_thread(db.delete_order, order_id)
+    if image_path is None:
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if image_path:  # 빈 문자열이면 이미지가 없던 주문
+        f = db.order_image_dir() / image_path
+        try:
+            f.unlink()
+        except OSError:
+            pass
+    return {"deleted": True}
 
 # ===================== 약품 마스터 (오타 보정용) =====================
 
