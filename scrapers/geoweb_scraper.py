@@ -234,6 +234,7 @@ class GeowebScraper(BaseScraper):
             stock_selector = f'{row_selector} > td.stock'
             code_selector = f'{row_selector} > td.code'
             company_selector = f'{row_selector} > td.phaCompany > span'
+            unit_selector = f'{row_selector} > td.standard'
 
             # td.proName 내부의 .classify span(예: "향정" 라벨)은 제외하고 약품명만 추출
             name_el = self.page.query_selector(name_selector)
@@ -247,6 +248,7 @@ class GeowebScraper(BaseScraper):
             main_stock = self.get_text_safe(stock_selector)
             insurance_code = self.get_text_safe(code_selector)
             company = self.get_text_safe(company_selector)
+            unit = self.get_text_safe(unit_selector)
 
             if not drug_name:
                 return drugs
@@ -268,7 +270,8 @@ class GeowebScraper(BaseScraper):
                 main_stock=main_stock,
                 incheon_stock=incheon_stock,
                 notes=notes,
-                company=company
+                company=company,
+                unit=unit
             )
 
             drugs.append(drug)
@@ -289,6 +292,7 @@ class GeowebScraper(BaseScraper):
                 stock_el = row.query_selector('td.stock')
                 code_el = row.query_selector('td.code')
                 company_el = row.query_selector('td.phaCompany > span')
+                unit_el = row.query_selector('td.standard')
 
                 # td.proName 내부의 .classify span(예: "향정" 라벨)은 제외하고 약품명만 추출
                 drug_name = name_el.evaluate(
@@ -305,7 +309,8 @@ class GeowebScraper(BaseScraper):
                     name=drug_name,
                     insurance_code=code_el.text_content().strip() if code_el else "",
                     main_stock=stock_el.text_content().strip() if stock_el else "0",
-                    company=company_el.text_content().strip() if company_el else ""
+                    company=company_el.text_content().strip() if company_el else "",
+                    unit=unit_el.text_content().strip() if unit_el else ""
                 )
                 drugs.append(drug)
             except Exception as e:
