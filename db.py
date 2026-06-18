@@ -25,7 +25,11 @@ from typing import Any, Dict, List, Optional, Sequence
 #  v2: drug_master.insurance_code 를 nullable·비유니크로 완화(코드 컬럼 미매핑/규격별 코드중복 허용),
 #      watch_list 의 미사용 FK 제거
 #  v3: 주문지 OCR 저장용 orders/order_items 추가 (신규 테이블이라 IF NOT EXISTS로 생성, 별도 마이그레이션 불필요)
-SCHEMA_VERSION = 3
+#  v4: drug_master.unit(포장단위/규격) 추가. 엑셀엔 규격 컬럼이 없어 기준 도매상 스크래핑으로 채운다.
+#      기존 DB는 _ensure_column 으로 ALTER TABLE ADD COLUMN 처리(멱등).
+#  v5: drug_master.unit_manual(사용자가 뷰어에서 직접 추가한 규격) 추가. 수집 unit과 출처를 분리하고
+#      수집분은 삭제 불가(읽기전용), 직접추가분은 append-only로 운영한다. _ensure_column 처리.
+SCHEMA_VERSION = 5
 
 # 날짜/시간 ISO 포맷 (전 테이블 공통, T 포함, 초 단위)
 ISO_LEN = 19
@@ -102,6 +106,8 @@ CREATE TABLE IF NOT EXISTS drug_master (
     insurance_code TEXT,
     maker          TEXT,
     maker_norm     TEXT,
+    unit           TEXT,
+    unit_manual    TEXT,
     imported_at    TEXT NOT NULL,
     source_file    TEXT
 );
@@ -182,6 +188,16 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 """
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """테이블에 컬럼이 없으면 ALTER TABLE ADD COLUMN 으로 추가(멱등).
+
+    SQLite는 컬럼 추가는 ALTER로 지원하므로(제약 변경과 달리) 데이터 보존하며 안전하게 보강한다.
+    """
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_schema() -> None:
     """테이블/인덱스 생성, 필요 시 마이그레이션, 스키마 버전 기록."""
     conn = get_conn()
@@ -191,8 +207,11 @@ def init_schema() -> None:
     if 0 < current < 2:
         _migrate_to_v2(conn)
 
-    # 누락 테이블/인덱스 보강 (신규 설치는 여기서 v2 스키마 생성)
+    # 누락 테이블/인덱스 보강 (신규 설치는 여기서 최신 스키마 생성)
     conn.executescript(_SCHEMA)
+    # v4/v5: 기존 drug_master 테이블에 unit/unit_manual 컬럼 보강 (신규 설치는 이미 있으므로 no-op)
+    _ensure_column(conn, "drug_master", "unit", "TEXT")
+    _ensure_column(conn, "drug_master", "unit_manual", "TEXT")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 
@@ -271,19 +290,75 @@ def insert_drug_master(conn: sqlite3.Connection, drug: Dict[str, Any],
 def replace_drug_master(drugs: List[Dict[str, Any]], source_file: str, imported_at: str) -> int:
     """약품 마스터 전체 교체 (재임포트). 단일 트랜잭션으로 DELETE 후 INSERT.
 
+    엑셀에는 포장단위(unit)가 없고 스크래핑으로 수집하므로, 재임포트로 기존에 모아둔
+    unit이 사라지지 않도록 (약품명, 보험코드) 기준으로 보존해 복원한다.
+
     반환: 저장된 행 수.
     """
     with transaction() as conn:
+        # 기존 규격 스냅샷 (name, code) → (수집 unit, 직접추가 unit_manual)
+        prev_units: Dict[tuple, tuple] = {}
+        for r in conn.execute(
+            """SELECT name, insurance_code, unit, unit_manual FROM drug_master
+               WHERE (unit IS NOT NULL AND unit != '')
+                  OR (unit_manual IS NOT NULL AND unit_manual != '')"""
+        ).fetchall():
+            prev_units[(r["name"], r["insurance_code"] or "")] = (r["unit"], r["unit_manual"])
+
         conn.execute("DELETE FROM drug_master")
         for drug in drugs:
             insert_drug_master(conn, drug, imported_at, source_file)
+
+        # 보존된 규격 복원 (동일 약품명+보험코드 행에만)
+        for (name, code), (unit, unit_manual) in prev_units.items():
+            conn.execute(
+                """UPDATE drug_master SET unit = ?, unit_manual = ?
+                   WHERE name = ? AND IFNULL(insurance_code, '') = ?""",
+                (unit, unit_manual, name, code),
+            )
         return conn.execute("SELECT COUNT(*) FROM drug_master").fetchone()[0]
+
+
+def upsert_drug_master(drugs: List[Dict[str, Any]], source_file: str, imported_at: str) -> Dict[str, int]:
+    """약품 마스터 병합(upsert). (약품명, 보험코드) 기준으로 있으면 갱신, 없으면 추가.
+
+    전체 교체(replace)와 달리 새 파일에 없는 기존 약품은 삭제하지 않고 그대로 둔다.
+    기존 행을 지우지 않으므로 수집/직접추가한 규격(unit, unit_manual)은 자연히 유지된다.
+    (제약사 표기만 새 파일 값으로 갱신; 규격 컬럼은 건드리지 않는다.)
+
+    반환: {"inserted": 신규, "updated": 갱신, "total": 전체 행 수}.
+    """
+    inserted = updated = 0
+    with transaction() as conn:
+        for drug in drugs:
+            name = drug.get("name", "")
+            code = (drug.get("insurance_code") or "").strip()
+            if code.lower() == "nan":
+                code = ""
+            maker = drug.get("maker", "")
+            maker_norm = drug.get("maker_norm", "") or None
+
+            # (약품명 + 보험코드) 일치 행을 갱신; 없으면 INSERT.
+            # 빈 보험코드는 NULL로 저장되므로 IFNULL로 비교를 맞춘다.
+            cur = conn.execute(
+                """UPDATE drug_master SET maker = ?, maker_norm = ?, imported_at = ?, source_file = ?
+                   WHERE name = ? AND IFNULL(insurance_code, '') = ?""",
+                (maker, maker_norm, imported_at, source_file, name, code),
+            )
+            if cur.rowcount and cur.rowcount > 0:
+                updated += 1
+            else:
+                insert_drug_master(conn, drug, imported_at, source_file)
+                inserted += 1
+
+        total = conn.execute("SELECT COUNT(*) FROM drug_master").fetchone()[0]
+    return {"inserted": inserted, "updated": updated, "total": total}
 
 
 def load_drug_master() -> List[Dict[str, Any]]:
     """drug_master 전체를 매칭용 dict 리스트로 반환."""
     rows = query_all(
-        "SELECT name, insurance_code, maker, maker_norm FROM drug_master ORDER BY id"
+        "SELECT name, insurance_code, maker, maker_norm, unit FROM drug_master ORDER BY id"
     )
     return [
         {
@@ -291,6 +366,7 @@ def load_drug_master() -> List[Dict[str, Any]]:
             "insurance_code": r["insurance_code"] or "",
             "maker": r["maker"] or "",
             "maker_norm": r["maker_norm"] or "",
+            "unit": r["unit"] or "",
         }
         for r in rows
     ]
@@ -318,6 +394,119 @@ def drug_master_cache_key() -> tuple:
         "SELECT COUNT(*) AS c, COALESCE(MAX(imported_at),'') AS m, COALESCE(MAX(id),0) AS x FROM drug_master"
     )
     return (row["c"], row["m"], row["x"]) if row else (0, "", 0)
+
+
+# ----------------------------------------------------------------------------
+# drug_master 포장단위(unit) 수집
+# ----------------------------------------------------------------------------
+def drug_master_rows_missing_unit() -> List[Dict[str, Any]]:
+    """포장단위(unit)가 비어 있고 보험코드가 있는 행만 반환 (스크래핑 수집 대상).
+
+    보험코드가 없으면 코드로 검색할 수 없으므로 제외한다.
+    """
+    rows = query_all(
+        """SELECT id, name, insurance_code FROM drug_master
+           WHERE insurance_code IS NOT NULL AND TRIM(insurance_code) != ''
+             AND (unit IS NULL OR TRIM(unit) = '')
+           ORDER BY id"""
+    )
+    return [
+        {"id": r["id"], "name": r["name"], "insurance_code": r["insurance_code"]}
+        for r in rows
+    ]
+
+
+def update_drug_master_unit(row_id: int, unit: str) -> None:
+    """drug_master 한 행의 포장단위(unit) 갱신. 빈 값은 NULL로 저장."""
+    execute("UPDATE drug_master SET unit = ? WHERE id = ?", ((unit or "").strip() or None, row_id))
+
+
+def drug_master_unit_stats() -> Dict[str, int]:
+    """포장단위 수집 현황 요약.
+
+    - total: 전체 행 수
+    - filled: unit이 채워진 행 수
+    - missing_with_code: unit이 비었지만 보험코드가 있어 수집 가능한 행 수
+    """
+    row = query_one(
+        """SELECT
+             COUNT(*) AS total,
+             SUM(CASE WHEN unit IS NOT NULL AND TRIM(unit) != '' THEN 1 ELSE 0 END) AS filled,
+             SUM(CASE WHEN (unit IS NULL OR TRIM(unit) = '')
+                       AND insurance_code IS NOT NULL AND TRIM(insurance_code) != ''
+                      THEN 1 ELSE 0 END) AS missing_with_code
+           FROM drug_master"""
+    )
+    return {
+        "total": (row["total"] if row else 0) or 0,
+        "filled": (row["filled"] if row else 0) or 0,
+        "missing_with_code": (row["missing_with_code"] if row else 0) or 0,
+    }
+
+
+# ----------------------------------------------------------------------------
+# drug_master 테이블 뷰어 / 사용자 직접 규격 추가
+# ----------------------------------------------------------------------------
+def _split_units(s: str) -> List[str]:
+    """", "로 합쳐 저장한 규격 문자열을 토큰 리스트로 분해(공백 정리·빈값 제거)."""
+    return [u.strip() for u in (s or "").split(",") if u.strip()]
+
+
+def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "") -> Dict[str, Any]:
+    """마스터 테이블을 페이지 단위로 조회(뷰어용). q는 약품명/보험코드 부분일치 검색.
+
+    반환: {"total": 전체(검색 적용) 행 수, "rows": [...]}.
+    """
+    where, params = "", []
+    if q.strip():
+        where = "WHERE name LIKE ? OR insurance_code LIKE ?"
+        like = f"%{q.strip()}%"
+        params = [like, like]
+
+    total = query_one(f"SELECT COUNT(*) AS c FROM drug_master {where}", params)["c"]
+    rows = query_all(
+        f"""SELECT id, name, insurance_code, maker, unit, unit_manual
+            FROM drug_master {where} ORDER BY id LIMIT ? OFFSET ?""",
+        params + [int(limit), int(offset)],
+    )
+    return {
+        "total": total,
+        "rows": [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "insurance_code": r["insurance_code"] or "",
+                "maker": r["maker"] or "",
+                "unit": r["unit"] or "",
+                "unit_manual": r["unit_manual"] or "",
+            }
+            for r in rows
+        ],
+    }
+
+
+def add_drug_master_manual_unit(row_id: int, unit: str) -> Optional[Dict[str, Any]]:
+    """사용자가 직접 입력한 규격 1건을 unit_manual에 append(append-only, 삭제 없음).
+
+    이미 수집(unit)되었거나 이미 직접추가(unit_manual)된 규격이면 중복 추가하지 않는다.
+    반환: 행이 없으면 None. 있으면 {"added": bool, "unit_manual": 갱신된 문자열}.
+    """
+    unit = (unit or "").strip()
+    row = query_one("SELECT unit, unit_manual FROM drug_master WHERE id = ?", (row_id,))
+    if row is None:
+        return None
+    manual = _split_units(row["unit_manual"])
+    if not unit:
+        return {"added": False, "unit_manual": ", ".join(manual)}
+
+    existing = set(_split_units(row["unit"])) | set(manual)
+    if unit in existing:
+        return {"added": False, "unit_manual": ", ".join(manual)}
+
+    manual.append(unit)
+    new_manual = ", ".join(manual)
+    execute("UPDATE drug_master SET unit_manual = ? WHERE id = ?", (new_manual, row_id))
+    return {"added": True, "unit_manual": new_manual}
 
 
 # ----------------------------------------------------------------------------

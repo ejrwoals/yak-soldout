@@ -17,9 +17,9 @@
     }
 
     // =================== 엘리먼트 ===================
-    const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
-    const dropPrompt = document.getElementById('dropPrompt');
+    const updateMasterBtn = document.getElementById('updateMasterBtn');
+    const cancelFileBtn = document.getElementById('cancelFileBtn');
     const fileChosen = document.getElementById('fileChosen');
     const fileNameEl = document.getElementById('fileName');
     const previewBtn = document.getElementById('previewBtn');
@@ -37,6 +37,15 @@
     const masterStatus = document.getElementById('masterStatus');
     const rawBody = document.getElementById('rawBody');
     const headerHint = document.getElementById('headerHint');
+    // 포장 단위 수집
+    const unitCard = document.getElementById('unitCard');
+    const unitStats = document.getElementById('unitStats');
+    const unitProgress = document.getElementById('unitProgress');
+    const unitBarFill = document.getElementById('unitBarFill');
+    const unitProgressText = document.getElementById('unitProgressText');
+    const collectUnitBtn = document.getElementById('collectUnitBtn');
+    const stopUnitBtn = document.getElementById('stopUnitBtn');
+    const unitStatusMsg = document.getElementById('unitStatusMsg');
 
     let selectedFile = null;
     let columns = [];
@@ -86,11 +95,21 @@
         if (!ok) { showStatus('error', '엑셀 파일(.xlsx/.xls)만 올릴 수 있습니다.'); return; }
         selectedFile = file;
         fileNameEl.textContent = file.name;
-        dropPrompt.hidden = true;
+        updateMasterBtn.hidden = true;   // 업로드 버튼 자리를 미리보기/취소로 대체
         fileChosen.hidden = false;
         previewBtn.disabled = false;
         hideStatus();
         closeModal(); // 새 파일 선택 시 열려있던 매핑 모달 닫기
+    }
+
+    // 선택 취소 / 등록 후 초기화 — 미리보기/취소 자리를 다시 업로드 버튼으로
+    function resetFile() {
+        selectedFile = null;
+        fileInput.value = '';
+        fileChosen.hidden = true;
+        updateMasterBtn.hidden = false;
+        previewBtn.disabled = true;
+        closeModal();
     }
 
     // =================== 미리보기 ===================
@@ -221,8 +240,10 @@
             const resp = await fetch('/api/drug-master/import', { method: 'POST', body: form });
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) throw new Error(detailText(data, resp.status));
-            closeModal();
-            showStatus('success', `${data.count}개 약품을 등록했습니다.`);  // 모달 닫힌 뒤 업로드 카드에 표시
+            resetFile();  // 매핑 모달 닫고 갱신 UI 접기
+            showStatus('success',
+                `갱신 완료 — 신규 ${(data.inserted ?? 0).toLocaleString()}개 추가, ` +
+                `${(data.updated ?? 0).toLocaleString()}개 갱신 (총 ${(data.count ?? 0).toLocaleString()}개)`);
             loadStatus();
         } catch (e) {
             showStatusOn(modalStatus, 'error', `등록 실패: ${e.message}`);
@@ -240,12 +261,18 @@
                 const when = (data.imported_at || '').replace('T', ' ');
                 masterStatus.className = 'master-status registered';
                 masterStatus.innerHTML =
-                    `<i class="bi bi-check-circle-fill" style="color:var(--success)"></i>` +
-                    ` 등록됨 <span class="count">${data.count.toLocaleString()}개</span>` +
-                    `<span class="meta"> · ${escapeHtml(data.source_filename||'')} · ${escapeHtml(when)}</span>`;
+                    `<span class="ms-line">` +
+                        `<i class="bi bi-check-circle-fill" style="color:var(--success)"></i>` +
+                        ` 등록됨 <span class="count">${data.count.toLocaleString()}개</span>` +
+                    `</span>` +
+                    `<span class="meta">${escapeHtml(data.source_filename || '')} · ${escapeHtml(when)}</span>`;
+                renderUnitStats(data.unit_stats);
+                if (tableCard.hidden) loadRows(); // 최초 1회만 자동 로드 (이후엔 직접 조작 유지)
             } else {
                 masterStatus.className = 'master-status';
                 masterStatus.innerHTML = `<i class="bi bi-info-circle"></i> 아직 등록된 약품 마스터가 없습니다. 엑셀을 업로드해 등록하세요.`;
+                unitCard.hidden = true;
+                tableCard.hidden = true;
             }
         } catch (e) {
             masterStatus.innerHTML = `<i class="bi bi-exclamation-triangle"></i> 현황을 불러오지 못했습니다.`;
@@ -254,6 +281,240 @@
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, (c) =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // =================== 포장 단위(규격) 수집 ===================
+    let collecting = false;
+
+    function renderUnitStats(stats) {
+        unitCard.hidden = false;
+        if (!stats) { unitStats.innerHTML = ''; return; }
+        const { total = 0, filled = 0, missing_with_code = 0 } = stats;
+        const noCode = Math.max(0, total - filled - missing_with_code);
+        unitStats.innerHTML =
+            `<span class="us-item"><i class="bi bi-check-circle" style="color:var(--success)"></i> 수집됨 <b>${filled.toLocaleString()}</b></span>` +
+            `<span class="us-item"><i class="bi bi-hourglass" style="color:var(--warning,#d97706)"></i> 미수집 <b>${missing_with_code.toLocaleString()}</b></span>` +
+            (noCode ? `<span class="us-item us-muted"><i class="bi bi-dash-circle"></i> 코드없음 ${noCode.toLocaleString()}</span>` : '');
+        // 수집할 대상이 없으면 버튼 비활성화
+        collectUnitBtn.disabled = collecting || missing_with_code === 0;
+        if (!collecting && missing_with_code === 0) {
+            collectUnitBtn.innerHTML = `<i class="bi bi-check2-all"></i> 모두 수집됨`;
+        } else if (!collecting) {
+            collectUnitBtn.innerHTML = `<i class="bi bi-download"></i> 빈 규격 수집 시작 (${missing_with_code.toLocaleString()}개)`;
+        }
+    }
+
+    function setCollecting(on) {
+        collecting = on;
+        collectUnitBtn.hidden = on;
+        stopUnitBtn.hidden = !on;
+        stopUnitBtn.disabled = false;
+        unitProgress.hidden = !on;
+    }
+
+    function updateUnitBar(done, total) {
+        const pct = total ? Math.round((done / total) * 100) : 0;
+        unitBarFill.style.width = `${pct}%`;
+        unitProgressText.textContent = `${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+    }
+
+    async function startCollectUnits() {
+        if (collecting) return;
+        setCollecting(true);
+        unitStatusMsg.hidden = true;
+        updateUnitBar(0, 0);
+        unitProgressText.textContent = '기준 도매상 로그인 중…';
+        try {
+            const resp = await fetch('/api/drug-master/collect-units', { method: 'POST' });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(detailText(data, resp.status));
+            // 완료 요약 (WS done 메시지와 동일 — 여기서 최종 처리)
+            finishCollect(data);
+        } catch (e) {
+            setCollecting(false);
+            showStatusOn(unitStatusMsg, 'error', `수집 실패: ${e.message}`);
+        }
+    }
+
+    function finishCollect(summary) {
+        setCollecting(false);
+        const updated = summary.updated || 0;
+        const notfound = summary.notfound || 0;
+        const failed = summary.failed || 0;
+        const stopped = summary.stopped;
+        const kind = failed ? 'error' : 'success';
+        const head = stopped ? '중단됨' : '수집 완료';
+        showStatusOn(unitStatusMsg, kind,
+            `${head} — 채움 ${updated}개 · 미발견 ${notfound}개` + (failed ? ` · 실패 ${failed}개` : ''));
+        loadStatus(); // 통계 새로고침
+    }
+
+    async function stopCollectUnits() {
+        stopUnitBtn.disabled = true;
+        unitProgressText.textContent = '중단 요청 중… (현재 항목까지 마무리)';
+        try { await fetch('/api/drug-master/collect-units/stop', { method: 'POST' }); }
+        catch (e) { /* best-effort */ }
+    }
+
+    // WebSocket 진행 메시지 처리
+    function handleWsMessage(raw) {
+        let msg;
+        try { msg = JSON.parse(raw); } catch (e) { return; }
+        switch (msg.type) {
+            case 'unit_collect_started':
+                updateUnitBar(0, msg.total || 0);
+                unitProgressText.textContent =
+                    `${(msg.distributor || '기준 도매상')}에서 ${(msg.total || 0).toLocaleString()}개 검색 시작…`;
+                break;
+            case 'unit_collect_progress': {
+                updateUnitBar(msg.done || 0, msg.total || 0);
+                const tag = msg.result === 'ok' ? `→ ${escapeHtml(msg.unit || '')}`
+                    : msg.result === 'notfound' ? '→ 규격 없음' : '→ 오류';
+                unitProgressText.textContent =
+                    `${(msg.done || 0)} / ${(msg.total || 0)} · ${escapeHtml(msg.name || '')} ${tag}`;
+                break;
+            }
+            case 'unit_collect_error':
+                showStatusOn(unitStatusMsg, 'error', `수집 오류: ${escapeHtml(msg.message || '')}`);
+                break;
+            case 'unit_collect_done':
+                // HTTP 응답에서도 동일 요약을 처리하므로 여기서는 진행바만 100%로
+                updateUnitBar(msg.total || 0, msg.total || 0);
+                if (!tableCard.hidden) loadRows(); // 뷰어 열려 있으면 수집 결과 반영
+                break;
+        }
+    }
+
+    // =================== 마스터 DB 뷰어 ===================
+    const tableCard = document.getElementById('tableCard');
+    const dmSearch = document.getElementById('dmSearch');
+    const dmCount = document.getElementById('dmCount');
+    const dmBody = document.getElementById('dmBody');
+    const dmPrev = document.getElementById('dmPrev');
+    const dmNext = document.getElementById('dmNext');
+    const dmPageInfo = document.getElementById('dmPageInfo');
+
+    const DM_LIMIT = 50;
+    let dmOffset = 0;
+    let dmQuery = '';
+    let dmTotal = 0;
+    let dmSearchTimer = null;
+
+    function unitChips(str, cls) {
+        return (str || '').split(',').map((u) => u.trim()).filter(Boolean)
+            .map((u) => `<span class="unit-chip ${cls}">${escapeHtml(u)}</span>`).join('');
+    }
+
+    function renderRows(rows) {
+        dmBody.innerHTML = '';
+        if (!rows.length) {
+            dmBody.innerHTML = `<tr><td colspan="6" class="mdb-empty">결과가 없습니다.</td></tr>`;
+            return;
+        }
+        rows.forEach((r) => {
+            const tr = document.createElement('tr');
+            tr.dataset.id = r.id;
+            tr.innerHTML =
+                `<td class="mdb-id">${r.id}</td>` +
+                `<td class="mdb-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>` +
+                `<td class="mdb-code">${escapeHtml(r.insurance_code)}</td>` +
+                `<td class="mdb-maker" title="${escapeHtml(r.maker)}">${escapeHtml(r.maker)}</td>` +
+                `<td class="mdb-scraped">${unitChips(r.unit, 'scraped') || '<span class="mdb-dash">—</span>'}</td>` +
+                `<td class="mdb-manual-cell">` +
+                  `<span class="mdb-manual-chips">${unitChips(r.unit_manual, 'manual')}</span>` +
+                  `<span class="mdb-add">` +
+                    `<input type="text" class="mdb-add-input" placeholder="추가" maxlength="40">` +
+                    `<button class="mdb-add-btn" title="규격 추가"><i class="bi bi-plus-lg"></i></button>` +
+                  `</span>` +
+                `</td>`;
+            dmBody.appendChild(tr);
+        });
+    }
+
+    async function loadRows() {
+        tableCard.hidden = false;
+        const params = new URLSearchParams({ offset: dmOffset, limit: DM_LIMIT, q: dmQuery });
+        try {
+            const resp = await fetch(`/api/drug-master/rows?${params}`);
+            const data = await resp.json();
+            dmTotal = data.total || 0;
+            renderRows(data.rows || []);
+            updatePager();
+        } catch (e) {
+            dmBody.innerHTML = `<tr><td colspan="6" class="mdb-empty">목록을 불러오지 못했습니다.</td></tr>`;
+        }
+    }
+
+    function updatePager() {
+        const from = dmTotal ? dmOffset + 1 : 0;
+        const to = Math.min(dmOffset + DM_LIMIT, dmTotal);
+        dmCount.textContent = `총 ${dmTotal.toLocaleString()}건`;
+        dmPageInfo.textContent = `${from.toLocaleString()}–${to.toLocaleString()} / ${dmTotal.toLocaleString()}`;
+        dmPrev.disabled = dmOffset <= 0;
+        dmNext.disabled = dmOffset + DM_LIMIT >= dmTotal;
+    }
+
+    async function addManualUnit(tr) {
+        const input = tr.querySelector('.mdb-add-input');
+        const chipsEl = tr.querySelector('.mdb-manual-chips');
+        const value = input.value.trim();
+        if (!value) return;
+        const btn = tr.querySelector('.mdb-add-btn');
+        btn.disabled = true;
+        try {
+            const resp = await fetch('/api/drug-master/manual-unit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: Number(tr.dataset.id), unit: value }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(detailText(data, resp.status));
+            chipsEl.innerHTML = unitChips(data.unit_manual, 'manual');
+            input.value = '';
+            if (!data.added) {
+                input.classList.add('dup');
+                input.placeholder = '중복';
+                setTimeout(() => { input.classList.remove('dup'); input.placeholder = '추가'; }, 1500);
+            }
+            input.focus();
+        } catch (e) {
+            input.classList.add('dup');
+            setTimeout(() => input.classList.remove('dup'), 1500);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function bindViewer() {
+        dmSearch.addEventListener('input', () => {
+            clearTimeout(dmSearchTimer);
+            dmSearchTimer = setTimeout(() => {
+                dmQuery = dmSearch.value.trim();
+                dmOffset = 0;
+                loadRows();
+            }, 300);
+        });
+        dmPrev.addEventListener('click', () => {
+            if (dmOffset <= 0) return;
+            dmOffset = Math.max(0, dmOffset - DM_LIMIT);
+            loadRows();
+        });
+        dmNext.addEventListener('click', () => {
+            if (dmOffset + DM_LIMIT >= dmTotal) return;
+            dmOffset += DM_LIMIT;
+            loadRows();
+        });
+        // 추가 버튼 / Enter (이벤트 위임)
+        dmBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.mdb-add-btn');
+            if (btn) addManualUnit(btn.closest('tr'));
+        });
+        dmBody.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.classList.contains('mdb-add-input')) {
+                e.preventDefault();
+                addManualUnit(e.target.closest('tr'));
+            }
+        });
     }
 
     // =================== Keep-alive WebSocket (서버 자동 종료 방지) ===================
@@ -265,6 +526,7 @@
         catch (e) { scheduleReconnect(); return; }
         ws.onclose = () => scheduleReconnect();
         ws.onerror = () => {};
+        ws.onmessage = (e) => handleWsMessage(e.data);
     }
     function scheduleReconnect() {
         if (reconnectTimer) return;
@@ -273,21 +535,15 @@
 
     // =================== 이벤트 / 초기화 ===================
     function bind() {
-        dropZone.addEventListener('click', () => fileInput.click());
+        updateMasterBtn.addEventListener('click', () => fileInput.click());
+        cancelFileBtn.addEventListener('click', resetFile);
         fileInput.addEventListener('change', (e) => setFile(e.target.files[0]));
-        ['dragenter', 'dragover'].forEach((ev) => dropZone.addEventListener(ev, (e) => {
-            e.preventDefault(); dropZone.classList.add('dragover');
-        }));
-        ['dragleave', 'drop'].forEach((ev) => dropZone.addEventListener(ev, (e) => {
-            e.preventDefault(); dropZone.classList.remove('dragover');
-        }));
-        dropZone.addEventListener('drop', (e) => {
-            const f = e.dataTransfer.files && e.dataTransfer.files[0];
-            if (f) setFile(f);
-        });
         // 화살표로 감싸지 않으면 click Event 가 doPreview 의 첫 인자로 들어가 header_row 가 깨진다
         previewBtn.addEventListener('click', () => doPreview());
         importBtn.addEventListener('click', () => doImport());
+        collectUnitBtn.addEventListener('click', startCollectUnits);
+        stopUnitBtn.addEventListener('click', stopCollectUnits);
+        bindViewer();
         // 모달 닫기: X 버튼 / 배경 클릭 / ESC
         closeMapModal.addEventListener('click', closeModal);
         mapModal.addEventListener('click', (e) => { if (e.target === mapModal) closeModal(); });

@@ -38,41 +38,100 @@
         </div>
     </nav>
 
-    <main class="main-container ocr-container">
+    <main class="main-container ocr-container mdb-wide">
         <section class="home-header">
             <h1>약품 마스터 관리</h1>
             <p class="subtitle">취급 약품 목록(엑셀)을 등록하면 OCR 약품명 오타를 보정하는 데 사용됩니다</p>
         </section>
 
-        <!-- 현재 등록 현황 -->
-        <section class="ocr-card status-card">
+        <div class="mdb-layout">
+          <div class="mdb-col-left">
+        <!-- 현재 등록 현황 + 엑셀 갱신 (합침) -->
+        <section class="ocr-card master-card-box" id="masterCard">
             <div id="masterStatus" class="master-status">
                 <i class="bi bi-hourglass-split"></i> 현황 확인 중…
             </div>
-        </section>
-
-        <!-- 1) 업로드 -->
-        <section class="ocr-card">
-            <h2 class="card-title"><i class="bi bi-filetype-xlsx"></i> 엑셀 업로드</h2>
-            <div id="dropZone" class="drop-zone drop-zone--compact">
+            <div class="master-update">
                 <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
-                <div id="dropPrompt" class="drop-prompt">
-                    <i class="bi bi-cloud-arrow-up"></i>
-                    <p><strong>엑셀 파일을 끌어다 놓거나 클릭해서 선택</strong></p>
-                    <p class="hint">.xlsx · .xls (첫 시트, 첫 행을 머리글로 사용)</p>
+                <span class="hint master-update-hint">최신 약품 목록 파일(.xlsx·.xls)을 업로드하여 데이터베이스를 갱신합니다. 기존 약품은 사라지지 않고, 신규 약품이 추가되며 기존 정보는 갱신됩니다. 수집·직접추가한 규격도 그대로 유지됩니다.</span>
+                <div class="master-update-action">
+                    <button id="updateMasterBtn" class="btn btn-primary btn-sm">
+                        <i class="bi bi-file-earmark-arrow-up"></i> <span id="updateMasterLabel">엑셀 파일 올려서 갱신</span>
+                    </button>
+                    <div id="fileChosen" class="file-chosen-inline" hidden>
+                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                        <span id="fileName" class="fc-name"></span>
+                        <button id="previewBtn" class="btn btn-primary btn-sm" disabled>
+                            <i class="bi bi-eye"></i> 미리보기
+                        </button>
+                        <button id="cancelFileBtn" class="btn btn-ghost btn-sm">취소</button>
+                    </div>
                 </div>
-                <div id="fileChosen" class="file-chosen" hidden>
-                    <i class="bi bi-file-earmark-spreadsheet"></i>
-                    <span id="fileName"></span>
-                </div>
-            </div>
-            <div class="ocr-actions">
-                <button id="previewBtn" class="btn btn-primary" disabled>
-                    <i class="bi bi-eye"></i> 컬럼 미리보기
-                </button>
             </div>
             <div id="statusMsg" class="status-msg" hidden></div>
         </section>
+
+        <!-- 포장 단위(규격) 수집 -->
+        <section id="unitCard" class="ocr-card" hidden>
+            <h2 class="card-title"><i class="bi bi-box-seam"></i> 포장 단위(규격) 수집</h2>
+            <p class="hint">엑셀엔 규격이 없으므로, 기준 도매상에 보험코드로 검색해 빈 규격을 채웁니다.</p>
+            <div id="unitStats" class="unit-stats"></div>
+            <div id="unitProgress" class="unit-progress" hidden>
+                <div class="unit-bar"><div id="unitBarFill" class="unit-bar-fill"></div></div>
+                <div id="unitProgressText" class="hint"></div>
+            </div>
+            <div class="ocr-actions">
+                <button id="collectUnitBtn" class="btn btn-primary">
+                    <i class="bi bi-download"></i> 빈 규격 수집 시작
+                </button>
+                <button id="stopUnitBtn" class="btn btn-ghost" hidden>
+                    <i class="bi bi-stop-circle"></i> 중단
+                </button>
+            </div>
+            <div id="unitStatusMsg" class="status-msg" hidden></div>
+        </section>
+          </div><!-- /.mdb-col-left -->
+
+          <div class="mdb-col-right">
+        <!-- 마스터 DB 뷰어 -->
+        <section id="tableCard" class="ocr-card" hidden>
+            <div class="mdb-header">
+                <h2 class="card-title"><i class="bi bi-table"></i> 마스터 DB 뷰어</h2>
+                <div class="mdb-search">
+                    <i class="bi bi-search"></i>
+                    <input id="dmSearch" type="text" placeholder="약품명 또는 보험코드 검색…">
+                </div>
+            </div>
+            <div class="mdb-subbar">
+                <p class="hint">
+                    <span class="unit-chip scraped">수집 규격</span>은 읽기 전용입니다.
+                    <span class="unit-chip manual">직접 추가</span>한 규격만 추가할 수 있고, 삭제는 되지 않습니다.
+                </p>
+                <span id="dmCount" class="hint"></span>
+            </div>
+            <div class="table-wrap mdb-table-wrap">
+                <table class="mdb-table">
+                    <thead>
+                        <tr>
+                            <th class="mdb-id">ID</th>
+                            <th>약품명</th>
+                            <th>보험코드</th>
+                            <th>제약사</th>
+                            <th>수집 규격</th>
+                            <th>직접 추가 규격</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dmBody"></tbody>
+                </table>
+            </div>
+            <div class="mdb-pager">
+                <button id="dmPrev" class="btn btn-ghost" disabled><i class="bi bi-chevron-left"></i> 이전</button>
+                <span id="dmPageInfo" class="hint"></span>
+                <button id="dmNext" class="btn btn-ghost" disabled>다음 <i class="bi bi-chevron-right"></i></button>
+            </div>
+        </section>
+          </div><!-- /.mdb-col-right -->
+        </div><!-- /.mdb-layout -->
 
     </main>
 

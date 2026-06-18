@@ -15,7 +15,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용합니다. 한 줄도 빠뜨리지 않도록 흐린 글씨·동그라미 주석이 있는 줄까지 모두 추출하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. 검수 완료분은 (주문일자, 차수) 단위로 로컬 SQLite에 원본 이미지와 함께 저장합니다.
 - 📅 **주문 기록 (달력 조회)**: 저장된 주문지 내역을 달력 UI로 조회·관리하는 화면(`/orders`). 주문이 있는 날짜는 표시되며, 날짜를 클릭하면 그날의 차수별 주문이 품목 테이블·원본 이미지 썸네일·삭제 버튼이 달린 카드로 펼쳐집니다.
 - 🔤 **OCR 약품명 오타 보정**: 약품 마스터가 등록돼 있으면, OCR로 읽은 약품명을 한글 자모(초/중/종성) 기반 fuzzy 매칭으로 마스터와 대조해 검수 테이블 각 행에 결과 배지를 표시합니다 — "약품명 일치"(공식 전체명 자동 적용, 원본으로 되돌리기 가능), "확인 필요"(후보 드롭다운에서 선택), "미등록". 용량(600mg≠300mg)·접두(짧은 손글씨명↔긴 공식명) 인식, 제형 접미·제약사 접두 제거를 반영하며, 후보에 없으면 행별 "직접 검색" 박스로 마스터 DB를 직접 조회할 수 있습니다.
-- 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 SQLite DB(`drug_master` 테이블)에 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다.
+- 💊 **약품 마스터 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 SQLite DB(`drug_master` 테이블)에 병합(upsert) 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다. 엑셀엔 없는 포장단위(규격)는 기준 도매상에 보험코드로 검색해 일괄 수집하고, 페이지형 마스터 DB 뷰어에서 검색·확인하거나 직접 규격을 추가할 수 있습니다.
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
@@ -214,6 +214,7 @@ yak-soldout/
 ├── config.json                # monitoring 설정 (직접 생성, distributors는 첫 실행 시 DB로 시딩)
 ├── build_config.json          # 약국별 빌드 설정 (선택사항, PyInstaller 배포 시 사용)
 ├── db.py                      # SQLite 데이터 액세스 레이어 (스키마/마이그레이션/JSON 시딩)
+├── analyze_units.py           # drug_master.unit 규격 빈도 분석 스크립트 → unit_frequency.json 출력
 │
 ├── scrapers/                  # Playwright 기반 도매상 스크래퍼
 │   ├── registry.py            # 도매상 레지스트리 — Single Source of Truth
@@ -237,7 +238,8 @@ yak-soldout/
 │   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반) + PreviewSearchSession
 │   ├── open_site_session.py   # 바로가기 headed 브라우저 세션 관리 (OpenSiteSession)
 │   ├── ocr_service.py         # 손글씨 주문지 OCR — Gemini 호출 및 약품명·포장단위·수량 추출
-│   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드/머리글 추정/컬럼 매핑/제약사 정규화
+│   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드(upsert)/머리글 추정/컬럼 매핑/제약사 정규화
+│   ├── unit_collector.py      # 포장단위(규격) 일괄 수집 배치 — 기준 도매상에 보험코드 검색 + WebSocket 진행상황
 │   ├── drug_matcher.py        # OCR 약품명 오타 보정 — 한글 자모 fuzzy 매칭(rapidfuzz) + 마스터 직접 검색
 │   ├── file_manager.py        # 약품 목록 / 결과 표시 제외 목록 I/O (DB 위임)
 │   ├── data_processor.py      # 데이터 처리 및 분류
@@ -348,7 +350,10 @@ OCR로 읽은 약품명을 등록된 약품 마스터와 대조해 오타를 잡
 - **머리글 행 자동 추정**: 실제 약국 엑셀 export는 제목·조회일시 등이 머리글 위에 깔리는 경우가 많습니다. `_guess_header_row`가 `약품명`·`보험코드`·`제약사` 등 키워드가 든 행(또는 비어있지 않은 칸이 가장 많은 행)을 머리글로 추정하며, `/api/drug-master/preview`로 원본 상단 행과 함께 반환합니다. 사용자는 모달에서 머리글 행을 직접 바꿀 수 있습니다.
 - **컬럼 매핑**: 컬럼명이 약국마다 다르므로, 사용자가 약품명(필수)·보험코드(선택)·제약사(선택) 컬럼을 직접 지정해 `/api/drug-master/import`로 등록합니다. 빈 행은 건너뛰고 (약품명, 보험코드) 조합으로 중복을 제거합니다.
 - **제약사 정규화**: `normalize_maker`가 `대웅제약(주)`→`대웅`, `(주)보령`→`보령`처럼 법인/접미 토큰을 제거한 정규화 형태(`maker_norm`)를 함께 저장해, 표기 편차에도 매칭이 가능하게 합니다.
-- **저장**: 결과는 SQLite DB의 `drug_master` 테이블에 전체 교체(재임포트=DELETE 후 INSERT)로 등록되며, `/api/drug-master`로 등록 현황(개수·출처 파일)을 조회합니다.
+- **병합(upsert) 저장**: 엑셀 업로드는 전체 교체가 아니라 병합입니다(`db.upsert_drug_master`). (약품명, 보험코드) 기준으로 일치하면 제약사 표기 등을 갱신하고 없으면 새로 추가하며, 새 파일에 없는 기존 약품은 삭제하지 않고 보존합니다. 따라서 아래에서 수집·직접추가한 규격(`unit`/`unit_manual`)과 기존 행 ID가 그대로 유지됩니다. 등록 현황(개수·출처 파일·포장단위 수집 현황)은 `/api/drug-master`로 조회합니다. (엑셀 업로드 UI는 현황 카드 안에 "엑셀 파일 올려서 갱신" 액션으로 통합되어 있습니다.)
+- **포장단위(규격) 수집**: 엑셀에는 규격 컬럼이 없으므로, `drug_master`의 `unit`이 비어 있고 보험코드가 있는 행을 기준 도매상(유팜몰/지오영)에 보험코드로 하나씩 검색해 규격을 채웁니다(`utils/unit_collector.py`). 같은 보험코드가 여러 규격을 가질 수 있어 검색 결과의 distinct 규격을 모두 모아 `", "`로 합쳐 저장하고, 같은 코드는 한 번만 검색하도록 캐싱합니다. `POST /api/drug-master/collect-units`로 백그라운드 배치를 시작하면 진행 상황을 WebSocket으로 브로드캐스트하고 터미널에도 로그를 남기며, `POST /api/drug-master/collect-units/stop`으로 다음 행 경계에서 중단합니다. (지오영 결과의 규격은 `td.standard`에서 추출합니다.)
+- **마스터 DB 뷰어 / 직접 규격 추가**: 화면 우측에 페이지 단위 마스터 테이블 뷰어가 있습니다(`GET /api/drug-master/rows`, 약품명·보험코드 검색 지원). 수집한 규격(`unit`)은 읽기 전용으로 보여주고, 사용자가 직접 입력한 규격은 별도의 `unit_manual` 컬럼에 append-only로 보관합니다(`POST /api/drug-master/manual-unit`, 중복·기존 규격은 추가하지 않으며 삭제는 되지 않음). 수집분과 직접추가분을 출처별로 분리해 관리합니다.
+- **규격 빈도 분석 스크립트**: 독립 실행 스크립트 `analyze_units.py`는 마스터 전체의 `unit` 토큰별 보유 약품 수를 세어 `unit_frequency.json`으로 출력합니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -433,7 +438,7 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 
 ### 테이블
 
-- **drug_master**: 약품 마스터 (약품명·보험코드·제약사·정규화 제약사명). 재임포트 시 전체 교체.
+- **drug_master**: 약품 마스터 (약품명·보험코드·제약사·정규화 제약사명·포장단위). 엑셀 업로드는 (약품명, 보험코드) 기준 병합(upsert)으로 반영해 기존 행을 보존합니다. 포장단위는 엑셀에 없어 두 컬럼으로 나뉩니다 — `unit`(기준 도매상에서 일괄 수집한 규격, 읽기 전용)과 `unit_manual`(뷰어에서 사용자가 직접 추가한 규격, append-only). 한 행에 여러 규격은 `", "`로 합쳐 저장합니다.
 - **watch_list**: 모니터링할 품절 약품 목록 (약품명·긴급 알림 여부·추가일시). 웹 UI로 관리.
 - **exclusion_list**: 결과 표시 제외 목록 — 도매상별로 독립 관리(`(drug_name, distributor)` 유니크). 웹에서 약품 카드의 눈 모양 아이콘(👁️‍🗨️)으로 추가하며, 백제약품은 규격 정보까지 포함해 정확히 매칭합니다.
 - **distributors**: 도매상 자격증명·활성화 여부·색상·지역. 웹 설정 모달로 관리.
@@ -456,10 +461,14 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 - `GET /api/orders/{id}/image` - 주문에 저장된 원본 주문지 이미지 파일
 - `DELETE /api/orders/{id}` - 주문 1건 삭제 (품목 CASCADE + 원본 이미지 파일 정리)
 - `GET /drug-master` - 약품 마스터 등록 화면
-- `GET /api/drug-master` - 약품 마스터 등록 현황 조회
+- `GET /api/drug-master` - 약품 마스터 등록 현황 조회 (포장단위 수집 현황 포함)
 - `GET /api/drug-master/search` - 약품 마스터 직접 검색 (OCR 검수 화면의 "직접 검색"용, `q` 파라미터)
+- `GET /api/drug-master/rows` - 마스터 DB 뷰어용 페이지 조회 (`offset`/`limit`/`q` 파라미터)
 - `POST /api/drug-master/preview` - 업로드 엑셀 미리보기 (머리글 행 추정 + 컬럼·샘플 반환)
-- `POST /api/drug-master/import` - 선택한 컬럼 매핑으로 약품 마스터 등록(덮어쓰기)
+- `POST /api/drug-master/import` - 선택한 컬럼 매핑으로 약품 마스터 등록(병합/upsert)
+- `POST /api/drug-master/collect-units` - 빈 포장단위(규격) 일괄 수집 시작 (기준 도매상에 보험코드 검색, 진행상황 WebSocket 스트리밍)
+- `POST /api/drug-master/collect-units/stop` - 진행 중인 포장단위 수집 중단 요청
+- `POST /api/drug-master/manual-unit` - 뷰어에서 사용자가 직접 규격 추가 (append-only)
 - `GET /api/status` - 현재 상태 조회
 - `POST /api/search/start` - 검색 시작
 - `POST /api/search/stop` - 검색 중단

@@ -85,6 +85,7 @@ from models.build_config import get_visible_registry, get_pharmacy_name, get_pri
 from utils.websocket_manager import ConnectionManager, broadcast_log
 from utils.search_engine import execute_search, PreviewSearchSession
 from utils.open_site_session import OpenSiteSession
+from utils.unit_collector import UnitCollector
 from utils import ocr_service
 from utils import drug_master
 from utils import drug_matcher
@@ -115,6 +116,9 @@ preview_session = PreviewSearchSession()
 
 # 바로가기 세션 (재고 카드 → headed 브라우저로 자동 로그인/검색)
 open_site_session = OpenSiteSession()
+
+# 약품 마스터 포장단위(규격) 수집기
+unit_collector = UnitCollector()
 
 # WebSocket 연결 관리자
 manager = ConnectionManager()
@@ -385,6 +389,60 @@ async def drug_master_import(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"등록 실패: {str(e)}")
+
+@app.post("/api/drug-master/collect-units")
+async def drug_master_collect_units():
+    """포장단위(규격) 일괄 수집 — unit이 빈 마스터 행을 기준 도매상에 보험코드로 검색해 채운다.
+
+    진행 상황은 WebSocket으로 스트리밍하고, 완료 시 요약을 반환한다.
+    """
+    if unit_collector.is_running:
+        raise HTTPException(status_code=409, detail="이미 포장단위 수집이 진행 중입니다")
+
+    # 기준 도매상 자격 증명 확인 (preview-search와 동일한 가드)
+    primary_id = get_primary_distributor()
+    try:
+        creds = app_state.config.get_credentials(primary_id)
+        if not creds.username or not creds.password:
+            raise Exception()
+    except Exception:
+        raise HTTPException(status_code=400, detail="도매상 계정 정보가 설정되지 않았습니다")
+
+    try:
+        return await unit_collector.run(app_state, manager)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"포장단위 수집 실패: {str(e)}")
+
+@app.post("/api/drug-master/collect-units/stop")
+async def drug_master_collect_units_stop():
+    """진행 중인 포장단위 수집을 중단 요청 (다음 행 경계에서 멈춤)."""
+    unit_collector.request_stop()
+    return {"message": "중단을 요청했습니다"}
+
+@app.get("/api/drug-master/rows")
+async def drug_master_rows(offset: int = 0, limit: int = 50, q: str = ""):
+    """마스터 DB 테이블 뷰어 — 페이지 단위 조회 (약품명/보험코드 검색)."""
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    return await asyncio.to_thread(db.list_drug_master_rows, offset, limit, q)
+
+@app.post("/api/drug-master/manual-unit")
+async def drug_master_manual_unit(data: dict):
+    """뷰어에서 사용자가 직접 규격을 추가 (append-only). 수집 규격은 건드리지 않는다."""
+    try:
+        row_id = int(data.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="유효한 행 id가 필요합니다")
+    unit = (data.get("unit") or "").strip()
+    if not unit:
+        raise HTTPException(status_code=400, detail="추가할 규격을 입력해주세요")
+
+    result = await asyncio.to_thread(db.add_drug_master_manual_unit, row_id, unit)
+    if result is None:
+        raise HTTPException(status_code=404, detail="해당 행을 찾을 수 없습니다")
+    return result
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

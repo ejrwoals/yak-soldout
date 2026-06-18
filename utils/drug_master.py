@@ -138,7 +138,10 @@ def import_master(
     maker_col: Optional[str] = None,
     header_row: int = 0,
 ) -> dict:
-    """선택한 컬럼 매핑으로 약품 마스터를 등록(덮어쓰기)한다.
+    """선택한 컬럼 매핑으로 약품 마스터를 병합(upsert)한다.
+
+    (약품명+보험코드) 기준으로 있으면 갱신, 없으면 추가하며, 새 파일에 없는 기존 약품은
+    삭제하지 않고 보존한다. 이미 수집/직접추가한 규격(unit, unit_manual)도 그대로 유지된다.
 
     Args:
         name_col: 약품명에 해당하는 컬럼 (필수)
@@ -177,11 +180,16 @@ def import_master(
     if not drugs:
         raise ValueError("선택한 컬럼에서 유효한 약품명을 찾지 못했습니다.")
 
-    # 약품 마스터 전체 교체 (DB drug_master 테이블)
+    # 약품 마스터 병합(upsert) — 기존 약품/규격 보존, 신규 추가·기존 갱신
     imported_at = datetime.now().isoformat(timespec="seconds")
-    stored = db.replace_drug_master(drugs, filename, imported_at)
+    result = db.upsert_drug_master(drugs, filename, imported_at)
 
-    return {"count": stored, "source_filename": filename}
+    return {
+        "inserted": result["inserted"],
+        "updated": result["updated"],
+        "count": result["total"],
+        "source_filename": filename,
+    }
 
 
 def load_master() -> Optional[dict]:
@@ -207,7 +215,7 @@ def cache_key() -> tuple:
 
 
 def status() -> dict:
-    """마스터 등록 현황 요약 (목록 본문 제외)."""
+    """마스터 등록 현황 요약 (목록 본문 제외). 포장단위(unit) 수집 현황 포함."""
     meta = db.drug_master_meta()
     if not meta["count"]:
         return {"registered": False, "count": 0}
@@ -217,4 +225,5 @@ def status() -> dict:
         "source_filename": meta["source_file"],
         "imported_at": meta["imported_at"],
         "columns": {},
+        "unit_stats": db.drug_master_unit_stats(),
     }
