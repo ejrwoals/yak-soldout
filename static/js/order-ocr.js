@@ -117,7 +117,7 @@
         tr.innerHTML = `
             <td class="col-idx"></td>
             <td class="col-name"><input type="text" class="f-name" placeholder="약품명"><div class="match-slot"></div></td>
-            <td class="col-unit"><input type="text" class="f-unit" placeholder="포장단위"></td>
+            <td class="col-unit"><input type="text" class="f-unit" placeholder="포장단위"><div class="unit-suggest"></div></td>
             <td class="col-qty"><input type="text" class="f-qty" placeholder="수량"></td>
             <td class="col-del"><button class="del-row-btn" title="행 삭제"><i class="bi bi-trash"></i></button></td>
         `;
@@ -125,6 +125,8 @@
         nameInput.value = item.drug_name || '';
         tr.querySelector('.f-unit').value = item.package_unit || '';
         tr.querySelector('.f-qty').value = item.quantity || '';
+        // 사용자가 규격을 직접 고치면 자동보정 없이 상태(일치/경고)만 다시 평가
+        tr.querySelector('.f-unit').addEventListener('input', () => applyUnitFix(tr, tr._knownUnits, { autoCorrect: false }));
         const slot = tr.querySelector('.match-slot');
         renderMatch(slot, nameInput, item.match, item.drug_name || '');  // 내부에서 slot 을 비우므로 먼저
         // 마스터가 등록돼 있으면 어느 행이든 '직접 검색' 가능
@@ -185,6 +187,7 @@
                     li.addEventListener('click', () => {
                         nameInput.value = r.name;   // 검색 선택은 정식 전체명으로
                         markUserConfirmed(slot);    // 직접 검색으로 고름 → 확인 표시
+                        applyUnitFix(nameInput.closest('tr'), r.known_units, { autoCorrect: true });
                         close();
                     });
                     list.appendChild(li);
@@ -250,8 +253,78 @@
         sel.addEventListener('change', () => {
             nameInput.value = sel.value;
             markUserConfirmed(slot);   // 사용자가 직접 고름 → 확인 표시
+            // 선택한 약의 규격으로 보정 (원본으로 되돌리면 규격 데이터 없음)
+            const picked = options.find((c) => c.name === sel.value);
+            applyUnitFix(nameInput.closest('tr'), picked ? picked.known_units : [], { autoCorrect: true });
         });
         return sel;
+    }
+
+    // =================== 규격(포장단위) 자동 보정 ===================
+    // 규격을 (개수, 제형)으로 정규화. 포장표기 괄호는 무시. 예: "30정(병)" → {count:30, form:"정"}
+    function normalizeUnit(s) {
+        s = (s || '').trim();
+        const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*(.*)$/);
+        if (!m) return { count: null, form: s.replace(/\(.*?\)/g, '').trim(), raw: s };
+        return { count: parseFloat(m[1]), form: m[2].replace(/\(.*?\)/g, '').trim(), raw: s };
+    }
+
+    // 매칭된 약의 알려진 규격(knownUnits)으로 규격칸을 검증/보정한다. (개수 위주 비교)
+    // opts.autoCorrect=true 면 확신 케이스에서 값까지 바꾼다(약품 선택/칩 클릭 시).
+    function applyUnitFix(tr, knownUnits, opts) {
+        opts = opts || {};
+        const input = tr.querySelector('.f-unit');
+        const sug = tr.querySelector('.unit-suggest');
+        tr._knownUnits = knownUnits || [];
+        input.classList.remove('u-ok', 'u-auto', 'u-warn');
+        sug.innerHTML = '';
+
+        const known = (knownUnits || []).filter(Boolean);
+        if (!known.length) return;  // 규격 데이터 없음 → 손대지 않음
+
+        const kp = known.map((u) => normalizeUnit(u))
+            .sort((a, b) => (a.count ?? 1e9) - (b.count ?? 1e9));
+        const cur = normalizeUnit(input.value);
+        let state = null;
+
+        if (cur.count == null) {
+            // 빈칸/숫자없음 — 유효 규격이 하나뿐이면 자동 채움, 아니면 선택 필요(경고)
+            if (opts.autoCorrect && kp.length === 1) { input.value = kp[0].raw; state = 'auto'; }
+            else state = 'warn';
+        } else {
+            const matches = kp.filter((k) => k.count === cur.count);
+            if (matches.length) {
+                // 이미 유효 규격과 '정확히' 일치하면 유지 (같은 개수의 다른 포장 선택을 덮지 않음)
+                const exact = matches.some((k) => k.raw === input.value.trim());
+                if (exact) state = 'ok';
+                else if (opts.autoCorrect) { input.value = matches[0].raw; state = 'auto'; }  // 개수만 같음 → 정식 표기로(여러개면 임의 1개)
+                else state = 'ok';
+            } else {
+                state = 'warn';  // 개수가 유효 규격 집합에 없음 → 오인식 의심
+            }
+        }
+        if (state) input.classList.add('u-' + state);
+        renderUnitChips(sug, tr, kp);
+    }
+
+    // 알려진 규격을 클릭 가능한 칩으로 표시. 현재 값과 개수가 같은 칩은 강조.
+    function renderUnitChips(sug, tr, kp) {
+        sug.innerHTML = '';
+        const input = tr.querySelector('.f-unit');
+        const curRaw = input.value.trim();
+        kp.forEach((k) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            // 정확히 일치하는 규격만 강조 (같은 개수라도 포장이 다르면 강조 안 함)
+            chip.className = 'unit-chip-btn' + (k.raw === curRaw ? ' active' : '');
+            chip.textContent = k.raw;
+            chip.title = '이 규격으로 설정';
+            chip.addEventListener('click', () => {
+                input.value = k.raw;
+                applyUnitFix(tr, tr._knownUnits, { autoCorrect: true });
+            });
+            sug.appendChild(chip);
+        });
     }
 
     // 약품 마스터 매칭 결과 표시
@@ -264,6 +337,8 @@
             nameInput.value = match.best.name;
             slot.appendChild(matchBadge('matched', '✓ 약품명 일치', match.best.name));
             slot.appendChild(buildApplySelect(slot, nameInput, original, [match.best], match.best.name));
+            // 매칭된 약의 알려진 규격으로 포장단위 자동 보정
+            applyUnitFix(nameInput.closest('tr'), match.best.known_units, { autoCorrect: true });
             return;
         }
         if (match.status === 'none') {

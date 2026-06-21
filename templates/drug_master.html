@@ -185,9 +185,48 @@
 
                 <div id="modalStatus" class="status-msg" hidden></div>
                 <div class="modal-actions">
-                    <span class="hint" style="margin-right:auto;">기존 마스터가 있으면 <strong>덮어쓰기</strong> 됩니다.</span>
+                    <span class="hint" style="margin-right:auto;">기존 약품은 유지되고 <strong>신규 추가·기존 갱신</strong>됩니다(병합).</span>
                     <button id="importBtn" class="btn btn-primary">
                         <i class="bi bi-database-add"></i> 이 매핑으로 등록
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 주문 자유입력 약품 목록 모달 -->
+    <div id="orphanModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-pencil-square"></i> 주문 자유입력 약품</h2>
+                <button class="modal-close" id="closeOrphanModal" title="닫기">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="hint">주문서에 자유입력되어 아직 마스터에 없는 약품입니다. 해당 약품이 포함된 엑셀로 마스터를 갱신하면 연결 후보로 제시됩니다.</p>
+                <div id="orphanList" class="orphan-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 주문서 약품 소급 연결 모달 -->
+    <div id="linkModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="bi bi-link-45deg"></i> 주문서 약품 연결</h2>
+                <button class="modal-close" id="closeLinkModal" title="닫기">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="hint">
+                    예전에 마스터에 없어 <strong>자유입력</strong>으로 주문서에 적었던 약품이,
+                    이번 업데이트로 마스터에 포함된 것으로 감지되었습니다.
+                    연결하면 해당 주문 항목의 약품명이 <strong>마스터 공식명</strong>으로 바뀝니다.
+                </p>
+                <div id="linkList" class="link-list"></div>
+                <div id="linkStatus" class="status-msg" hidden></div>
+                <div class="modal-actions">
+                    <button id="linkSkipBtn" class="btn btn-ghost" style="margin-right:auto;">건너뛰기</button>
+                    <button id="linkApplyBtn" class="btn btn-primary">
+                        <i class="bi bi-link-45deg"></i> 선택 연결
                     </button>
                 </div>
             </div>

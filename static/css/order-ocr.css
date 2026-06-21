@@ -296,7 +296,7 @@
     letter-spacing: 0.03em;
 }
 .review-table .col-idx  { width: 36px; text-align: center; color: var(--text-muted); }
-.review-table .col-unit { width: 150px; }
+.review-table .col-unit { width: 180px; vertical-align: top; }
 .review-table .col-qty  { width: 100px; }
 .review-table .col-del  { width: 44px; }
 
@@ -315,6 +315,30 @@
     outline: none;
     border-color: var(--primary);
     background: var(--bg-primary);
+}
+
+/* 규격(포장단위) 자동보정 상태 표시 */
+.review-table .f-unit.u-auto { border-color: #7c3aed; background: rgba(124,58,237,0.07); }  /* 자동 보정됨 */
+.review-table .f-unit.u-warn { border-color: #d97706; background: rgba(217,119,6,0.09); }   /* 유효 규격에 없음 — 확인 */
+.review-table .f-unit.u-ok   { border-color: rgba(20,184,166,0.55); }                        /* 유효 규격과 일치 */
+
+/* 알려진 규격 칩 (클릭해서 설정) */
+.unit-suggest {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 5px;
+}
+.unit-chip-btn {
+    padding: 1px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.72rem; font-family: inherit; cursor: pointer;
+    white-space: nowrap;
+}
+.unit-chip-btn:hover { border-color: var(--primary); color: var(--primary); }
+.unit-chip-btn.active {
+    background: rgba(124,58,237,0.14); border-color: #7c3aed; color: #7c3aed; font-weight: 600;
 }
 .del-row-btn {
     background: transparent;

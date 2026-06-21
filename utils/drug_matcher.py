@@ -113,8 +113,29 @@ def _query_core(name: str) -> str:
     return _CORE_CUT.sub("", s).strip()
 
 
-# (key, entries, jamo_list) 캐시 — 마스터(DB)가 바뀌면 재구축
-_cache = {"key": None, "entries": None, "jamo": None}
+# (key, entries, jamo_list, units) 캐시 — 마스터(DB)가 바뀌면 재구축
+_cache = {"key": None, "entries": None, "jamo": None, "units": None}
+
+
+def _unit_tokens(s: str) -> list[str]:
+    """", "로 합쳐 저장한 규격 문자열을 토큰 리스트로 분해."""
+    return [u.strip() for u in (s or "").split(",") if u.strip()]
+
+
+def _known_units(core: str) -> list[str]:
+    """해당 약품(표시 핵심명 기준)의 알려진 규격 집합. 개수 오름차순으로 정렬해 반환.
+
+    같은 표시명을 가진 여러 마스터 행의 수집 규격(unit)+직접추가 규격(unit_manual)을 합친 것.
+    """
+    units = (_cache.get("units") or {}).get(core)
+    if not units:
+        return []
+
+    def _count_key(u: str):
+        m = re.match(r"\s*(\d+(?:\.\d+)?)", u)
+        return (0, float(m.group(1))) if m else (1, u)
+
+    return sorted(units, key=_count_key)
 
 
 def _get_index():
@@ -130,42 +151,43 @@ def _get_index():
         return None, None
 
     entries, jamo = [], []
+    units: dict[str, set] = {}   # 표시 핵심명(core) → 규격 토큰 집합
     for d in data.get("drugs", []):
         name = d.get("name", "")
         core = _master_core(name)
         if not core:
             continue
+        disp = _display(name)            # 후보 표시용 (용량 포함) = 규격 집계 키
         entries.append({
             "name": name,
-            "core": _display(name),          # 후보 표시용 (용량 포함)
+            "core": disp,
             "strength": _strength(name),     # 용량 숫자 (매칭 비교용)
             "insurance_code": d.get("insurance_code", ""),
             "maker": d.get("maker", ""),
         })
         # 매칭(브랜드 유사도)은 숫자·제형 뗀 형태로
         jamo.append(decompose(_strip_form(core)))
+        # 같은 표시명의 수집·직접추가 규격을 합쳐 둔다 (규격 자동보정용)
+        toks = _unit_tokens(d.get("unit", "")) + _unit_tokens(d.get("unit_manual", ""))
+        if toks:
+            units.setdefault(disp, set()).update(toks)
 
-    _cache.update(key=key, entries=entries, jamo=jamo)
+    _cache.update(key=key, entries=entries, jamo=jamo, units=units)
     return entries, jamo
 
 
-def match_one(ocr_name: str) -> dict:
-    """OCR 약품명 하나에 대한 매칭 결과.
+def _ranked_candidates(ocr_name: str) -> list[dict]:
+    """OCR 약품명에 대한 상위 후보 리스트(점수 내림차순, 표시명 기준 중복 제거).
 
-    반환: {
-      status: 'matched' | 'candidate' | 'none' | 'skip',
-      best:   {name, core, score, insurance_code, maker} | None,
-      candidates: [ {name, core, score, ...}, ... ]   # status=='candidate' 일 때만 채움
-    }
-    'skip' = 마스터 미등록.
+    상태 판정 없이 순수 순위만 반환한다. match_one / top_candidates 가 공유한다.
     """
     entries, jamo = _get_index()
     if not entries:
-        return {"status": "skip", "best": None, "candidates": []}
+        return []
 
     q = decompose(_strip_form(_query_core(ocr_name)))
     if not q:
-        return {"status": "none", "best": None, "candidates": []}
+        return []
     q_strength = _strength(_MAKER_PREFIX.sub("", ocr_name))
 
     # 전체 항목을 접두-보정 점수로 평가 (긴 마스터명의 접두를 놓치지 않도록 사전 필터 없이),
@@ -192,10 +214,33 @@ def match_one(ocr_name: str) -> dict:
             "score": round(final, 1),
             "insurance_code": e["insurance_code"],
             "maker": e["maker"],
+            "known_units": _known_units(e["core"]),
         })
         if len(candidates) >= MAX_CANDIDATES:
             break
+    return candidates
 
+
+def top_candidates(ocr_name: str, limit: int = MAX_CANDIDATES) -> list[dict]:
+    """OCR 약품명의 상위 후보 N개 (상태 판정 없이). 소급 연결 드롭다운 등에 사용."""
+    return _ranked_candidates(ocr_name)[:limit]
+
+
+def match_one(ocr_name: str) -> dict:
+    """OCR 약품명 하나에 대한 매칭 결과.
+
+    반환: {
+      status: 'matched' | 'candidate' | 'none' | 'skip',
+      best:   {name, core, score, insurance_code, maker} | None,
+      candidates: [ {name, core, score, ...}, ... ]   # status=='candidate' 일 때만 채움
+    }
+    'skip' = 마스터 미등록.
+    """
+    entries, _ = _get_index()
+    if not entries:
+        return {"status": "skip", "best": None, "candidates": []}
+
+    candidates = _ranked_candidates(ocr_name)
     if not candidates:
         return {"status": "none", "best": None, "candidates": []}
 
@@ -214,6 +259,7 @@ def _pub(e: dict, score: float) -> dict:
         "score": round(score, 1),
         "insurance_code": e["insurance_code"],
         "maker": e["maker"],
+        "known_units": _known_units(e["core"]),
     }
 
 

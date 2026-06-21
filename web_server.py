@@ -89,6 +89,7 @@ from utils.unit_collector import UnitCollector
 from utils import ocr_service
 from utils import drug_master
 from utils import drug_matcher
+from utils import order_reconcile
 import db
 from scrapers.browser_manager import BrowserManager
 from scrapers.geoweb_scraper import GeowebScraper
@@ -443,6 +444,28 @@ async def drug_master_manual_unit(data: dict):
     if result is None:
         raise HTTPException(status_code=404, detail="해당 행을 찾을 수 없습니다")
     return result
+
+@app.get("/api/drug-master/orphan-drugs")
+async def drug_master_orphan_drugs():
+    """주문서 자유입력 약품(마스터 미일치) 목록 — 이름·주문 항목 수·마지막 주문일자."""
+    return {"orphans": await asyncio.to_thread(db.list_orphan_order_drugs)}
+
+@app.get("/api/order-ocr/link-candidates")
+async def order_link_candidates():
+    """마스터 업데이트 후 — 마스터에 없던 주문 약품 중 이번에 매칭된 연결 후보 목록."""
+    candidates = await asyncio.to_thread(order_reconcile.find_link_candidates)
+    return {"candidates": candidates}
+
+@app.post("/api/order-ocr/link")
+async def order_link(data: dict):
+    """선택된 연결 적용 — 고아 주문 약품명을 마스터 공식명으로 일괄 갱신.
+
+    body: {"links": [{"orphan_name": ..., "master_name": ...}, ...]}
+    """
+    links = data.get("links") or []
+    if not isinstance(links, list) or not links:
+        raise HTTPException(status_code=400, detail="연결할 항목이 없습니다")
+    return await asyncio.to_thread(order_reconcile.apply_links, links)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

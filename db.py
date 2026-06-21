@@ -358,7 +358,7 @@ def upsert_drug_master(drugs: List[Dict[str, Any]], source_file: str, imported_a
 def load_drug_master() -> List[Dict[str, Any]]:
     """drug_master 전체를 매칭용 dict 리스트로 반환."""
     rows = query_all(
-        "SELECT name, insurance_code, maker, maker_norm, unit FROM drug_master ORDER BY id"
+        "SELECT name, insurance_code, maker, maker_norm, unit, unit_manual FROM drug_master ORDER BY id"
     )
     return [
         {
@@ -367,6 +367,7 @@ def load_drug_master() -> List[Dict[str, Any]]:
             "maker": r["maker"] or "",
             "maker_norm": r["maker_norm"] or "",
             "unit": r["unit"] or "",
+            "unit_manual": r["unit_manual"] or "",
         }
         for r in rows
     ]
@@ -390,10 +391,14 @@ def drug_master_meta() -> Dict[str, Any]:
 
 def drug_master_cache_key() -> tuple:
     """매처 캐시 무효화 신호. 임포트(전체교체)마다 MAX(id)/count/imported_at이 바뀜."""
+    # unit/unit_manual 은 UPDATE 로만 바뀌어 count/id/imported_at 이 안 변하므로,
+    # 규격 텍스트 총길이를 시그니처에 포함해 규격 수집·직접추가 시에도 매처 캐시가 갱신되게 한다.
     row = query_one(
-        "SELECT COUNT(*) AS c, COALESCE(MAX(imported_at),'') AS m, COALESCE(MAX(id),0) AS x FROM drug_master"
+        """SELECT COUNT(*) AS c, COALESCE(MAX(imported_at),'') AS m, COALESCE(MAX(id),0) AS x,
+                  COALESCE(SUM(LENGTH(COALESCE(unit,'')) + LENGTH(COALESCE(unit_manual,''))), 0) AS u
+           FROM drug_master"""
     )
-    return (row["c"], row["m"], row["x"]) if row else (0, "", 0)
+    return (row["c"], row["m"], row["x"], row["u"]) if row else (0, "", 0, 0)
 
 
 # ----------------------------------------------------------------------------
@@ -507,6 +512,40 @@ def add_drug_master_manual_unit(row_id: int, unit: str) -> Optional[Dict[str, An
     new_manual = ", ".join(manual)
     execute("UPDATE drug_master SET unit_manual = ? WHERE id = ?", (new_manual, row_id))
     return {"added": True, "unit_manual": new_manual}
+
+
+def count_orphan_order_drugs() -> int:
+    """주문서에만 있고 마스터에는 정확히 일치하는 이름이 없는 약품(자유입력 고아) 수.
+
+    이름 기준 distinct. 마스터 소급 연결(order_reconcile) 대상 규모를 가늠하는 데 쓴다.
+    """
+    row = query_one(
+        """SELECT COUNT(DISTINCT oi.drug_name) AS c
+           FROM order_items oi
+           WHERE TRIM(oi.drug_name) != ''
+             AND NOT EXISTS (SELECT 1 FROM drug_master dm WHERE dm.name = oi.drug_name)"""
+    )
+    return (row["c"] if row else 0) or 0
+
+
+def list_orphan_order_drugs() -> List[Dict[str, Any]]:
+    """주문서 자유입력 약품(마스터 미일치) 목록.
+
+    이름별로 주문 항목 수와 마지막 주문일자(MAX(order_date))를 함께, 최근 주문 순으로 반환한다.
+    """
+    rows = query_all(
+        """SELECT oi.drug_name AS name, COUNT(*) AS cnt, MAX(o.order_date) AS last_date
+           FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+           WHERE TRIM(oi.drug_name) != ''
+             AND NOT EXISTS (SELECT 1 FROM drug_master dm WHERE dm.name = oi.drug_name)
+           GROUP BY oi.drug_name
+           ORDER BY last_date DESC, oi.drug_name"""
+    )
+    return [
+        {"name": r["name"], "item_count": r["cnt"], "last_order_date": r["last_date"] or ""}
+        for r in rows
+    ]
 
 
 # ----------------------------------------------------------------------------

@@ -221,6 +221,51 @@
 /* 컬럼 매핑 모달 — 미리보기 표가 넓어 기본(700px)보다 넓게 */
 .modal-content--wide { max-width: 980px; }
 
+/* 주문서 약품 소급 연결 모달 */
+.link-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
+.link-item {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color); border-radius: 10px;
+}
+.link-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.link-from { font-weight: 600; color: var(--text-primary); }
+.link-from .link-count {
+    font-weight: 500; font-size: 0.78rem; color: var(--text-muted);
+    background: var(--bg-tertiary); border-radius: 999px; padding: 1px 7px; margin-left: 4px;
+}
+.link-pick { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.link-select {
+    flex: 1; min-width: 0; max-width: 420px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color); border-radius: 8px;
+    background: var(--bg-primary); color: var(--text-primary);
+    font-family: inherit; font-size: 0.9rem;
+}
+
+/* 등록 현황 옆 '주문 자유입력 N' 칩 (클릭 → 목록 모달) */
+.master-status .orphan-count {
+    font-size: 0.78rem; font-weight: 600; color: #d97706;
+    background: rgba(217,119,6,0.12); border-radius: 999px; padding: 1px 8px;
+    cursor: pointer; transition: background 0.15s;
+}
+.master-status .orphan-count:hover { background: rgba(217,119,6,0.22); }
+
+/* 주문 자유입력 약품 목록 */
+.orphan-list { display: flex; flex-direction: column; margin-top: 6px; max-height: 55vh; overflow-y: auto; }
+.orphan-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+.orphan-name { font-weight: 600; color: var(--text-primary); min-width: 0; word-break: break-all; }
+.orphan-meta { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.orphan-date { font-size: 0.82rem; color: var(--text-muted); }
+.orphan-rowcount {
+    font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
+    background: var(--bg-tertiary); border-radius: 999px; padding: 1px 8px;
+}
+.orphan-empty { text-align: center; color: var(--text-muted); padding: 20px 0; }
+
 /* 섹션 소제목 */
 .subhead {
     font-size: 0.95rem; font-weight: 700;

@@ -245,6 +245,7 @@
                 `갱신 완료 — 신규 ${(data.inserted ?? 0).toLocaleString()}개 추가, ` +
                 `${(data.updated ?? 0).toLocaleString()}개 갱신 (총 ${(data.count ?? 0).toLocaleString()}개)`);
             loadStatus();
+            checkOrderLinks();  // 마스터에 없던 주문 약품 소급 연결 검토
         } catch (e) {
             showStatusOn(modalStatus, 'error', `등록 실패: ${e.message}`);
         } finally {
@@ -259,11 +260,16 @@
             const data = await resp.json();
             if (data.registered) {
                 const when = (data.imported_at || '').replace('T', ' ');
+                const orphan = data.orphan_order_count || 0;
+                const orphanChip = orphan
+                    ? ` <span class="orphan-count" title="주문서에만 있고 마스터엔 없는 자유입력 약품 수">주문 자유입력 ${orphan.toLocaleString()}</span>`
+                    : '';
                 masterStatus.className = 'master-status registered';
                 masterStatus.innerHTML =
                     `<span class="ms-line">` +
                         `<i class="bi bi-check-circle-fill" style="color:var(--success)"></i>` +
                         ` 등록됨 <span class="count">${data.count.toLocaleString()}개</span>` +
+                        orphanChip +
                     `</span>` +
                     `<span class="meta">${escapeHtml(data.source_filename || '')} · ${escapeHtml(when)}</span>`;
                 renderUnitStats(data.unit_stats);
@@ -517,6 +523,140 @@
         });
     }
 
+    // =================== 주문서 약품 소급 연결 ===================
+    const linkModal = document.getElementById('linkModal');
+    function openLinkModal() { linkModal.classList.add('show'); }
+    function closeLinkModalFn() { linkModal.classList.remove('show'); }
+
+    // 마스터 업데이트 직후: 마스터에 없던 주문 약품 중 이번에 매칭된 후보가 있으면 확인 모달
+    async function checkOrderLinks() {
+        try {
+            const resp = await fetch('/api/order-ocr/link-candidates');
+            const data = await resp.json().catch(() => ({}));
+            const cands = (data && data.candidates) || [];
+            if (!cands.length) return;
+            renderLinkList(cands);
+            document.getElementById('linkStatus').hidden = true;
+            openLinkModal();
+        } catch (e) { /* 부가기능이라 실패해도 무시 */ }
+    }
+
+    function renderLinkList(cands) {
+        const list = document.getElementById('linkList');
+        list.innerHTML = '';
+        cands.forEach((c) => {
+            const item = document.createElement('div');
+            item.className = 'link-item';
+            const head = document.createElement('div');
+            head.className = 'link-from';
+            head.innerHTML = `${escapeHtml(c.orphan_name)} <span class="link-count">${c.item_count}건</span>`;
+
+            const pick = document.createElement('div');
+            pick.className = 'link-pick';
+            pick.innerHTML = '<i class="bi bi-arrow-return-right"></i>';
+            const sel = document.createElement('select');
+            sel.className = 'link-select';
+            sel.dataset.from = c.orphan_name;
+            const none = document.createElement('option');
+            none.value = '';
+            none.textContent = '— 연결 안 함 —';
+            sel.appendChild(none);
+            (c.candidates || []).forEach((s) => {
+                const o = document.createElement('option');
+                o.value = s.name;
+                o.textContent = `${s.core || s.name} (${s.score}%)`;
+                o.title = s.name;
+                sel.appendChild(o);
+            });
+            // 최상위가 확신(>=90)일 때만 기본 선택; 아니면 '연결 안 함'으로 두어 오매칭을 막는다
+            if (c.auto && c.candidates && c.candidates[0]) sel.value = c.candidates[0].name;
+            pick.appendChild(sel);
+
+            const text = document.createElement('div');
+            text.className = 'link-text';
+            text.appendChild(head);
+            text.appendChild(pick);
+            item.appendChild(text);
+            list.appendChild(item);
+        });
+    }
+
+    async function applyLinks() {
+        const list = document.getElementById('linkList');
+        const links = [...list.querySelectorAll('.link-select')]
+            .filter((sel) => sel.value)
+            .map((sel) => ({ orphan_name: sel.dataset.from, master_name: sel.value }));
+        const statusEl = document.getElementById('linkStatus');
+        if (!links.length) { showStatusOn(statusEl, 'error', '연결할 항목을 선택하세요.'); return; }
+        const applyBtn = document.getElementById('linkApplyBtn');
+        applyBtn.disabled = true;
+        showStatusOn(statusEl, 'loading', '연결 중…', true);
+        try {
+            const resp = await fetch('/api/order-ocr/link', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ links }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(detailText(data, resp.status));
+            closeLinkModalFn();
+            showStatus('success', `${data.linked_names}개 약품 · ${data.linked_items}개 주문 항목을 연결했습니다.`);
+        } catch (e) {
+            showStatusOn(statusEl, 'error', `연결 실패: ${e.message}`);
+        } finally {
+            applyBtn.disabled = false;
+        }
+    }
+
+    function bindLinkModal() {
+        document.getElementById('closeLinkModal').addEventListener('click', closeLinkModalFn);
+        document.getElementById('linkSkipBtn').addEventListener('click', closeLinkModalFn);
+        document.getElementById('linkApplyBtn').addEventListener('click', applyLinks);
+        linkModal.addEventListener('click', (e) => { if (e.target === linkModal) closeLinkModalFn(); });
+    }
+
+    // =================== 주문 자유입력 약품 목록 ===================
+    const orphanModal = document.getElementById('orphanModal');
+
+    async function openOrphanModal() {
+        const listEl = document.getElementById('orphanList');
+        listEl.innerHTML = '<div class="orphan-empty">불러오는 중…</div>';
+        orphanModal.classList.add('show');
+        try {
+            const resp = await fetch('/api/drug-master/orphan-drugs');
+            const data = await resp.json().catch(() => ({}));
+            const orphans = (data && data.orphans) || [];
+            if (!orphans.length) {
+                listEl.innerHTML = '<div class="orphan-empty">자유입력 약품이 없습니다.</div>';
+                return;
+            }
+            listEl.innerHTML = '';
+            orphans.forEach((o) => {
+                const row = document.createElement('div');
+                row.className = 'orphan-row';
+                const date = (o.last_order_date || '').slice(0, 10);
+                row.innerHTML =
+                    `<span class="orphan-name"></span>` +
+                    `<span class="orphan-meta">` +
+                      (date ? `<span class="orphan-date"><i class="bi bi-calendar3"></i> ${escapeHtml(date)}</span>` : '') +
+                      `<span class="orphan-rowcount">${o.item_count}건</span>` +
+                    `</span>`;
+                row.querySelector('.orphan-name').textContent = o.name;
+                listEl.appendChild(row);
+            });
+        } catch (e) {
+            listEl.innerHTML = '<div class="orphan-empty">불러오지 못했습니다.</div>';
+        }
+    }
+
+    function bindOrphanModal() {
+        document.getElementById('closeOrphanModal').addEventListener('click', () => orphanModal.classList.remove('show'));
+        orphanModal.addEventListener('click', (e) => { if (e.target === orphanModal) orphanModal.classList.remove('show'); });
+        // 현황 카드의 '주문 자유입력 N' 칩 클릭 → 목록 모달 (칩은 매번 새로 그려지므로 위임)
+        masterStatus.addEventListener('click', (e) => {
+            if (e.target.closest('.orphan-count')) openOrphanModal();
+        });
+    }
+
     // =================== Keep-alive WebSocket (서버 자동 종료 방지) ===================
     let ws = null, reconnectTimer = null;
     function connectWebSocket() {
@@ -544,6 +684,8 @@
         collectUnitBtn.addEventListener('click', startCollectUnits);
         stopUnitBtn.addEventListener('click', stopCollectUnits);
         bindViewer();
+        bindLinkModal();
+        bindOrphanModal();
         // 모달 닫기: X 버튼 / 배경 클릭 / ESC
         closeMapModal.addEventListener('click', closeModal);
         mapModal.addEventListener('click', (e) => { if (e.target === mapModal) closeModal(); });
