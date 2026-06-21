@@ -298,9 +298,9 @@
         const { total = 0, filled = 0, missing_with_code = 0 } = stats;
         const noCode = Math.max(0, total - filled - missing_with_code);
         unitStats.innerHTML =
-            `<span class="us-item"><i class="bi bi-check-circle" style="color:var(--success)"></i> 수집됨 <b>${filled.toLocaleString()}</b></span>` +
-            `<span class="us-item"><i class="bi bi-hourglass" style="color:var(--warning,#d97706)"></i> 미수집 <b>${missing_with_code.toLocaleString()}</b></span>` +
-            (noCode ? `<span class="us-item us-muted"><i class="bi bi-dash-circle"></i> 코드없음 ${noCode.toLocaleString()}</span>` : '');
+            `<span class="us-item"><i class="bi bi-check-circle" style="color:var(--success)"></i> 규격수집됨 <b>${filled.toLocaleString()}</b></span>` +
+            `<span class="us-item"><i class="bi bi-hourglass" style="color:var(--warning,#d97706)"></i> 규격미수집 <b>${missing_with_code.toLocaleString()}</b></span>` +
+            (noCode ? `<span class="us-item us-muted"><i class="bi bi-dash-circle"></i> 보험코드없음 ${noCode.toLocaleString()}</span>` : '');
         // 수집할 대상이 없으면 버튼 비활성화
         collectUnitBtn.disabled = collecting || missing_with_code === 0;
         if (!collecting && missing_with_code === 0) {
@@ -403,6 +403,7 @@
     const DM_LIMIT = 50;
     let dmOffset = 0;
     let dmQuery = '';
+    let dmFilter = '';   // '' | 'filled' | 'missing' | 'nocode'
     let dmTotal = 0;
     let dmSearchTimer = null;
 
@@ -439,7 +440,7 @@
 
     async function loadRows() {
         tableCard.hidden = false;
-        const params = new URLSearchParams({ offset: dmOffset, limit: DM_LIMIT, q: dmQuery });
+        const params = new URLSearchParams({ offset: dmOffset, limit: DM_LIMIT, q: dmQuery, unit_filter: dmFilter });
         try {
             const resp = await fetch(`/api/drug-master/rows?${params}`);
             const data = await resp.json();
@@ -492,6 +493,17 @@
     }
 
     function bindViewer() {
+        // 규격 수집 필터 (전체/규격수집됨/규격미수집/보험코드없음)
+        const filterBar = document.getElementById('mdbFilters');
+        filterBar.addEventListener('click', (e) => {
+            const btn = e.target.closest('.mdb-filter-btn');
+            if (!btn) return;
+            filterBar.querySelectorAll('.mdb-filter-btn').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            dmFilter = btn.dataset.filter || '';
+            dmOffset = 0;
+            loadRows();
+        });
         dmSearch.addEventListener('input', () => {
             clearTimeout(dmSearchTimer);
             dmSearchTimer = setTimeout(() => {

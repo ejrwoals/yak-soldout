@@ -105,6 +105,20 @@
     flex: 1; font-family: inherit; font-size: 0.92rem;
     color: var(--text-primary);
 }
+/* 규격 수집 필터 (전체/규격수집됨/규격미수집/보험코드없음) */
+.mdb-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.mdb-filter-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border-color); border-radius: 999px;
+    background: var(--bg-primary); color: var(--text-secondary);
+    font-family: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mdb-filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+.mdb-filter-btn.active {
+    background: var(--primary); border-color: var(--primary); color: #fff;
+}
+
 .mdb-table-wrap { max-height: 520px; overflow: auto; }
 .mdb-table {
     width: 100%; border-collapse: collapse;

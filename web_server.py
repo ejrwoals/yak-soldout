@@ -423,11 +423,11 @@ async def drug_master_collect_units_stop():
     return {"message": "중단을 요청했습니다"}
 
 @app.get("/api/drug-master/rows")
-async def drug_master_rows(offset: int = 0, limit: int = 50, q: str = ""):
-    """마스터 DB 테이블 뷰어 — 페이지 단위 조회 (약품명/보험코드 검색)."""
+async def drug_master_rows(offset: int = 0, limit: int = 50, q: str = "", unit_filter: str = ""):
+    """마스터 DB 테이블 뷰어 — 페이지 단위 조회 (약품명/보험코드 검색 + 규격 수집 필터)."""
     limit = max(1, min(int(limit), 200))
     offset = max(0, int(offset))
-    return await asyncio.to_thread(db.list_drug_master_rows, offset, limit, q)
+    return await asyncio.to_thread(db.list_drug_master_rows, offset, limit, q, unit_filter)
 
 @app.post("/api/drug-master/manual-unit")
 async def drug_master_manual_unit(data: dict):

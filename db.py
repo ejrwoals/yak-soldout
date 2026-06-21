@@ -457,17 +457,35 @@ def _split_units(s: str) -> List[str]:
     return [u.strip() for u in (s or "").split(",") if u.strip()]
 
 
-def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "") -> Dict[str, Any]:
+def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "",
+                          unit_filter: str = "") -> Dict[str, Any]:
     """마스터 테이블을 페이지 단위로 조회(뷰어용). q는 약품명/보험코드 부분일치 검색.
 
-    반환: {"total": 전체(검색 적용) 행 수, "rows": [...]}.
-    """
-    where, params = "", []
-    if q.strip():
-        where = "WHERE name LIKE ? OR insurance_code LIKE ?"
-        like = f"%{q.strip()}%"
-        params = [like, like]
+    unit_filter (규격 수집 현황 배지와 동일 분류, 비우면 전체):
+      - 'filled'  : 규격수집됨 (unit 있음)
+      - 'missing' : 규격미수집 (unit 없음 + 보험코드 있음)
+      - 'nocode'  : 보험코드없음 (unit 없음 + 보험코드 없음)
 
+    반환: {"total": 전체(필터 적용) 행 수, "rows": [...]}.
+    """
+    conds: List[str] = []
+    params: List[Any] = []
+    if q.strip():
+        conds.append("(name LIKE ? OR insurance_code LIKE ?)")
+        like = f"%{q.strip()}%"
+        params += [like, like]
+
+    uf = (unit_filter or "").strip()
+    if uf == "filled":
+        conds.append("(unit IS NOT NULL AND TRIM(unit) != '')")
+    elif uf == "missing":
+        conds.append("((unit IS NULL OR TRIM(unit) = '') "
+                     "AND insurance_code IS NOT NULL AND TRIM(insurance_code) != '')")
+    elif uf == "nocode":
+        conds.append("((unit IS NULL OR TRIM(unit) = '') "
+                     "AND (insurance_code IS NULL OR TRIM(insurance_code) = ''))")
+
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
     total = query_one(f"SELECT COUNT(*) AS c FROM drug_master {where}", params)["c"]
     rows = query_all(
         f"""SELECT id, name, insurance_code, maker, unit, unit_manual
