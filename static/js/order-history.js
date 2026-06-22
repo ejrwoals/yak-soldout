@@ -34,6 +34,17 @@
     let viewYear, viewMonth;            // 현재 보고 있는 달 (month: 0~11)
     let ordersByDate = new Map();       // "YYYY-MM-DD" → [주문 요약, ...]
     let selectedDate = null;            // 선택된 날짜 문자열
+    let distNameMap = {};               // dist_key → 한글명 (품목별 도매상 표시용)
+
+    // 도매상 dist_key → 한글명 매핑 로드 (품목 표 도매상 컬럼 표시용)
+    async function loadDistributors() {
+        try {
+            const resp = await fetch('/api/distributor-settings');
+            const data = await resp.json();
+            distNameMap = {};
+            (data.distributors || []).forEach((d) => { distNameMap[d.id] = d.name; });
+        } catch (e) { /* 매핑 실패 시 dist_key 원문 표시 */ }
+    }
 
     // =================== 날짜 유틸 ===================
     function ymd(d) {
@@ -176,13 +187,14 @@
         table.innerHTML = `
             <thead><tr>
                 <th class="col-idx">#</th><th>약품명</th>
-                <th>포장단위</th><th class="col-qty">수량</th>
+                <th>포장단위</th><th class="col-qty">수량</th><th>도매상</th>
             </tr></thead>`;
         const tbody = document.createElement('tbody');
         items.forEach((it, i) => {
             const tr = document.createElement('tr');
-            const cells = [String(i + 1), it.drug_name, it.package_unit || '', it.quantity || ''];
-            ['col-idx', 'col-name', 'col-unit', 'col-qty'].forEach((cls, j) => {
+            const distName = it.distributor ? (distNameMap[it.distributor] || it.distributor) : '';
+            const cells = [String(i + 1), it.drug_name, it.package_unit || '', it.quantity || '', distName];
+            ['col-idx', 'col-name', 'col-unit', 'col-qty', 'col-dist'].forEach((cls, j) => {
                 const td = document.createElement('td');
                 td.className = cls;
                 td.textContent = cells[j];
@@ -256,7 +268,7 @@
         prevMonthBtn.addEventListener('click', () => goMonth(-1));
         nextMonthBtn.addEventListener('click', () => goMonth(1));
         todayBtn.addEventListener('click', goToday);
-        loadOrders();
+        loadDistributors().then(loadOrders);
         connectWebSocket();
     });
 })();

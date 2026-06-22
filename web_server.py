@@ -207,6 +207,25 @@ _OCR_MIME_EXT = {
     "image/heic": ".heic", "image/heif": ".heif",
 }
 
+@app.post("/api/order-ocr/order-context")
+async def order_ocr_context(body: dict):
+    """도매상 선택 단계용 컨텍스트 — 드롭다운 도매상 목록 + 약품별 과거 이력/마지막 도매상.
+
+    프론트는 검수 완료 후 약품명 목록을 보내고, 응답으로 각 약품의 기본 도매상
+    (마지막 주문 도매상 ?? 기준 도매상)을 채우는 데 필요한 정보를 받는다.
+    """
+    drug_names = [str(n) for n in (body.get("drug_names") or []) if str(n).strip()]
+
+    # 드롭다운 옵션 — 표시되는 전체 도매상 (기준 도매상이 맨 앞)
+    distributors = [
+        {"id": dist_id, "name": info["name"], "color": info["default_color"]}
+        for dist_id, info in get_visible_registry().items()
+    ]
+    primary = get_primary_distributor()
+    drugs = await asyncio.to_thread(db.get_order_context, drug_names)
+    return {"primary": primary, "distributors": distributors, "drugs": drugs}
+
+
 @app.post("/api/order-ocr/save")
 async def order_ocr_save(payload: str = Form(...), image: UploadFile = File(None)):
     """검수 완료된 주문을 로컬 SQLite(orders/order_items)에 저장한다.
@@ -242,6 +261,7 @@ async def order_ocr_save(payload: str = Form(...), image: UploadFile = File(None
             "drug_name": name,
             "package_unit": (it.get("package_unit") or "").strip(),
             "quantity": (it.get("quantity") or "").strip(),
+            "distributor": (it.get("distributor") or "").strip() or None,
         })
     if not items:
         raise HTTPException(status_code=400, detail="저장할 품목이 없습니다.")
@@ -280,8 +300,18 @@ async def order_ocr_save(payload: str = Form(...), image: UploadFile = File(None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"주문 저장 실패: {str(e)}")
 
+    # 자유입력(마스터에 없는) 약품을 마스터에 자동 등록 → 이후 OCR 매칭에 활용.
+    # 보강 단계이므로 실패해도 주문 저장 자체는 성공으로 처리한다.
+    registered = 0
+    try:
+        result = await asyncio.to_thread(db.register_free_input_drugs, items, created_at)
+        registered = result.get("added", 0)
+    except Exception:
+        pass
+
     return {"saved": True, "order_id": order_id, "count": len(items),
-            "order_date": order_date, "order_round": order_round}
+            "order_date": order_date, "order_round": order_round,
+            "registered_drugs": registered}
 
 
 @app.get("/api/orders")
@@ -445,27 +475,44 @@ async def drug_master_manual_unit(data: dict):
         raise HTTPException(status_code=404, detail="해당 행을 찾을 수 없습니다")
     return result
 
-@app.get("/api/drug-master/orphan-drugs")
-async def drug_master_orphan_drugs():
-    """주문서 자유입력 약품(마스터 미일치) 목록 — 이름·주문 항목 수·마지막 주문일자."""
-    return {"orphans": await asyncio.to_thread(db.list_orphan_order_drugs)}
+@app.put("/api/drug-master/rows/{row_id}")
+async def drug_master_rename_row(row_id: int, data: dict):
+    """자유입력(manual) 마스터 행의 약품명 수정. 같은 이름의 주문 항목도 함께 갱신된다."""
+    new_name = (data.get("name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="약품명을 입력해주세요")
+    result = await asyncio.to_thread(db.rename_drug_master_row, row_id, new_name)
+    if result is None:
+        raise HTTPException(
+            status_code=400,
+            detail="수정할 수 없습니다 (자유입력 약품이 아니거나 같은 이름이 이미 있습니다)")
+    return result
 
-@app.get("/api/order-ocr/link-candidates")
-async def order_link_candidates():
-    """마스터 업데이트 후 — 마스터에 없던 주문 약품 중 이번에 매칭된 연결 후보 목록."""
-    candidates = await asyncio.to_thread(order_reconcile.find_link_candidates)
+@app.delete("/api/drug-master/rows/{row_id}")
+async def drug_master_delete_row(row_id: int):
+    """자유입력(manual) 마스터 행 삭제. 엑셀 임포트분은 삭제할 수 없다."""
+    ok = await asyncio.to_thread(db.delete_drug_master_row, row_id)
+    if not ok:
+        raise HTTPException(
+            status_code=400, detail="삭제할 수 없습니다 (자유입력 약품만 삭제 가능합니다)")
+    return {"deleted": True}
+
+@app.get("/api/drug-master/promotion-candidates")
+async def drug_master_promotion_candidates():
+    """엑셀 갱신 후 — 자유입력(manual) 약품 중 정식(excel) 약품으로 승격 가능한 후보 목록."""
+    candidates = await asyncio.to_thread(order_reconcile.find_promotion_candidates)
     return {"candidates": candidates}
 
-@app.post("/api/order-ocr/link")
-async def order_link(data: dict):
-    """선택된 연결 적용 — 고아 주문 약품명을 마스터 공식명으로 일괄 갱신.
+@app.post("/api/drug-master/promote")
+async def drug_master_promote(data: dict):
+    """선택된 승격 적용 — 자유입력 약품을 정식 약품으로 병합(주문 항목·규격 이관 후 manual 행 삭제).
 
-    body: {"links": [{"orphan_name": ..., "master_name": ...}, ...]}
+    body: {"promotions": [{"manual_id": ..., "excel_name": ...}, ...]}
     """
-    links = data.get("links") or []
-    if not isinstance(links, list) or not links:
-        raise HTTPException(status_code=400, detail="연결할 항목이 없습니다")
-    return await asyncio.to_thread(order_reconcile.apply_links, links)
+    promotions = data.get("promotions") or []
+    if not isinstance(promotions, list) or not promotions:
+        raise HTTPException(status_code=400, detail="승격할 항목이 없습니다")
+    return await asyncio.to_thread(order_reconcile.apply_promotions, promotions)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

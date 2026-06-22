@@ -29,10 +29,17 @@
     const reviewSection = document.getElementById('reviewSection');
     const reviewBody = document.getElementById('reviewBody');
     const addRowBtn = document.getElementById('addRowBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const nextStatus = document.getElementById('nextStatus');
     const saveBtn = document.getElementById('saveBtn');
     const saveStatus = document.getElementById('saveStatus');
     const orderDate = document.getElementById('orderDate');
     const orderRound = document.getElementById('orderRound');
+    // 도매상 선택 단계 엘리먼트
+    const supplierSection = document.getElementById('supplierSection');
+    const supplierBody = document.getElementById('supplierBody');
+    const histPanel = document.getElementById('histPanel');
+    const backBtn = document.getElementById('backBtn');
     // 검수 화면 원본 사진(좌측) 패널
     const reviewImg = document.getElementById('reviewImg');
     const imageViewport = document.getElementById('imageViewport');
@@ -41,6 +48,7 @@
     let selectedFile = null;
     let previewUrl = null;
     let masterRegistered = false;  // 약품 마스터 등록 여부 (직접 검색 버튼 노출 판단)
+    let distNameMap = {};          // dist_key → 한글명 (도매상 이력 표시용)
 
     // =================== 파일 선택 / 미리보기 ===================
     function setFile(file) {
@@ -386,11 +394,152 @@
     }
     function hideSaveStatus() { saveStatus.hidden = true; }
 
-    // 검수 완료분을 서버에 저장. (날짜,차수) 중복이면 409 → 사용자 확인 후 덮어쓰기 재요청.
-    async function save() {
+    function showNextStatus(kind, text) {
+        nextStatus.hidden = false;
+        nextStatus.className = `status-msg ${kind}`;
+        nextStatus.textContent = text;
+    }
+    function hideNextStatus() { nextStatus.hidden = true; }
+
+    // =================== 도매상 선택 단계 ===================
+    // 검수 → 다음: 품목을 모아 도매상 선택 컨텍스트(이력/기본 도매상)를 받아 단계 전환
+    async function enterSupplierStep() {
         const items = collectItems();
         if (!items.length) {
-            showSaveStatus('error', '저장할 품목이 없습니다. 약품명을 입력해주세요.');
+            showNextStatus('error', '품목이 없습니다. 약품명을 입력해주세요.');
+            return;
+        }
+        nextBtn.disabled = true;
+        showNextStatus('loading', '주문 이력을 불러오는 중입니다…');
+        try {
+            const resp = await fetch('/api/order-ocr/order-context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drug_names: items.map((it) => it.drug_name) }),
+            });
+            const ctx = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(ctx.detail || `요청 실패 (${resp.status})`);
+            renderSupplierRows(items, ctx);
+            hideNextStatus();
+            showSupplierStep();
+        } catch (e) {
+            showNextStatus('error', `불러오기 실패: ${e.message}`);
+        } finally {
+            nextBtn.disabled = false;
+        }
+    }
+
+    // 도매상 선택 테이블 렌더. 기본 도매상 = 마지막 주문 도매상 ?? 기준 도매상.
+    function renderSupplierRows(items, ctx) {
+        const distributors = ctx.distributors || [];
+        const primary = ctx.primary || (distributors[0] && distributors[0].id) || '';
+        const drugs = ctx.drugs || {};
+        distNameMap = {};
+        distributors.forEach((d) => { distNameMap[d.id] = d.name; });
+
+        supplierBody.innerHTML = '';
+        items.forEach((it, i) => {
+            const info = drugs[it.drug_name] || {};
+            const def = info.last_distributor || primary;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="col-idx">${i + 1}</td>
+                <td class="col-name s-name"></td>
+                <td class="col-unit s-unit"></td>
+                <td class="col-qty s-qty"></td>
+                <td class="col-dist"><select class="dist-select match-select"></select></td>
+            `;
+            tr.querySelector('.s-name').textContent = it.drug_name;
+            tr.querySelector('.s-unit').textContent = it.package_unit || '';
+            tr.querySelector('.s-qty').textContent = it.quantity || '';
+            const sel = tr.querySelector('.dist-select');
+            distributors.forEach((d) => {
+                const o = document.createElement('option');
+                o.value = d.id;
+                o.textContent = d.name;
+                sel.appendChild(o);
+            });
+            sel.value = def;
+            // 행 클릭 시 좌측에 과거 이력 표시 (드롭다운 조작은 제외)
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('.dist-select')) return;
+                selectSupplierRow(tr, it.drug_name, info.history || []);
+            });
+            supplierBody.appendChild(tr);
+        });
+    }
+
+    // 선택 행 강조 + 좌측 이력 패널 렌더
+    function selectSupplierRow(tr, drugName, history) {
+        [...supplierBody.querySelectorAll('tr')].forEach((r) => r.classList.remove('row-selected'));
+        tr.classList.add('row-selected');
+        renderHistory(drugName, history);
+    }
+
+    function renderHistory(drugName, history) {
+        histPanel.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'hist-title';
+        title.textContent = drugName;
+        histPanel.appendChild(title);
+
+        if (!history.length) {
+            const empty = document.createElement('p');
+            empty.className = 'hist-empty';
+            empty.textContent = '과거 주문 이력이 없습니다.';
+            histPanel.appendChild(empty);
+            return;
+        }
+        const ul = document.createElement('ul');
+        ul.className = 'hist-list';
+        history.forEach((h) => {
+            const li = document.createElement('li');
+            li.className = 'hist-item';
+            const distName = distNameMap[h.distributor] || h.distributor || '—';
+            const qty = h.quantity ? `${h.quantity}` : '';
+            li.innerHTML = `
+                <span class="hist-date">${h.order_date} ${h.order_round}차</span>
+                <span class="hist-dist"></span>
+                <span class="hist-qty"></span>
+            `;
+            li.querySelector('.hist-dist').textContent = distName;
+            li.querySelector('.hist-qty').textContent = qty;
+            ul.appendChild(li);
+        });
+        histPanel.appendChild(ul);
+    }
+
+    // 도매상 선택 테이블의 각 행을 {drug_name, package_unit, quantity, distributor} 로 수집
+    function collectSupplierItems() {
+        return [...supplierBody.querySelectorAll('tr')].map((tr) => ({
+            drug_name: tr.querySelector('.s-name').textContent.trim(),
+            package_unit: tr.querySelector('.s-unit').textContent.trim(),
+            quantity: tr.querySelector('.s-qty').textContent.trim(),
+            distributor: tr.querySelector('.dist-select').value,
+        })).filter((it) => it.drug_name);
+    }
+
+    // 검수 단계로 복귀 (검수 테이블은 보존)
+    function backToReview() {
+        supplierSection.hidden = true;
+        reviewSection.hidden = false;
+        hideSaveStatus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showSupplierStep() {
+        reviewSection.hidden = true;
+        supplierSection.hidden = false;
+        hideSaveStatus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // =================== 저장 ===================
+    // 도매상 선택 완료분을 서버에 저장. (날짜,차수) 중복이면 409 → 사용자 확인 후 덮어쓰기 재요청.
+    async function save() {
+        const items = collectSupplierItems();
+        if (!items.length) {
+            showSaveStatus('error', '저장할 품목이 없습니다.');
             return;
         }
         await postSave(items, false);
@@ -455,6 +604,7 @@
     function exitReview() {
         document.body.classList.remove('review-mode');
         reviewSection.hidden = true;
+        supplierSection.hidden = true;
         uploadCard.hidden = false;
         clearFile();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -574,6 +724,8 @@
             reviewBody.appendChild(makeRow({}));
             renumber();
         });
+        nextBtn.addEventListener('click', enterSupplierStep);
+        backBtn.addEventListener('click', backToReview);
         saveBtn.addEventListener('click', save);
     }
 

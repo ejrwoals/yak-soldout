@@ -468,3 +468,48 @@
     padding: 20px;
     font-size: 0.9rem;
 }
+
+/* =================== 도매상 선택 단계 =================== */
+/* 좌측: 과거 주문 이력 참고 패널 (image-pane 레이아웃 재사용) */
+.hist-panel {
+    padding: 14px;
+    overflow-y: auto;
+    max-height: calc(100vh - 210px);
+    min-height: 360px;
+}
+.hist-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+.hist-empty {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+.hist-item:last-child { border-bottom: none; }
+.hist-date { color: var(--text-muted); min-width: 96px; font-variant-numeric: tabular-nums; }
+.hist-dist { flex: 1; font-weight: 600; color: var(--text-primary); }
+.hist-qty { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* 우측: 약품별 도매상 선택 테이블 */
+.supplier-table .col-dist { width: 180px; }
+.supplier-table td.s-name { font-weight: 500; color: var(--text-primary); }
+.supplier-table td.s-unit,
+.supplier-table td.s-qty { color: var(--text-secondary); }
+.supplier-table tbody tr { cursor: pointer; }
+.supplier-table tbody tr:hover { background: var(--bg-tertiary); }
+.supplier-table tbody tr.row-selected { background: rgba(124,58,237,0.10); }
+.dist-select { width: 100%; min-width: 0; }

@@ -179,6 +179,36 @@
 .mdb-add-btn:hover { background: rgba(124,58,237,0.10); }
 .mdb-add-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* 출처 배지 (자유입력) */
+.mdb-src-badge {
+    display: inline-block; vertical-align: middle;
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 0.68rem; font-weight: 700; line-height: 1.5;
+    white-space: nowrap;
+}
+.mdb-src-badge.manual { background: rgba(245,158,11,0.16); color: #b45309; }
+[data-theme="dark"] .mdb-src-badge.manual { color: #fbbf24; }
+
+/* 자유입력 약품명 셀: 이름 + 배지 + 수정/삭제 버튼 */
+.mdb-name-manual { white-space: normal; }
+.mdb-name-manual .mdb-name-text { font-weight: 600; margin-right: 6px; word-break: break-all; }
+.mdb-row-actions { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.mdb-edit-btn, .mdb-del-btn, .mdb-name-save, .mdb-name-cancel {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    background: var(--bg-primary); color: var(--text-secondary); cursor: pointer;
+}
+.mdb-edit-btn:hover, .mdb-name-save:hover { color: #7c3aed; background: rgba(124,58,237,0.10); }
+.mdb-del-btn:hover, .mdb-name-cancel:hover { color: var(--danger); background: rgba(239,68,68,0.10); }
+.mdb-name-input {
+    width: 60%; min-width: 120px; padding: 3px 6px;
+    border: 1px solid var(--border-color); border-radius: 6px;
+    background: var(--bg-primary); color: var(--text-primary);
+    font-family: inherit; font-size: 0.85rem;
+}
+.mdb-name-input.dup { border-color: var(--danger); }
+
 .mdb-pager {
     display: flex; align-items: center; justify-content: center;
     gap: 16px; margin-top: 14px;
@@ -235,50 +265,26 @@
 /* 컬럼 매핑 모달 — 미리보기 표가 넓어 기본(700px)보다 넓게 */
 .modal-content--wide { max-width: 980px; }
 
-/* 주문서 약품 소급 연결 모달 */
-.link-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
-.link-item {
+/* 자유입력 약품 → 정식 마스터 승격 모달 */
+.promote-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 50vh; overflow-y: auto; }
+.promote-item {
     padding: 10px 12px;
     border: 1px solid var(--border-color); border-radius: 10px;
 }
-.link-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.link-from { font-weight: 600; color: var(--text-primary); }
-.link-from .link-count {
+.promote-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.promote-from { font-weight: 600; color: var(--text-primary); }
+.promote-from .promote-count {
     font-weight: 500; font-size: 0.78rem; color: var(--text-muted);
     background: var(--bg-tertiary); border-radius: 999px; padding: 1px 7px; margin-left: 4px;
 }
-.link-pick { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
-.link-select {
+.promote-pick { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.promote-select {
     flex: 1; min-width: 0; max-width: 420px;
     padding: 6px 10px;
     border: 1px solid var(--border-color); border-radius: 8px;
     background: var(--bg-primary); color: var(--text-primary);
     font-family: inherit; font-size: 0.9rem;
 }
-
-/* 등록 현황 옆 '주문 자유입력 N' 칩 (클릭 → 목록 모달) */
-.master-status .orphan-count {
-    font-size: 0.78rem; font-weight: 600; color: #d97706;
-    background: rgba(217,119,6,0.12); border-radius: 999px; padding: 1px 8px;
-    cursor: pointer; transition: background 0.15s;
-}
-.master-status .orphan-count:hover { background: rgba(217,119,6,0.22); }
-
-/* 주문 자유입력 약품 목록 */
-.orphan-list { display: flex; flex-direction: column; margin-top: 6px; max-height: 55vh; overflow-y: auto; }
-.orphan-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 9px 4px;
-    border-bottom: 1px solid var(--border-color);
-}
-.orphan-name { font-weight: 600; color: var(--text-primary); min-width: 0; word-break: break-all; }
-.orphan-meta { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.orphan-date { font-size: 0.82rem; color: var(--text-muted); }
-.orphan-rowcount {
-    font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
-    background: var(--bg-tertiary); border-radius: 999px; padding: 1px 8px;
-}
-.orphan-empty { text-align: center; color: var(--text-muted); padding: 20px 0; }
 
 /* 섹션 소제목 */
 .subhead {

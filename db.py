@@ -29,7 +29,11 @@ from typing import Any, Dict, List, Optional, Sequence
 #      기존 DB는 _ensure_column 으로 ALTER TABLE ADD COLUMN 처리(멱등).
 #  v5: drug_master.unit_manual(사용자가 뷰어에서 직접 추가한 규격) 추가. 수집 unit과 출처를 분리하고
 #      수집분은 삭제 불가(읽기전용), 직접추가분은 append-only로 운영한다. _ensure_column 처리.
-SCHEMA_VERSION = 5
+#  v6: order_items.distributor(약품별 주문 도매상 dist_key) 추가. 검수 후 도매상 선택 단계에서 채운다.
+#      기존 주문에는 도매상 이력이 없어 NULL로 남는다. _ensure_column 처리(멱등).
+#  v7: drug_master.source('excel'|'manual') 추가. 주문서 자유입력 약품을 마스터에 manual 행으로 자동 등록해
+#      OCR 매칭·직접검색에 포함시킨다. 엑셀 임포트분과 구분하며, 기존 행은 NULL→'excel'로 간주. _ensure_column 처리.
+SCHEMA_VERSION = 7
 
 # 날짜/시간 ISO 포맷 (전 테이블 공통, T 포함, 초 단위)
 ISO_LEN = 19
@@ -109,7 +113,8 @@ CREATE TABLE IF NOT EXISTS drug_master (
     unit           TEXT,
     unit_manual    TEXT,
     imported_at    TEXT NOT NULL,
-    source_file    TEXT
+    source_file    TEXT,
+    source         TEXT                          -- 'excel'(임포트) | 'manual'(주문 자유입력 자동등록)
 );
 
 CREATE INDEX IF NOT EXISTS idx_drug_master_code ON drug_master(insurance_code);
@@ -181,10 +186,12 @@ CREATE TABLE IF NOT EXISTS order_items (
     drug_name    TEXT NOT NULL,                -- 검수 후 확정 약품명
     package_unit TEXT,                         -- 포장단위
     quantity     TEXT,                         -- 주문 수량(OCR 안정성 위해 문자열)
+    distributor  TEXT,                         -- 주문 도매상 dist_key (예: "geoweb"), 미선택 시 NULL
     position     INTEGER NOT NULL DEFAULT 0    -- 검수표 표시 순서
 );
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_drug  ON order_items(drug_name);
 """
 
 
@@ -212,6 +219,11 @@ def init_schema() -> None:
     # v4/v5: 기존 drug_master 테이블에 unit/unit_manual 컬럼 보강 (신규 설치는 이미 있으므로 no-op)
     _ensure_column(conn, "drug_master", "unit", "TEXT")
     _ensure_column(conn, "drug_master", "unit_manual", "TEXT")
+    # v6: 기존 order_items 테이블에 distributor 컬럼 보강 (신규 설치는 이미 있으므로 no-op)
+    _ensure_column(conn, "order_items", "distributor", "TEXT")
+    # v7: 기존 drug_master 테이블에 source 컬럼 보강 (기존 행은 엑셀 임포트분이므로 'excel'로 채움)
+    _ensure_column(conn, "drug_master", "source", "TEXT")
+    conn.execute("UPDATE drug_master SET source = 'excel' WHERE source IS NULL")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     conn.commit()
 
@@ -268,14 +280,14 @@ def get_schema_version() -> int:
 # drug_master 쓰기 유틸
 # ----------------------------------------------------------------------------
 def insert_drug_master(conn: sqlite3.Connection, drug: Dict[str, Any],
-                       imported_at: str, source_file: str) -> None:
+                       imported_at: str, source_file: str, source: str = "excel") -> None:
     """drug_master 행 1건 INSERT. insurance_code는 비어 있으면 NULL로 저장."""
     code = (drug.get("insurance_code") or "").strip()
     if code.lower() == "nan":  # pandas가 빈 셀을 'nan' 문자열로 주는 경우 정규화
         code = ""
     conn.execute(
-        """INSERT INTO drug_master (name, insurance_code, maker, maker_norm, imported_at, source_file)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO drug_master (name, insurance_code, maker, maker_norm, imported_at, source_file, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             drug.get("name", ""),
             code or None,
@@ -283,6 +295,7 @@ def insert_drug_master(conn: sqlite3.Connection, drug: Dict[str, Any],
             drug.get("maker_norm", "") or None,
             imported_at,
             source_file,
+            source,
         ),
     )
 
@@ -465,6 +478,7 @@ def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "",
       - 'filled'  : 규격수집됨 (unit 있음)
       - 'missing' : 규격미수집 (unit 없음 + 보험코드 있음)
       - 'nocode'  : 보험코드없음 (unit 없음 + 보험코드 없음)
+      - 'manual'  : 자유입력 (주문서 자유입력으로 자동 등록된 행, source='manual')
 
     반환: {"total": 전체(필터 적용) 행 수, "rows": [...]}.
     """
@@ -484,11 +498,13 @@ def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "",
     elif uf == "nocode":
         conds.append("((unit IS NULL OR TRIM(unit) = '') "
                      "AND (insurance_code IS NULL OR TRIM(insurance_code) = ''))")
+    elif uf == "manual":
+        conds.append("source = 'manual'")
 
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
     total = query_one(f"SELECT COUNT(*) AS c FROM drug_master {where}", params)["c"]
     rows = query_all(
-        f"""SELECT id, name, insurance_code, maker, unit, unit_manual
+        f"""SELECT id, name, insurance_code, maker, unit, unit_manual, source
             FROM drug_master {where} ORDER BY id LIMIT ? OFFSET ?""",
         params + [int(limit), int(offset)],
     )
@@ -502,6 +518,7 @@ def list_drug_master_rows(offset: int = 0, limit: int = 50, q: str = "",
                 "maker": r["maker"] or "",
                 "unit": r["unit"] or "",
                 "unit_manual": r["unit_manual"] or "",
+                "source": r["source"] or "excel",
             }
             for r in rows
         ],
@@ -532,38 +549,127 @@ def add_drug_master_manual_unit(row_id: int, unit: str) -> Optional[Dict[str, An
     return {"added": True, "unit_manual": new_manual}
 
 
-def count_orphan_order_drugs() -> int:
-    """주문서에만 있고 마스터에는 정확히 일치하는 이름이 없는 약품(자유입력 고아) 수.
+def delete_drug_master_row(row_id: int) -> bool:
+    """자유입력(source='manual') 마스터 행 1건 삭제.
 
-    이름 기준 distinct. 마스터 소급 연결(order_reconcile) 대상 규모를 가늠하는 데 쓴다.
+    엑셀 임포트분(source='excel' 또는 NULL)은 안전상 삭제하지 않는다(엑셀 재업로드로 관리).
+    반환: 삭제 성공 True / 대상이 없거나 자유입력 행이 아니면 False.
     """
-    row = query_one(
-        """SELECT COUNT(DISTINCT oi.drug_name) AS c
-           FROM order_items oi
-           WHERE TRIM(oi.drug_name) != ''
-             AND NOT EXISTS (SELECT 1 FROM drug_master dm WHERE dm.name = oi.drug_name)"""
-    )
-    return (row["c"] if row else 0) or 0
+    row = query_one("SELECT source FROM drug_master WHERE id = ?", (row_id,))
+    if row is None or (row["source"] or "excel") != "manual":
+        return False
+    execute("DELETE FROM drug_master WHERE id = ?", (row_id,))
+    return True
 
 
-def list_orphan_order_drugs() -> List[Dict[str, Any]]:
-    """주문서 자유입력 약품(마스터 미일치) 목록.
+def rename_drug_master_row(row_id: int, new_name: str) -> Optional[Dict[str, Any]]:
+    """자유입력(source='manual') 마스터 행의 약품명을 수정한다(OCR 오타 정리용).
 
-    이름별로 주문 항목 수와 마지막 주문일자(MAX(order_date))를 함께, 최근 주문 순으로 반환한다.
+    같은(옛) 이름을 가진 order_items.drug_name 도 새 이름으로 함께 갱신해 주문 이력과 연결을 유지한다.
+    반환:
+      - None  : 대상 없음 / 자유입력 행 아님 / 빈 이름 / 다른 행과 이름 충돌
+      - dict  : {"renamed": bool, "updated_items": 갱신된 주문 항목 수}
+    """
+    new_name = (new_name or "").strip()
+    if not new_name:
+        return None
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT name, source FROM drug_master WHERE id = ?", (row_id,)
+        ).fetchone()
+        if row is None or (row["source"] or "excel") != "manual":
+            return None
+        old = row["name"]
+        if new_name == old:
+            return {"renamed": False, "updated_items": 0}
+        dup = conn.execute(
+            "SELECT 1 FROM drug_master WHERE name = ? AND id != ?", (new_name, row_id)
+        ).fetchone()
+        if dup:
+            return None
+        conn.execute("UPDATE drug_master SET name = ? WHERE id = ?", (new_name, row_id))
+        cur = conn.execute(
+            "UPDATE order_items SET drug_name = ? WHERE drug_name = ?", (new_name, old)
+        )
+        return {"renamed": True, "updated_items": cur.rowcount}
+
+
+def list_manual_master_rows() -> List[Dict[str, Any]]:
+    """자유입력(source='manual') 마스터 행 목록. 각 행의 주문 항목 수(item_count) 포함.
+
+    엑셀 갱신 후 정식 약품으로 승격할 후보를 찾는 데 쓴다(order_reconcile).
     """
     rows = query_all(
-        """SELECT oi.drug_name AS name, COUNT(*) AS cnt, MAX(o.order_date) AS last_date
-           FROM order_items oi
-           JOIN orders o ON o.id = oi.order_id
-           WHERE TRIM(oi.drug_name) != ''
-             AND NOT EXISTS (SELECT 1 FROM drug_master dm WHERE dm.name = oi.drug_name)
-           GROUP BY oi.drug_name
-           ORDER BY last_date DESC, oi.drug_name"""
+        """SELECT dm.id, dm.name, dm.unit_manual,
+                  (SELECT COUNT(*) FROM order_items oi WHERE oi.drug_name = dm.name) AS item_count
+           FROM drug_master dm WHERE dm.source = 'manual' ORDER BY dm.id"""
     )
     return [
-        {"name": r["name"], "item_count": r["cnt"], "last_order_date": r["last_date"] or ""}
+        {"id": r["id"], "name": r["name"], "unit_manual": r["unit_manual"] or "",
+         "item_count": r["item_count"]}
         for r in rows
     ]
+
+
+def excel_master_names() -> set:
+    """정식(source='excel') 마스터 약품명 집합. 승격 후보를 엑셀 행으로 한정하는 데 쓴다."""
+    rows = query_all("SELECT name FROM drug_master WHERE source = 'excel'")
+    return {r["name"] for r in rows}
+
+
+def promote_manual_drugs(promotions: List[Dict[str, Any]]) -> Dict[str, int]:
+    """자유입력(manual) 약품을 정식(excel) 약품으로 승격(병합)한다.
+
+    각 promotion = {manual_id, excel_name}. 정식명이 실제 excel 행으로 존재할 때만 적용한다:
+      1) manual 행의 규격(unit_manual)을 정식 행의 unit_manual에 중복 없이 합친다.
+      2) 그 manual 이름으로 저장된 order_items.drug_name 을 정식명으로 갱신한다(이름이 다를 때).
+      3) manual 행을 삭제한다.
+    반환: {"promoted": 승격한 약품 수, "updated_items": 갱신된 주문 항목 수}.
+    """
+    promoted = 0
+    updated_items = 0
+    with transaction() as conn:
+        for p in promotions or []:
+            try:
+                mid = int(p.get("manual_id"))
+            except (TypeError, ValueError):
+                continue
+            to = (p.get("excel_name") or "").strip()
+            if not to:
+                continue
+            mrow = conn.execute(
+                "SELECT name, unit_manual, source FROM drug_master WHERE id = ?", (mid,)
+            ).fetchone()
+            if mrow is None or (mrow["source"] or "excel") != "manual":
+                continue
+            trow = conn.execute(
+                "SELECT id, unit, unit_manual FROM drug_master WHERE name = ? AND source = 'excel' ORDER BY id LIMIT 1",
+                (to,),
+            ).fetchone()
+            if trow is None:
+                continue
+            old = mrow["name"]
+            # 1) 규격 병합 (정식 행에 없던 규격만 추가)
+            man_units = _split_units(mrow["unit_manual"])
+            if man_units:
+                existing = set(_split_units(trow["unit"])) | set(_split_units(trow["unit_manual"]))
+                add = [u for u in man_units if u not in existing]
+                if add:
+                    merged = _split_units(trow["unit_manual"]) + add
+                    conn.execute(
+                        "UPDATE drug_master SET unit_manual = ? WHERE id = ?",
+                        (", ".join(merged), trow["id"]),
+                    )
+            # 2) 주문 항목 약품명 정식명으로 갱신
+            if old != to:
+                cur = conn.execute(
+                    "UPDATE order_items SET drug_name = ? WHERE drug_name = ?", (to, old)
+                )
+                updated_items += cur.rowcount
+            # 3) manual 행 삭제
+            conn.execute("DELETE FROM drug_master WHERE id = ?", (mid,))
+            promoted += 1
+    return {"promoted": promoted, "updated_items": updated_items}
 
 
 # ----------------------------------------------------------------------------
@@ -822,16 +928,50 @@ def save_order(order_date: str, order_round: int, items: List[Dict[str, Any]],
         order_id = cur.lastrowid
         rows = [
             (order_id, it.get("drug_name", ""), it.get("package_unit", "") or None,
-             it.get("quantity", "") or None, i)
+             it.get("quantity", "") or None, it.get("distributor", "") or None, i)
             for i, it in enumerate(items)
         ]
         if rows:
             conn.executemany(
-                """INSERT INTO order_items (order_id, drug_name, package_unit, quantity, position)
-                   VALUES (?, ?, ?, ?, ?)""",
+                """INSERT INTO order_items
+                       (order_id, drug_name, package_unit, quantity, distributor, position)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 rows,
             )
         return order_id
+
+
+def register_free_input_drugs(items: List[Dict[str, Any]], created_at: str) -> Dict[str, Any]:
+    """주문 저장 시, 마스터에 없는 자유입력 약품을 마스터에 'manual' 행으로 자동 등록한다.
+
+    자유입력 약품도 사용자가 확인한 신뢰도 높은 약품명이므로, 마스터에 추가해 두면
+    이후 OCR 약품명 매칭·직접검색·규격추천에 함께 활용된다(매처는 drug_master만 인덱싱).
+    - 이미 같은 이름의 마스터 행이 있으면 건너뛴다(중복 방지, 같은 배치 내 중복도 1건만).
+    - 입력 규격(package_unit)이 있으면 unit_manual로 함께 저장한다.
+    - 보험코드/제약사는 비워 두고 source='manual', source_file='자유입력'로 표시한다.
+    반환: {"added": 추가된 약품 수, "names": [추가된 약품명, ...]}.
+    """
+    added: List[str] = []
+    with transaction() as conn:
+        for it in items:
+            name = (it.get("drug_name") or "").strip()
+            if not name:
+                continue
+            exists = conn.execute(
+                "SELECT 1 FROM drug_master WHERE name = ?", (name,)
+            ).fetchone()
+            if exists:
+                continue
+            unit_manual = (it.get("package_unit") or "").strip() or None
+            conn.execute(
+                """INSERT INTO drug_master
+                       (name, insurance_code, maker, maker_norm, unit, unit_manual,
+                        imported_at, source_file, source)
+                   VALUES (?, NULL, '', NULL, NULL, ?, ?, '자유입력', 'manual')""",
+                (name, unit_manual, created_at),
+            )
+            added.append(name)
+    return {"added": len(added), "names": added}
 
 
 def list_orders() -> List[Dict[str, Any]]:
@@ -869,7 +1009,7 @@ def get_order(order_id: int) -> Optional[Dict[str, Any]]:
     if o is None:
         return None
     items = query_all(
-        """SELECT drug_name, package_unit, quantity
+        """SELECT drug_name, package_unit, quantity, distributor
            FROM order_items WHERE order_id = ? ORDER BY position""",
         (order_id,),
     )
@@ -884,10 +1024,48 @@ def get_order(order_id: int) -> Optional[Dict[str, Any]]:
                 "drug_name": it["drug_name"],
                 "package_unit": it["package_unit"] or "",
                 "quantity": it["quantity"] or "",
+                "distributor": it["distributor"] or "",
             }
             for it in items
         ],
     }
+
+
+def get_order_context(drug_names: List[str]) -> Dict[str, Dict[str, Any]]:
+    """도매상 선택 단계용 — 주어진 약품명들의 과거 주문 이력과 마지막 도매상을 모은다.
+
+    각 약품명별로:
+      - last_distributor: 도매상이 기록된 가장 최근 주문의 도매상 dist_key (없으면 None)
+      - history: [{order_date, order_round, distributor, quantity, package_unit}, ...] 최신순
+    약품명은 검수 후 확정된 order_items.drug_name 기준으로 정확히 매칭한다.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for raw in drug_names:
+        name = (raw or "").strip()
+        if not name or name in out:
+            continue
+        rows = query_all(
+            """SELECT o.order_date, o.order_round,
+                      oi.distributor, oi.quantity, oi.package_unit
+               FROM order_items oi
+               JOIN orders o ON o.id = oi.order_id
+               WHERE oi.drug_name = ?
+               ORDER BY o.order_date DESC, o.order_round DESC""",
+            (name,),
+        )
+        history = [
+            {
+                "order_date": r["order_date"],
+                "order_round": r["order_round"],
+                "distributor": r["distributor"] or "",
+                "quantity": r["quantity"] or "",
+                "package_unit": r["package_unit"] or "",
+            }
+            for r in rows
+        ]
+        last_distributor = next((h["distributor"] for h in history if h["distributor"]), None)
+        out[name] = {"last_distributor": last_distributor, "history": history}
+    return out
 
 
 def delete_order(order_id: int) -> Optional[str]:

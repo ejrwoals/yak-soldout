@@ -226,5 +226,4 @@ def status() -> dict:
         "imported_at": meta["imported_at"],
         "columns": {},
         "unit_stats": db.drug_master_unit_stats(),
-        "orphan_order_count": db.count_orphan_order_drugs(),
     }

@@ -255,6 +255,7 @@
 .order-items-table tr:last-child td { border-bottom: none; }
 .order-items-table .col-idx { width: 28px; color: var(--text-muted); }
 .order-items-table .col-qty { text-align: right; width: 56px; }
+.order-items-table .col-dist { width: 84px; color: var(--text-secondary); }
 
 /* 빈/로딩/오류 상태 */
 .oh-status {
