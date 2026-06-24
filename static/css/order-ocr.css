@@ -81,6 +81,39 @@
     margin-top: 16px;
 }
 
+/* ============ 입력 방식 토글 (사진 / 직접 작성) ============ */
+.mode-toggle {
+    display: flex;
+    width: fit-content;
+    gap: 4px;
+    padding: 4px;
+    margin: 0 auto 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+.mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.mode-btn:hover { color: var(--text-primary); }
+.mode-btn.active {
+    background: var(--bg-primary);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
 /* ============ 버튼 (페이지 스코프) ============ */
 .btn {
     display: inline-flex;
@@ -112,6 +145,8 @@
 }
 
 /* ============ 상태 메시지 ============ */
+/* display:flex 가 [hidden] 의 display:none 을 덮어쓰므로, 숨김을 명시적으로 보장 */
+.status-msg[hidden] { display: none; }
 .status-msg {
     margin-top: 14px;
     padding: 10px 14px;
@@ -143,6 +178,8 @@
 }
 
 /* 좌측: 원본 사진 패널 (스크롤해도 따라오도록 sticky) */
+/* display:flex 가 [hidden] 의 display:none 을 덮어쓰므로, 숨김을 명시적으로 보장 */
+.image-pane[hidden] { display: none; }
 .image-pane {
     position: sticky;
     top: 16px;
@@ -297,8 +334,9 @@
 }
 .review-table .col-idx  { width: 36px; text-align: center; color: var(--text-muted); }
 .review-table .col-unit { width: 180px; vertical-align: top; }
-.review-table .col-qty  { width: 100px; }
+.review-table .col-qty  { width: 88px; min-width: 72px; }
 .review-table .col-del  { width: 44px; }
+.review-table .f-qty { text-align: center; }
 
 .review-table input {
     width: 100%;
@@ -406,12 +444,8 @@
 .search-btn:hover { border-color: var(--primary); color: var(--primary); }
 
 .dm-search {
-    position: absolute;
-    z-index: 50;
-    left: 0;
-    right: 0;
-    top: 100%;
-    margin-top: 4px;
+    position: fixed;        /* 표의 overflow 에 잘리지 않도록 — 좌표는 JS 가 계산 */
+    z-index: 100;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 10px;

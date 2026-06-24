@@ -49,9 +49,19 @@
     <!-- 메인 컨테이너 -->
     <main class="main-container ocr-container">
         <section class="home-header">
-            <h1>손글씨 주문지 OCR</h1>
-            <p class="subtitle">주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어옵니다</p>
+            <h1>주문지 작성</h1>
+            <p id="pageSubtitle" class="subtitle">주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어옵니다</p>
         </section>
+
+        <!-- 입력 방식 토글: 사진(OCR) / 직접 작성 -->
+        <div class="mode-toggle" role="tablist" aria-label="입력 방식">
+            <button id="modeOcrBtn" class="mode-btn active" type="button" role="tab" aria-selected="true">
+                <i class="bi bi-camera"></i> 사진으로 읽기
+            </button>
+            <button id="modeManualBtn" class="mode-btn" type="button" role="tab" aria-selected="false">
+                <i class="bi bi-pencil-square"></i> 직접 작성
+            </button>
+        </div>
 
         <!-- 1) 업로드 영역 -->
         <section id="uploadCard" class="ocr-card">
@@ -79,7 +89,7 @@
         <section id="reviewSection" class="ocr-review" hidden>
             <div class="review-grid">
                 <!-- 좌측: 원본 사진 (고정 + 확대/이동) -->
-                <aside class="image-pane">
+                <aside id="imagePane" class="image-pane">
                     <div class="image-toolbar">
                         <span class="img-title"><i class="bi bi-image"></i> 원본 주문지</span>
                         <div class="zoom-controls">
@@ -94,6 +104,16 @@
                         <img id="reviewImg" class="review-img" alt="원본 주문지" draggable="false">
                     </div>
                     <p class="image-hint">휠로 확대 · 드래그로 이동 · 더블클릭하면 원래대로</p>
+                </aside>
+
+                <!-- 좌측(직접 작성 모드): 선택한 약품의 과거 주문 이력 -->
+                <aside id="reviewHistPane" class="image-pane" hidden>
+                    <div class="image-toolbar">
+                        <span class="img-title"><i class="bi bi-clock-history"></i> 과거 주문 이력</span>
+                    </div>
+                    <div id="reviewHistPanel" class="hist-panel">
+                        <p class="hist-empty">약품을 입력하거나 선택하면 과거에 어느 도매상에서 몇 개를 주문했는지 보여줍니다.</p>
+                    </div>
                 </aside>
 
                 <!-- 우측: 검수 테이블 -->

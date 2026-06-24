@@ -44,28 +44,83 @@
     const reviewImg = document.getElementById('reviewImg');
     const imageViewport = document.getElementById('imageViewport');
     const zoomLevel = document.getElementById('zoomLevel');
+    const imagePane = document.getElementById('imagePane');
+    // 입력 방식 토글 + 직접 작성 모드 좌측 이력 패널
+    const modeOcrBtn = document.getElementById('modeOcrBtn');
+    const modeManualBtn = document.getElementById('modeManualBtn');
+    const reviewHistPane = document.getElementById('reviewHistPane');
+    const reviewHistPanel = document.getElementById('reviewHistPanel');
+    const pageSubtitle = document.getElementById('pageSubtitle');
 
     let selectedFile = null;
     let previewUrl = null;
     let masterRegistered = false;  // 약품 마스터 등록 여부 (직접 검색 버튼 노출 판단)
     let distNameMap = {};          // dist_key → 한글명 (도매상 이력 표시용)
+    let mode = 'ocr';              // 'ocr'(사진) | 'manual'(직접 작성)
+    const histCache = {};          // drugName → history[] (직접 작성 모드 이력 캐시)
+    const HIST_EMPTY_MSG = '약품명을 입력하거나 검색해서 선택하면 과거에 어느 도매상에서 몇 개를 주문했는지 보여줍니다.';
 
     // =================== 파일 선택 / 미리보기 ===================
-    function setFile(file) {
+    // 일부 환경/파일은 file.type 이 빈 문자열이거나 비표준으로 와서, 확장자로도 판별한다
+    const IMAGE_EXT_RE = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i;
+    function isImageFile(file) {
+        if (file.type && file.type.startsWith('image/')) return true;
+        return IMAGE_EXT_RE.test(file.name || '');
+    }
+
+    // HEIC/HEIF 판별 — 브라우저 <img> 로는 못 그리므로 미리보기 전에 변환이 필요
+    function isHeic(file) {
+        const t = (file.type || '').toLowerCase();
+        if (t.includes('heic') || t.includes('heif')) return true;
+        return /\.(heic|heif)$/i.test(file.name || '');
+    }
+
+    // 미리보기용 표시 URL 생성. HEIC 은 서버에서 JPEG 로 변환(원본은 그대로 OCR/저장에 사용).
+    async function buildPreviewUrl(file) {
+        if (!isHeic(file)) return URL.createObjectURL(file);
+        const form = new FormData();
+        form.append('image', file);
+        const resp = await fetch('/api/order-ocr/preview', { method: 'POST', body: form });
+        if (!resp.ok) {
+            const d = await resp.json().catch(() => ({}));
+            throw new Error(d.detail || `변환 실패 (${resp.status})`);
+        }
+        const blob = await resp.blob();
+        return URL.createObjectURL(blob);
+    }
+
+    async function setFile(file) {
         if (!file) return;
-        if (!file.type.startsWith('image/')) {
+        if (!isImageFile(file)) {
             showStatus('error', '이미지 파일만 올릴 수 있습니다.');
             return;
         }
         selectedFile = file;
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        previewUrl = URL.createObjectURL(file);
-        previewImg.src = previewUrl;
-        previewImg.hidden = false;
+        if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+        previewImg.hidden = true;
         dropPrompt.hidden = true;
         clearBtn.hidden = false;
-        extractBtn.disabled = false;
+        extractBtn.disabled = false;   // OCR 은 원본으로 진행하므로 미리보기 변환을 기다리지 않아도 됨
         hideStatus();
+
+        // 미리보기 URL 생성 (HEIC 은 변환에 잠시 걸릴 수 있음)
+        if (isHeic(file)) showStatus('loading', 'HEIC 사진 미리보기를 준비하는 중…', true);
+        try {
+            const url = await buildPreviewUrl(file);
+            if (selectedFile !== file) { URL.revokeObjectURL(url); return; }  // 그새 다른 파일 선택됨
+            previewUrl = url;
+            previewImg.src = previewUrl;
+            previewImg.hidden = false;
+            // 이미 검수(사진 모드)에 들어와 있으면 좌측 원본 사진도 갱신
+            if (mode !== 'manual' && document.body.classList.contains('review-mode')) {
+                reviewImg.src = previewUrl;
+            }
+            hideStatus();
+        } catch (e) {
+            // 변환 실패해도 OCR 은 가능 — 미리보기만 생략
+            previewImg.hidden = true;
+            showStatus('error', `미리보기를 표시할 수 없습니다 (${e.message}). '글자 읽기'는 그대로 진행할 수 있어요.`);
+        }
     }
 
     function clearFile() {
@@ -143,6 +198,14 @@
             tr.remove();
             renumber();
         });
+        // 직접 작성 모드: 행을 클릭하거나 약품명을 바꾸면 좌측에 과거 이력 표시
+        if (mode === 'manual') {
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('.del-row-btn')) return;  // 삭제 클릭은 제외
+                selectReviewRow(tr);
+            });
+            nameInput.addEventListener('change', () => selectReviewRow(tr));
+        }
         return tr;
     }
 
@@ -165,13 +228,28 @@
         const input = panel.querySelector('.dm-search-input');
         const list = panel.querySelector('.dm-search-results');
 
-        function close() { panel.hidden = true; }
+        // 드롭다운은 position:fixed 로 띄워 표(overflow:auto) 밖으로 나오게 한다.
+        // 좌표는 셀 위치에 맞춰 매번 계산하고, 스크롤/리사이즈 시 갱신한다.
+        function positionPanel() {
+            const r = cell.getBoundingClientRect();
+            panel.style.left = `${r.left}px`;
+            panel.style.top = `${r.bottom + 4}px`;
+            panel.style.width = `${r.width}px`;
+        }
+        function close() {
+            panel.hidden = true;
+            window.removeEventListener('scroll', positionPanel, true);
+            window.removeEventListener('resize', positionPanel);
+        }
         function open() {
             panel.hidden = false;
+            positionPanel();
             input.value = nameInput.value;
             input.focus();
             input.select();
             runSearch();
+            window.addEventListener('scroll', positionPanel, true);
+            window.addEventListener('resize', positionPanel);
         }
 
         const runSearch = debounce(async () => {
@@ -197,6 +275,7 @@
                         markUserConfirmed(slot);    // 직접 검색으로 고름 → 확인 표시
                         applyUnitFix(nameInput.closest('tr'), r.known_units, { autoCorrect: true });
                         close();
+                        if (mode === 'manual') selectReviewRow(nameInput.closest('tr'));
                     });
                     list.appendChild(li);
                 });
@@ -264,6 +343,7 @@
             // 선택한 약의 규격으로 보정 (원본으로 되돌리면 규격 데이터 없음)
             const picked = options.find((c) => c.name === sel.value);
             applyUnitFix(nameInput.closest('tr'), picked ? picked.known_units : [], { autoCorrect: true });
+            if (mode === 'manual') selectReviewRow(nameInput.closest('tr'));
         });
         return sel;
     }
@@ -473,21 +553,89 @@
     function selectSupplierRow(tr, drugName, history) {
         [...supplierBody.querySelectorAll('tr')].forEach((r) => r.classList.remove('row-selected'));
         tr.classList.add('row-selected');
-        renderHistory(drugName, history);
+        renderHistory(histPanel, drugName, history);
     }
 
-    function renderHistory(drugName, history) {
-        histPanel.innerHTML = '';
+    // =================== 직접 작성 모드: 검수 단계 좌측 이력 패널 ===================
+    // 도매상 한글명 맵 확보 (이력 표시에 필요) — 비어 있을 때 1회만 로드
+    async function ensureDistNames() {
+        if (Object.keys(distNameMap).length) return;
+        try {
+            const resp = await fetch('/api/order-ocr/order-context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drug_names: [] }),
+            });
+            const ctx = await resp.json().catch(() => ({}));
+            (ctx.distributors || []).forEach((d) => { distNameMap[d.id] = d.name; });
+        } catch (e) { /* 무시 */ }
+    }
+
+    // 검수표의 한 행을 선택 강조하고, 그 약품의 과거 주문 이력을 좌측 패널에 표시
+    async function selectReviewRow(tr) {
+        [...reviewBody.querySelectorAll('tr')].forEach((r) => r.classList.remove('row-selected'));
+        tr.classList.add('row-selected');
+        const name = tr.querySelector('.f-name').value.trim();
+        if (!name) {
+            reviewHistPanel.innerHTML = `<p class="hist-empty">${HIST_EMPTY_MSG}</p>`;
+            return;
+        }
+        if (name in histCache) { renderHistory(reviewHistPanel, name, histCache[name]); return; }
+        try {
+            const resp = await fetch('/api/order-ocr/order-context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drug_names: [name] }),
+            });
+            const ctx = await resp.json().catch(() => ({}));
+            (ctx.distributors || []).forEach((d) => { distNameMap[d.id] = d.name; });
+            const hist = (ctx.drugs && ctx.drugs[name] && ctx.drugs[name].history) || [];
+            histCache[name] = hist;
+            renderHistory(reviewHistPanel, name, hist);
+        } catch (e) {
+            reviewHistPanel.innerHTML = '<p class="hist-empty">이력을 불러오지 못했습니다.</p>';
+        }
+    }
+
+    // 직접 작성 모드 시작: 빈 검수표로 바로 진입
+    function startManualReview() {
+        clearFile();
+        renderRows([]);                 // 빈 행 1개
+        ensureDistNames();
+        reviewHistPanel.innerHTML = `<p class="hist-empty">${HIST_EMPTY_MSG}</p>`;
+        enterReview(null);
+    }
+
+    // 입력 방식 전환 (사진 ↔ 직접 작성)
+    function setMode(next) {
+        if (next === mode) return;
+        mode = next;
+        const isManual = mode === 'manual';
+        modeOcrBtn.classList.toggle('active', !isManual);
+        modeManualBtn.classList.toggle('active', isManual);
+        modeOcrBtn.setAttribute('aria-selected', String(!isManual));
+        modeManualBtn.setAttribute('aria-selected', String(isManual));
+        if (pageSubtitle) {
+            pageSubtitle.textContent = isManual
+                ? '약품을 직접 검색해 고르고 규격·수량을 입력해 주문서를 작성합니다'
+                : '주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어옵니다';
+        }
+        if (isManual) startManualReview();
+        else exitReview();
+    }
+
+    function renderHistory(panel, drugName, history) {
+        panel.innerHTML = '';
         const title = document.createElement('div');
         title.className = 'hist-title';
         title.textContent = drugName;
-        histPanel.appendChild(title);
+        panel.appendChild(title);
 
         if (!history.length) {
             const empty = document.createElement('p');
             empty.className = 'hist-empty';
             empty.textContent = '과거 주문 이력이 없습니다.';
-            histPanel.appendChild(empty);
+            panel.appendChild(empty);
             return;
         }
         const ul = document.createElement('ul');
@@ -506,7 +654,7 @@
             li.querySelector('.hist-qty').textContent = qty;
             ul.appendChild(li);
         });
-        histPanel.appendChild(ul);
+        panel.appendChild(ul);
     }
 
     // 도매상 선택 테이블의 각 행을 {drug_name, package_unit, quantity, distributor} 로 수집
@@ -585,17 +733,28 @@
     // =================== 검수 모드 전환 ===================
     // 추출 성공 시: 업로드 카드를 감추고, 좌(원본 사진)·우(검수표) 2단으로 전환
     function enterReview(count) {
-        reviewImg.src = previewUrl;
         hideSaveStatus();
-        resetZoom();
+        const isManual = mode === 'manual';
+        // 좌측 패널: 사진 모드 → 원본 사진 / 직접 작성 모드 → 과거 이력
+        imagePane.hidden = isManual;
+        reviewHistPane.hidden = !isManual;
+        if (!isManual) {
+            // 미리보기 변환이 아직이면 setFile 완료 시 갱신된다 (HEIC)
+            if (previewUrl) reviewImg.src = previewUrl;
+            else reviewImg.removeAttribute('src');
+            resetZoom();
+        }
         const hint = document.getElementById('reviewHint');
         if (hint) {
-            hint.textContent = (count != null)
-                ? `${count}개 품목을 읽었습니다. 왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.`
-                : '왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.';
+            hint.textContent = isManual
+                ? '약품을 검색해 고르고 규격·수량을 입력하세요. 행을 클릭하면 왼쪽에 과거 주문 이력이 표시됩니다.'
+                : (count != null)
+                    ? `${count}개 품목을 읽었습니다. 왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.`
+                    : '왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.';
         }
         document.body.classList.add('review-mode');
         uploadCard.hidden = true;
+        supplierSection.hidden = true;
         reviewSection.hidden = false;
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -606,6 +765,8 @@
         reviewSection.hidden = true;
         supplierSection.hidden = true;
         uploadCard.hidden = false;
+        imagePane.hidden = false;
+        reviewHistPane.hidden = true;
         clearFile();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -727,6 +888,8 @@
         nextBtn.addEventListener('click', enterSupplierStep);
         backBtn.addEventListener('click', backToReview);
         saveBtn.addEventListener('click', save);
+        modeOcrBtn.addEventListener('click', () => setMode('ocr'));
+        modeManualBtn.addEventListener('click', () => setMode('manual'));
     }
 
     // =================== Keep-alive WebSocket ===================

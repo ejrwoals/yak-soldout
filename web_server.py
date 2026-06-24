@@ -57,7 +57,7 @@ if platform.system() == "Windows":
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import uvicorn
@@ -161,8 +161,20 @@ async def read_order_history(request: Request):
     """주문 기록 — 달력으로 과거 주문지 내역 조회"""
     return templates.TemplateResponse(request, "order_history.html")
 
+# Pillow 가 HEIC/HEIF 를 열 수 있도록 등록 (미리보기 변환용). 미설치 시 미리보기만 비활성.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except Exception:
+    pass
+
 # 업로드 이미지 허용 형식
 _OCR_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+# content_type 이 누락/비표준으로 올 때 파일 확장자로 형식을 보정하기 위한 역매핑
+_EXT_TO_MIME = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".webp": "image/webp", ".heic": "image/heic", ".heif": "image/heif",
+}
 _OCR_MAX_BYTES = 15 * 1024 * 1024  # 15MB
 
 @app.post("/api/order-ocr/extract")
@@ -178,6 +190,10 @@ async def order_ocr_extract(image: UploadFile = File(...)):
             detail="GEMINI_API_KEY 가 설정되지 않았습니다. .env 파일을 확인해주세요.")
 
     mime = (image.content_type or "").lower()
+    if mime not in _OCR_ALLOWED_MIME:
+        # content_type 누락/비표준 → 파일 확장자로 형식 보정
+        ext = os.path.splitext(image.filename or "")[1].lower()
+        mime = _EXT_TO_MIME.get(ext, mime)
     if mime not in _OCR_ALLOWED_MIME:
         raise HTTPException(
             status_code=400,
@@ -199,6 +215,39 @@ async def order_ocr_extract(image: UploadFile = File(...)):
     # 약품 마스터가 등록돼 있으면 각 항목에 오타 보정 매칭 결과를 덧붙인다 (없으면 status='skip')
     items = await asyncio.to_thread(drug_matcher.attach_matches, items)
     return {"items": items, "count": len(items)}
+
+
+def _to_preview_jpeg(data: bytes, max_side: int = 1600) -> bytes:
+    """업로드 이미지를 브라우저 미리보기용 JPEG 로 변환한다.
+
+    HEIC(아이폰)는 브라우저 <img> 가 렌더링하지 못하므로 서버에서 변환한다.
+    EXIF 회전 보정 + 긴 변 기준 축소로 전송 용량도 줄인다. 원본은 그대로 OCR/저장에 쓰인다.
+    """
+    import io
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(data))
+    im = ImageOps.exif_transpose(im)          # 촬영 방향(EXIF) 보정
+    im = im.convert("RGB")
+    if max(im.size) > max_side:
+        im.thumbnail((max_side, max_side))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=82)
+    return buf.getvalue()
+
+
+@app.post("/api/order-ocr/preview")
+async def order_ocr_preview(image: UploadFile = File(...)):
+    """HEIC 등 브라우저가 그리지 못하는 이미지를 미리보기용 JPEG 로 변환해 반환한다."""
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="빈 파일입니다.")
+    if len(data) > _OCR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="이미지가 너무 큽니다 (최대 15MB).")
+    try:
+        jpeg = await asyncio.to_thread(_to_preview_jpeg, data)
+    except Exception as e:
+        raise HTTPException(status_code=415, detail=f"미리보기 변환 실패: {str(e)}")
+    return Response(content=jpeg, media_type="image/jpeg")
 
 
 # mime → 저장 확장자 (원본 이미지 보관용)
