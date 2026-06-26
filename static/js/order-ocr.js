@@ -638,23 +638,58 @@
             panel.appendChild(empty);
             return;
         }
-        const ul = document.createElement('ul');
-        ul.className = 'hist-list';
+
+        // 규격(포장단위)별로 묶어 구분해서 보여준다.
+        // history 는 최신순이라, 먼저 등장한 규격이 더 최근에 주문한 규격으로 위에 온다.
+        const groups = new Map();   // package_unit → [items]
         history.forEach((h) => {
-            const li = document.createElement('li');
-            li.className = 'hist-item';
-            const distName = distNameMap[h.distributor] || h.distributor || '—';
-            const qty = h.quantity ? `${h.quantity}` : '';
-            li.innerHTML = `
-                <span class="hist-date">${h.order_date} ${h.order_round}차</span>
-                <span class="hist-dist"></span>
-                <span class="hist-qty"></span>
-            `;
-            li.querySelector('.hist-dist').textContent = distName;
-            li.querySelector('.hist-qty').textContent = qty;
-            ul.appendChild(li);
+            const key = (h.package_unit || '').trim() || '(규격 미상)';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(h);
         });
-        panel.appendChild(ul);
+
+        const MAX_PER_GROUP = 3;   // 규격별 기본 표시 건수 (나머지는 접어둠)
+        groups.forEach((items, unit) => {
+            const group = document.createElement('div');
+            group.className = 'hist-group';
+            const head = document.createElement('div');
+            head.className = 'hist-unit-head';
+            head.textContent = unit;
+            group.appendChild(head);
+
+            const ul = document.createElement('ul');
+            ul.className = 'hist-list';
+            items.forEach((h, idx) => {
+                const li = document.createElement('li');
+                // 최근 MAX_PER_GROUP 건만 기본 노출, 나머지는 '더 보기' 전까지 숨김
+                li.className = 'hist-item' + (idx >= MAX_PER_GROUP ? ' hist-extra' : '');
+                const distName = distNameMap[h.distributor] || h.distributor || '—';
+                const qty = h.quantity ? `${h.quantity}` : '';
+                li.innerHTML = `
+                    <span class="hist-date">${h.order_date} ${h.order_round}차</span>
+                    <span class="hist-dist"></span>
+                    <span class="hist-qty"></span>
+                `;
+                li.querySelector('.hist-dist').textContent = distName;
+                li.querySelector('.hist-qty').textContent = qty;
+                ul.appendChild(li);
+            });
+            group.appendChild(ul);
+
+            if (items.length > MAX_PER_GROUP) {
+                const extra = items.length - MAX_PER_GROUP;
+                const more = document.createElement('button');
+                more.type = 'button';
+                more.className = 'hist-more';
+                more.textContent = `+${extra}건 더 보기`;
+                more.addEventListener('click', () => {
+                    const open = ul.classList.toggle('expanded');
+                    more.textContent = open ? '접기' : `+${extra}건 더 보기`;
+                });
+                group.appendChild(more);
+            }
+            panel.appendChild(group);
+        });
     }
 
     // 도매상 선택 테이블의 각 행을 {drug_name, package_unit, quantity, distributor} 로 수집

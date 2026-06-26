@@ -538,6 +538,33 @@
 .hist-dist { flex: 1; font-weight: 600; color: var(--text-primary); }
 .hist-qty { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
+/* 규격별 그룹 */
+.hist-group { margin-bottom: 14px; }
+.hist-group:last-child { margin-bottom: 0; }
+.hist-list:not(.expanded) .hist-extra { display: none; }  /* 더 보기 전까지 숨김 */
+.hist-more {
+    margin-top: 4px;
+    padding: 2px 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.hist-more:hover { text-decoration: underline; }
+.hist-unit-head {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--bg-tertiary);
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+}
+
 /* 우측: 약품별 도매상 선택 테이블 */
 .supplier-table .col-dist { width: 180px; }
 .supplier-table td.s-name { font-weight: 500; color: var(--text-primary); }
