@@ -108,6 +108,16 @@ body {
   color: var(--text-primary);
 }
 
+/* 아이콘 + 텍스트 라벨 네비 버튼 */
+.nav-label-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .connection-status {
   display: flex;
   align-items: center;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>약품 마스터 관리 | 약국 업무 자동화</title>
+    <title>약품 DB 관리 | 약국 업무 자동화</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
@@ -28,7 +28,7 @@
             <div class="nav-brand">
                 <a href="/order-ocr" class="nav-back" title="주문지 OCR로"><i class="bi bi-arrow-left"></i></a>
                 <i class="bi bi-database"></i>
-                <span>약품 마스터 관리</span>
+                <span>약품 DB 관리</span>
             </div>
             <div class="nav-controls">
                 <button id="themeToggle" class="theme-toggle" title="다크모드 전환">
@@ -40,7 +40,7 @@
 
     <main class="main-container ocr-container mdb-wide">
         <section class="home-header">
-            <h1>약품 마스터 관리</h1>
+            <h1>약품 DB 관리</h1>
             <p class="subtitle">취급 약품 목록(엑셀)을 등록하면 OCR 약품명 오타를 보정하는 데 사용됩니다</p>
         </section>
 
@@ -96,7 +96,7 @@
         <!-- 마스터 DB 뷰어 -->
         <section id="tableCard" class="ocr-card" hidden>
             <div class="mdb-header">
-                <h2 class="card-title"><i class="bi bi-table"></i> 마스터 DB 뷰어</h2>
+                <h2 class="card-title"><i class="bi bi-table"></i> 약품 DB 뷰어</h2>
                 <div class="mdb-search">
                     <i class="bi bi-search"></i>
                     <input id="dmSearch" type="text" placeholder="약품명 또는 보험코드 검색…">
@@ -211,7 +211,7 @@
             </div>
             <div class="modal-body">
                 <p class="hint">
-                    예전에 마스터에 없어 <strong>자유입력</strong>으로 등록했던 약품이,
+                    예전에 약품 DB에 없어 <strong>자유입력</strong>으로 등록했던 약품이,
                     이번 엑셀 갱신으로 정식 약품에 포함된 것으로 감지되었습니다.
                     승격하면 자유입력 행은 정식 약품으로 병합되고, 해당 주문 항목도 <strong>정식 약품명</strong>으로 바뀝니다.
                 </p>

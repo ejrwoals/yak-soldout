@@ -271,7 +271,7 @@
                 if (tableCard.hidden) loadRows(); // 최초 1회만 자동 로드 (이후엔 직접 조작 유지)
             } else {
                 masterStatus.className = 'master-status';
-                masterStatus.innerHTML = `<i class="bi bi-info-circle"></i> 아직 등록된 약품 마스터가 없습니다. 엑셀을 업로드해 등록하세요.`;
+                masterStatus.innerHTML = `<i class="bi bi-info-circle"></i> 아직 등록된 약품 DB가 없습니다. 엑셀을 업로드해 등록하세요.`;
                 unitCard.hidden = true;
                 tableCard.hidden = true;
             }
@@ -504,7 +504,7 @@
     // 자유입력 행 삭제
     async function deleteManualRow(tr) {
         const name = tr.dataset.name || '';
-        if (!window.confirm(`'${name}' 약품을 마스터에서 삭제할까요?\n(자유입력으로 등록된 약품이며, 삭제 후에는 OCR 매칭에서 제외됩니다)`)) return;
+        if (!window.confirm(`'${name}' 약품을 약품 DB에서 삭제할까요?\n(자유입력으로 등록된 약품이며, 삭제 후에는 OCR 매칭에서 제외됩니다)`)) return;
         try {
             const resp = await fetch(`/api/drug-master/rows/${tr.dataset.id}`, { method: 'DELETE' });
             if (!resp.ok) {

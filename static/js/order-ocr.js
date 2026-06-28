@@ -431,7 +431,7 @@
         }
         if (match.status === 'none') {
             slot.appendChild(matchBadge('none', '미등록',
-                '마스터에서 비슷한 약품을 찾지 못했습니다'));
+                '약품 DB에서 비슷한 약품을 찾지 못했습니다'));
             return;
         }
         // candidate — 비슷한 약품이 있음. 사용자가 고르면 공식명으로 교체
