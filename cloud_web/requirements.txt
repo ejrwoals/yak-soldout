@@ -1,0 +1,10 @@
+# 스택 1 — Cloud Run 웹 UI 의존성 (Playwright 없음 → 경량 이미지)
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+pillow>=10.0.0
+pillow-heif>=0.13.0
+rapidfuzz>=3.0.0
+supabase>=2.4.0

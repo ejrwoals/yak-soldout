@@ -1,0 +1,576 @@
+/* 손글씨 주문지 OCR 페이지 스타일 (1단계)
+   main.css 의 CSS 변수(--primary, --bg-* 등)를 재사용하므로 다크모드는 자동 대응된다. */
+
+.ocr-container {
+    max-width: 860px;
+    transition: max-width 0.25s ease;
+}
+/* 검수 모드에선 좌우 2단을 위해 컨테이너를 넓힌다 */
+.review-mode .ocr-container { max-width: 1320px; }
+
+/* 카드 컨테이너 */
+.ocr-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    margin-bottom: 20px;
+}
+
+/* 뒤로가기 버튼 */
+.nav-back {
+    color: var(--text-secondary);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 8px;
+    transition: background 0.15s, color 0.15s;
+}
+.nav-back:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* ============ 업로드 (드롭존) ============ */
+.drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
+    padding: 16px;
+}
+.drop-zone:hover,
+.drop-zone.dragover {
+    border-color: var(--primary);
+    background: var(--bg-tertiary);
+}
+.drop-prompt {
+    text-align: center;
+    color: var(--text-secondary);
+}
+.drop-prompt i {
+    font-size: 2.6rem;
+    color: var(--primary);
+    display: block;
+    margin-bottom: 10px;
+}
+.drop-prompt p { margin: 2px 0; }
+.drop-prompt .hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.preview-img {
+    max-width: 100%;
+    max-height: 460px;
+    border-radius: 8px;
+    object-fit: contain;
+}
+
+.ocr-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+/* ============ 입력 방식 토글 (사진 / 직접 작성) ============ */
+.mode-toggle {
+    display: flex;
+    width: fit-content;
+    gap: 4px;
+    padding: 4px;
+    margin: 0 auto 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+.mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.mode-btn:hover { color: var(--text-primary); }
+.mode-btn.active {
+    background: var(--bg-primary);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* ============ 버튼 (페이지 스코프) ============ */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s, opacity 0.15s;
+    font-family: inherit;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+    background: var(--primary);
+    color: #fff;
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+.btn-ghost:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* ============ 상태 메시지 ============ */
+/* display:flex 가 [hidden] 의 display:none 을 덮어쓰므로, 숨김을 명시적으로 보장 */
+.status-msg[hidden] { display: none; }
+.status-msg {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.status-msg.loading { background: var(--bg-tertiary); color: var(--text-secondary); }
+.status-msg.error   { background: rgba(244, 63, 94, 0.12); color: var(--danger); }
+.status-msg.success { background: rgba(20, 184, 166, 0.12); color: var(--success); }
+.status-msg .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: ocr-spin 0.7s linear infinite;
+}
+@keyframes ocr-spin { to { transform: rotate(360deg); } }
+
+/* ============ 검수 2단 레이아웃 ============ */
+.ocr-review { margin-bottom: 20px; }
+.review-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.05fr);
+    gap: 20px;
+    align-items: start;
+}
+
+/* 좌측: 원본 사진 패널 (스크롤해도 따라오도록 sticky) */
+/* display:flex 가 [hidden] 의 display:none 을 덮어쓰므로, 숨김을 명시적으로 보장 */
+.image-pane[hidden] { display: none; }
+.image-pane {
+    position: sticky;
+    top: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.image-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.img-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.zoom-controls { display: flex; align-items: center; gap: 4px; }
+.zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.zoom-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--bg-tertiary); }
+.zoom-level {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    min-width: 42px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.image-viewport {
+    position: relative;
+    height: calc(100vh - 210px);
+    min-height: 360px;
+    background: var(--bg-secondary);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+}
+.image-viewport.panning { cursor: grabbing; }
+.review-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transform-origin: center center;
+    will-change: transform;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.image-hint {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 우측: 검수 테이블 패널 (기존 .ocr-card 와 동일한 카드 스타일) */
+.table-pane {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+}
+
+/* 반응형: 좁은 화면(태블릿 세로/모바일)에서는 세로로 쌓는다 */
+@media (max-width: 900px) {
+    .review-mode .ocr-container { max-width: 860px; }
+    .review-grid { grid-template-columns: 1fr; }
+    .image-pane { position: static; }
+    .image-viewport { height: 52vh; min-height: 280px; }
+}
+
+/* ============ 검수 ============ */
+.review-header { margin-bottom: 16px; }
+.review-header h2 {
+    font-size: 1.15rem;
+    margin: 0 0 4px;
+    display: flex; align-items: center; gap: 8px;
+}
+.review-header .hint { color: var(--text-muted); font-size: 0.88rem; margin: 0; }
+
+.order-meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.order-meta label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.order-meta input,
+.order-meta select {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.92rem;
+}
+
+.table-wrap { overflow-x: auto; }
+.review-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.review-table th,
+.review-table td {
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px;
+    text-align: left;
+}
+.review-table thead th {
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.review-table .col-idx  { width: 36px; text-align: center; color: var(--text-muted); }
+.review-table .col-unit { width: 180px; vertical-align: top; }
+.review-table .col-qty  { width: 88px; min-width: 72px; }
+.review-table .col-del  { width: 44px; }
+.review-table .f-qty { text-align: center; }
+
+.review-table input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.92rem;
+}
+.review-table input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: var(--bg-primary);
+}
+
+/* 규격(포장단위) 자동보정 상태 표시 */
+.review-table .f-unit.u-auto { border-color: #7c3aed; background: rgba(124,58,237,0.07); }  /* 자동 보정됨 */
+.review-table .f-unit.u-warn { border-color: #d97706; background: rgba(217,119,6,0.09); }   /* 유효 규격에 없음 — 확인 */
+.review-table .f-unit.u-ok   { border-color: rgba(20,184,166,0.55); }                        /* 유효 규격과 일치 */
+
+/* 알려진 규격 칩 (클릭해서 설정) */
+.unit-suggest {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 5px;
+}
+.unit-chip-btn {
+    padding: 1px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.72rem; font-family: inherit; cursor: pointer;
+    white-space: nowrap;
+}
+.unit-chip-btn:hover { border-color: var(--primary); color: var(--primary); }
+.unit-chip-btn.active {
+    background: rgba(124,58,237,0.14); border-color: #7c3aed; color: #7c3aed; font-weight: 600;
+}
+.del-row-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+.del-row-btn:hover { color: var(--danger); background: var(--bg-tertiary); }
+
+/* ===== 약품 마스터 매칭(오타 보정) UI ===== */
+.review-table td.col-name { min-width: 220px; position: relative; }
+.match-slot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+}
+.match-slot:empty { display: none; }
+.match-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    cursor: default;
+}
+.match-matched   { background: rgba(20,184,166,0.15);  color: var(--success); }
+.match-candidate { background: rgba(245,158,11,0.18);  color: #b45309; }
+.match-none      { background: var(--bg-tertiary);     color: var(--text-muted); }
+.match-confirmed { background: rgba(124,58,237,0.15);  color: var(--primary); }
+[data-theme="dark"] .match-candidate { color: #fbbf24; }
+[data-theme="dark"] .match-confirmed { color: #a78bfa; }
+.match-select {
+    flex: 1;
+    min-width: 140px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+.match-select:focus { outline: none; border-color: var(--primary); }
+
+/* 직접 검색 버튼 + 검색 드롭다운 */
+.search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+}
+.search-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+.dm-search {
+    position: fixed;        /* 표의 overflow 에 잘리지 않도록 — 좌표는 JS 가 계산 */
+    z-index: 100;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    padding: 8px;
+}
+.dm-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.88rem;
+}
+.dm-search-input:focus { outline: none; border-color: var(--primary); background: var(--bg-primary); }
+.dm-search-results {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+.dm-result {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+.dm-result:hover { background: var(--bg-tertiary); }
+.dm-r-name { font-size: 0.86rem; color: var(--text-primary); }
+.dm-r-maker { font-size: 0.74rem; color: var(--text-muted); }
+.dm-empty {
+    padding: 10px 9px;
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    text-align: center;
+}
+
+.review-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 18px;
+}
+
+.empty-hint {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px;
+    font-size: 0.9rem;
+}
+
+/* =================== 도매상 선택 단계 =================== */
+/* 좌측: 과거 주문 이력 참고 패널 (image-pane 레이아웃 재사용) */
+.hist-panel {
+    padding: 14px;
+    overflow-y: auto;
+    max-height: calc(100vh - 210px);
+    min-height: 360px;
+}
+.hist-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+.hist-empty {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+.hist-item:last-child { border-bottom: none; }
+.hist-date { color: var(--text-muted); min-width: 96px; font-variant-numeric: tabular-nums; }
+.hist-dist { flex: 1; font-weight: 600; color: var(--text-primary); }
+.hist-qty { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* 규격별 그룹 */
+.hist-group { margin-bottom: 14px; }
+.hist-group:last-child { margin-bottom: 0; }
+.hist-list:not(.expanded) .hist-extra { display: none; }  /* 더 보기 전까지 숨김 */
+.hist-more {
+    margin-top: 4px;
+    padding: 2px 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.hist-more:hover { text-decoration: underline; }
+.hist-unit-head {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--primary);
+    background: var(--bg-tertiary);
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 6px;
+}
+
+/* 우측: 약품별 도매상 선택 테이블 */
+.supplier-table .col-dist { width: 180px; }
+.supplier-table td.s-name { font-weight: 500; color: var(--text-primary); }
+.supplier-table td.s-unit,
+.supplier-table td.s-qty { color: var(--text-secondary); }
+.supplier-table tbody tr { cursor: pointer; }
+.supplier-table tbody tr:hover { background: var(--bg-tertiary); }
+.supplier-table tbody tr.row-selected { background: rgba(124,58,237,0.10); }
+.dist-select { width: 100%; min-width: 0; }

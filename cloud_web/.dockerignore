@@ -1,0 +1,9 @@
+# 비밀·캐시·문서는 이미지에 넣지 않는다 (시크릿은 Cloud Run 런타임 주입)
+.env
+.env.example
+__pycache__/
+*.pyc
+*.pyo
+README.md
+DEPLOY.md
+.DS_Store

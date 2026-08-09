@@ -1,0 +1,4 @@
+# 스택 2 — 로컬 PyWebView 앱 의존성
+# (크롤링용 playwright 등은 해당 기능 개발 시 추가. 지금은 데이터 계층만.)
+supabase>=2.4.0
+python-dotenv>=1.0.0

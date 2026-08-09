@@ -6,6 +6,61 @@
 
 FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 웹 자동화 기술을 사용하며, 레지스트리 패턴으로 도매상을 손쉽게 추가할 수 있는 확장형 아키텍처를 갖추고 있습니다.
 
+## 🗂️ 저장소 구성 — 두 개의 독립 앱
+
+이 저장소는 이제 **서로 독립적인 두 개의 앱**을 담고 있으며, 둘은 오직 **Supabase**를 통해서만 만납니다.
+
+- **품절약 서치앱** — *이 README의 주 대상.* 도매상 품절 약품을 모니터링하는 로컬 앱입니다. 로컬 SQLite(`data/yak_soldout.db`) + Playwright 기반이며 **로컬 전용**으로 유지됩니다(Supabase를 쓰지 않습니다). 아래 [주요 기능](#-주요-기능) 이하 문서 전체가 이 앱을 설명합니다.
+- **자동 주문 솔루션** — 손글씨 주문지를 OCR로 읽어 검수·저장하고, 저장된 주문을 자동으로 도매상 장바구니에 담는 것을 목표로 하는 **신규 앱**입니다. 데이터는 전적으로 **Supabase**(Postgres + Auth + Storage)에 두며, 두 개의 스택으로 나뉩니다.
+
+두 앱은 코드·프로세스·저장소가 분리되어 있고, 공유하는 것은 Supabase 데이터(특히 `drug_master`)뿐입니다. 품절앱의 로컬 SQLite는 건드리지 않습니다.
+
+> 전체 설계: [주문-자동화-워크플로우-구현-계획.md](주문-자동화-워크플로우-구현-계획.md)
+
+### 디렉터리 맵 (자동 주문 솔루션)
+
+```
+cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR→매칭→검수→Supabase 저장
+local_app/     # 스택 2 — 로컬 PyWebView 앱(예정). pending 주문을 읽어 크롤링(장바구니 담기)
+supabase/      # 공유 백엔드 스키마 (migrations/: 0001 스키마+RLS+Storage, 0002 grants)
+scripts/       # 개발·검증·이전 스크립트 (migrate_drug_master.py, dev_smoke.py 등)
+deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
+```
+
+각 폴더에 자체 README가 있습니다 — [cloud_web/README.md](cloud_web/README.md), [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md), [supabase/README.md](supabase/README.md).
+
+### 스택 1 — Cloud Run 웹 UI (`cloud_web/`)
+
+약국 직원이 브라우저에서 주문지를 처리하는 경량 FastAPI 앱입니다. **Playwright를 포함하지 않고**(경량), 스테이트리스이며 `$PORT`에 바인딩해 **Google Cloud Run**에 배포됩니다. 데이터 흐름:
+
+1. **Google 로그인**(Supabase Auth) — 브라우저의 `supabase-js`가 로그인해 발급한 JWT를 `Authorization: Bearer`로 백엔드에 전달합니다. 백엔드는 그 토큰으로 사용자 스코프 클라이언트를 만들어 **RLS**를 적용합니다(`cloud_web/app.py`).
+2. **사진 업로드 → OCR** — Gemini 멀티모달로 약품명·포장단위·수량을 추출합니다(`cloud_web/ocr_service.py`, 품절앱 `utils/ocr_service.py`를 자체 완결 사본으로 이식).
+3. **약품명 오타 보정** — 그 약국의 `drug_master`(Supabase)로 한글 자모 fuzzy 매칭을 수행해 검수 테이블에 결과를 붙입니다(`cloud_web/drug_matcher.py` + `master_repo.py`, 품절앱 `utils/drug_matcher.py`에서 이식). 사용자별 매칭 인덱스는 TTL 캐시합니다.
+4. **검수·수정 UI** — `static/index.html` + `static/js/order-ocr.js`(품절앱 CSS 재사용), 타이핑 자동완성(`/api/drug-search`)으로 마스터 후보를 제시합니다.
+5. **Supabase 저장** — 검수본을 `orders`/`order_items`(`status='pending'`)로, 원본 이미지를 Supabase Storage(`order-images/<user_id>/…`)로 저장합니다(`cloud_web/orders_repo.py`). 저장 경로는 JWT를 GoTrue로 검증해 `user_id`를 얻은 뒤 **service_role 키**로 서버가 신뢰 기록합니다. 같은 `(user_id, 날짜, 차수)`가 이미 있으면 409를 반환합니다.
+
+주요 엔드포인트: `GET /api/healthz` · `GET /api/config`(브라우저 supabase-js 초기화용 공개 설정) · `POST /api/ocr` · `GET /api/drug-search` · `POST /api/save` · `POST /api/preview`(HEIC 등 미리보기용 JPEG 변환).
+
+### 스택 2 — 로컬 크롤링 앱 (`local_app/`)
+
+Supabase의 `status='pending'` 주문을 읽어 도매상 사이트에 자동 로그인·장바구니 담기를 수행할 **로컬 PyWebView 데스크톱 앱**입니다. **아직 크롤링 로직은 구현되지 않았고**, 현재는 Supabase 데이터 계층만 스캐폴딩되어 있습니다(`local_app/supabase_client.py`, `local_app/orders_repo.py`). 로컬 SQLite가 아니라 **anon key + 로그인 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않음), 크롤링 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back할 예정입니다.
+
+### 공유 백엔드 — Supabase (`supabase/`)
+
+두 스택의 유일한 접점입니다. 스키마는 `supabase/migrations/`에 있습니다(`0001_autoorder_schema.sql` = 테이블+RLS+Storage, `0002_grants.sql` = 권한). 적용은 Supabase 대시보드 SQL Editor 붙여넣기 또는 `supabase db push`.
+
+- **테이블**: `orders`(`(user_id, order_date, order_round)` 유니크, `status`: `reviewing`→`pending`→`ordered`), `order_items`(`order_id` FK, `cart_status`·`position` 포함), `drug_master`(약국별 약품 마스터). 모든 테이블은 **RLS로 `user_id` 격리**됩니다.
+- **Storage**: 비공개 `order-images` 버킷, 경로 규칙 `<user_id>/<파일명>`으로 소유자만 접근합니다.
+- **drug_master 이전**: 품절앱의 로컬 SQLite에 있던 약품 마스터를 `scripts/migrate_drug_master.py`로 Supabase `drug_master`에 옮깁니다(멱등 replace 방식).
+
+### 배포
+
+`cloud_web/`은 Docker 이미지로 **Cloud Run**에 배포합니다(`cloud_web/Dockerfile`, 로컬 Docker 없이 Cloud Build가 서버에서 빌드). 루트의 **`./deploy.sh` 한 줄**로 시크릿 동기화(`GEMINI_API_KEY`·`SUPABASE_SERVICE_KEY` → Secret Manager), 빌드·배포, 커스텀 도메인 매핑까지 처리합니다(프로젝트 `gen-lang-client-0011046539`, 리전 `asia-northeast1`, 서비스 `yak-order`, 도메인 `yak-order.chajjaem.dev`). 상세는 [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md).
+
+---
+
+> 아래부터는 **품절약 서치앱**(로컬 SQLite + Playwright) 문서입니다.
+
 ## ✨ 주요 기능
 
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
