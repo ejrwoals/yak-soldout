@@ -56,6 +56,7 @@
         if (session) document.getElementById('userEmail').textContent = session.user?.email || '';
         const isAdmin = state === 'app' && membership && membership.role === 'admin';
         document.getElementById('inviteBtn').hidden = !isAdmin;
+        document.getElementById('viewToggleBtn').hidden = state !== 'app';
         // 약국 이름 + 역할 배지
         const badge = document.getElementById('pharmacyBadge');
         if (state === 'app' && membership) {
@@ -112,6 +113,40 @@
         return session ? { Authorization: 'Bearer ' + session.access_token } : {};
     }
 
+    // =================== 주문 기록 뷰 ===================
+    let currentView = 'form';
+    function showView(v) {
+        currentView = v;
+        document.getElementById('formView').hidden = v !== 'form';
+        document.getElementById('historyView').hidden = v !== 'history';
+        const lbl = document.getElementById('viewToggleLabel');
+        const icon = document.querySelector('#viewToggleBtn i');
+        if (lbl) lbl.textContent = v === 'form' ? '주문 기록' : '주문 작성';
+        if (icon) icon.className = v === 'form' ? 'bi bi-clock-history' : 'bi bi-pencil-square';
+        if (v === 'history') loadHistory();
+    }
+    async function loadHistory() {
+        const list = document.getElementById('historyList');
+        list.innerHTML = '<div class="hist-empty">불러오는 중…</div>';
+        try {
+            const r = await fetch('/api/orders', { headers: authHeader() });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.detail || '조회 실패');
+            if (!(d.orders || []).length) { list.innerHTML = '<div class="hist-empty">저장된 주문이 없습니다.</div>'; return; }
+            list.innerHTML = '';
+            d.orders.forEach((o) => list.appendChild(histCard(o)));
+        } catch (e) { list.innerHTML = `<div class="hist-empty">조회 실패: ${escapeHtml(e.message)}</div>`; }
+    }
+    function histCard(o) {
+        const el = document.createElement('div'); el.className = 'hist-order';
+        const items = o.order_items || [];
+        const rows = items.map((it) => `<tr><td>${escapeHtml(it.drug_name)}</td><td>${escapeHtml(it.package_unit || '')}</td><td style="text-align:center">${escapeHtml(it.quantity || '')}</td></tr>`).join('');
+        el.innerHTML = `<div class="hist-head"><span class="date">${escapeHtml(o.order_date)} ${escapeHtml(String(o.order_round))}차</span><span class="cnt">${items.length}품목</span><span class="hist-badge ${escapeHtml(o.status)}">${o.status === 'ordered' ? '주문완료' : '크롤링 대기'}</span></div>
+          <div class="hist-items"><table><thead><tr><th>약품명</th><th>포장단위</th><th style="text-align:center">수량</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        el.querySelector('.hist-head').addEventListener('click', () => el.classList.toggle('open'));
+        return el;
+    }
+
     // =================== 테마 ===================
     let currentTheme = localStorage.getItem('theme') || 'light';
     function applyTheme() {
@@ -145,9 +180,13 @@
     const imageViewport = document.getElementById('imageViewport');
     const zoomLevel = document.getElementById('zoomLevel');
     const imagePane = document.getElementById('imagePane');
+    const modeOcrBtn = document.getElementById('modeOcrBtn');
+    const modeManualBtn = document.getElementById('modeManualBtn');
+    const pageSubtitle = document.getElementById('pageSubtitle');
 
     let selectedFile = null;
     let previewUrl = null;
+    let mode = 'ocr';  // 'ocr'(사진) | 'manual'(직접 작성)
 
     // =================== 파일 선택 / 미리보기 ===================
     const IMAGE_EXT_RE = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i;
@@ -505,14 +544,21 @@
     // =================== 검수 모드 전환 ===================
     function enterReview(count) {
         hideSaveStatus();
-        if (previewUrl) reviewImg.src = previewUrl;
-        else reviewImg.removeAttribute('src');
-        resetZoom();
+        const manual = mode === 'manual';
+        imagePane.hidden = manual;
+        document.body.classList.toggle('manual-mode', manual);
+        if (!manual) {
+            if (previewUrl) reviewImg.src = previewUrl;
+            else reviewImg.removeAttribute('src');
+            resetZoom();
+        }
         const hint = document.getElementById('reviewHint');
         if (hint) {
-            hint.textContent = (count != null)
-                ? `${count}개 품목을 읽었습니다. 왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.`
-                : '왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.';
+            hint.textContent = manual
+                ? '약품명을 입력하면 약품 DB에서 자동완성됩니다. 포장단위·수량을 입력하세요.'
+                : (count != null)
+                    ? `${count}개 품목을 읽었습니다. 왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.`
+                    : '왼쪽 원본과 대조하며 누락·오기를 직접 고쳐주세요.';
         }
         document.body.classList.add('review-mode');
         uploadCard.hidden = true;
@@ -520,12 +566,33 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     function exitReview() {
-        document.body.classList.remove('review-mode');
+        document.body.classList.remove('review-mode', 'manual-mode');
         reviewSection.hidden = true;
         uploadCard.hidden = false;
         imagePane.hidden = false;
         clearFile();
+        // 사진 모드로 복귀
+        mode = 'ocr';
+        modeOcrBtn.classList.add('active'); modeManualBtn.classList.remove('active');
+        modeOcrBtn.setAttribute('aria-selected', 'true'); modeManualBtn.setAttribute('aria-selected', 'false');
+        if (pageSubtitle) pageSubtitle.textContent = '주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어옵니다';
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 입력 방식 전환 (사진 ↔ 직접 작성)
+    function setMode(next) {
+        if (next === mode) return;
+        if (next === 'manual') {
+            mode = 'manual';
+            modeManualBtn.classList.add('active'); modeOcrBtn.classList.remove('active');
+            modeManualBtn.setAttribute('aria-selected', 'true'); modeOcrBtn.setAttribute('aria-selected', 'false');
+            if (pageSubtitle) pageSubtitle.textContent = '약품을 직접 입력해 주문서를 작성합니다';
+            clearFile();
+            renderRows([]);      // 빈 행 1개
+            enterReview(null);
+        } else {
+            exitReview();        // 사진 모드로 복귀 (업로드 화면)
+        }
     }
 
     // =================== 원본 사진 확대 / 이동 ===================
@@ -618,6 +685,8 @@
         extractBtn.addEventListener('click', extract);
         addRowBtn.addEventListener('click', () => { reviewBody.appendChild(makeRow({})); renumber(); });
         saveBtn.addEventListener('click', save);
+        modeOcrBtn.addEventListener('click', () => setMode('ocr'));
+        modeManualBtn.addEventListener('click', () => setMode('manual'));
     }
 
     // =================== 초기화 ===================
@@ -630,7 +699,8 @@
             const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
             if (error) showLoginStatus('error', error.message);
         });
-        document.getElementById('logoutBtn')?.addEventListener('click', async () => { await sb?.auth.signOut(); });
+        document.getElementById('logoutBtn')?.addEventListener('click', async () => { showView('form'); await sb?.auth.signOut(); });
+        document.getElementById('viewToggleBtn')?.addEventListener('click', () => showView(currentView === 'form' ? 'history' : 'form'));
         document.getElementById('joinBtn')?.addEventListener('click', () => doAccept(document.getElementById('inviteCode').value));
         document.getElementById('inviteCode')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAccept(e.target.value); });
         document.getElementById('inviteBtn')?.addEventListener('click', createInvite);

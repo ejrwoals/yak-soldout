@@ -239,6 +239,26 @@ async def api_me(authorization: str = Header(None)):
     return {"member": True, **m}
 
 
+@app.get("/api/orders")
+async def api_orders(authorization: str = Header(None)):
+    """이 약국의 저장된 주문 목록(품목 포함, 최신순). 소속 멤버면 조회 가능."""
+    client = _user_client(authorization)
+    _require_membership(_token_sub(authorization))
+    res = (
+        client.table("orders")
+        .select("id, order_date, order_round, status, created_at, order_items(*)")
+        .order("order_date", desc=True)
+        .order("order_round", desc=True)
+        .execute()
+    )
+    orders = res.data or []
+    for o in orders:
+        items = o.get("order_items") or []
+        items.sort(key=lambda it: it.get("position") if it.get("position") is not None else 1_000_000)
+        o["order_items"] = items
+    return {"orders": orders, "count": len(orders)}
+
+
 @app.post("/api/accept-invite")
 async def api_accept_invite(body: dict, authorization: str = Header(None)):
     """초대코드로 약국에 합류(직원). 성공 시 멤버십 반환."""

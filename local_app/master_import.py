@@ -143,50 +143,56 @@ def extract_drugs(file_bytes: bytes, filename: str, name_col: str,
     return drugs
 
 
-def _fetch_existing_units(client, pharmacy_id: str) -> dict:
-    """(name, insurance_code) → (unit, unit_manual) 맵. 규격 보존용(페이지네이션)."""
-    out, start, page = {}, 0, 1000
+def _fetch_existing_keys(client, pharmacy_id: str) -> set:
+    """기존 약품의 (name, insurance_code) 키 집합 (페이지네이션)."""
+    keys, start, page = set(), 0, 1000
     while True:
         res = (
             client.table("drug_master")
-            .select("name, insurance_code, unit, unit_manual")
+            .select("name, insurance_code")
             .eq("pharmacy_id", pharmacy_id)
             .range(start, start + page - 1)
             .execute()
         )
         batch = res.data or []
         for r in batch:
-            out[(r["name"], r.get("insurance_code") or "")] = (r.get("unit"), r.get("unit_manual"))
+            keys.add((r["name"], r.get("insurance_code") or ""))
         if len(batch) < page:
             break
         start += page
-    return out
+    return keys
 
 
 def import_to_supabase(client, pharmacy_id: str, drugs: list[dict], filename: str) -> dict:
-    """전체 교체 임포트 — 기존 규격(unit/unit_manual)은 (약품명,보험코드) 매칭으로 보존."""
-    units = _fetch_existing_units(client, pharmacy_id)
-    imported_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    """병합 임포트 — 기존 약품은 그대로 유지(규격·정보 보존), 목록에 없던 신규 약품만 추가.
 
-    rows = []
+    엑셀엔 없는 기존 약품도 삭제하지 않는다. (약품명, 보험코드) 조합이 이미 있으면 건너뛴다.
+    """
+    imported_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    existing = _fetch_existing_keys(client, pharmacy_id)
+
+    new_rows = []
     for d in drugs:
-        unit, unit_manual = units.get((d["name"], d.get("insurance_code") or ""), (None, None))
-        rows.append({
+        if (d["name"], d.get("insurance_code") or "") in existing:
+            continue  # 기존 약품 — 그대로 둔다(규격·정보 보존)
+        new_rows.append({
             "pharmacy_id": pharmacy_id,
             "name": d["name"],
             "insurance_code": d.get("insurance_code"),
             "maker": d.get("maker"),
             "maker_norm": d.get("maker_norm"),
-            "unit": unit,
-            "unit_manual": unit_manual,
+            "unit": None,
+            "unit_manual": None,
             "source": "excel",
             "imported_at": imported_at,
             "source_file": filename,
         })
 
-    # 전체 교체 (엑셀이 약국의 전체 마스터라는 전제)
-    client.table("drug_master").delete().eq("pharmacy_id", pharmacy_id).execute()
-    for i in range(0, len(rows), 500):
-        client.table("drug_master").insert(rows[i:i + 500]).execute()
+    for i in range(0, len(new_rows), 500):
+        client.table("drug_master").insert(new_rows[i:i + 500]).execute()
 
-    return {"count": len(rows), "source_file": filename, "imported_at": imported_at}
+    total = (
+        client.table("drug_master").select("id", count="exact")
+        .eq("pharmacy_id", pharmacy_id).limit(1).execute()
+    )
+    return {"inserted": len(new_rows), "count": total.count or 0, "source_file": filename}

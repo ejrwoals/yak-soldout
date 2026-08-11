@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+import master_db
 import master_import
 import orders_repo
 
@@ -265,6 +266,38 @@ async def dm_import(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"임포트 실패: {e}")
     return result
+
+
+@app.get("/api/drug-master/rows")
+def dm_rows(offset: int = 0, limit: int = 50, q: str = "", filter: str = ""):
+    c, _ = _require_admin()
+    return master_db.list_rows(c, offset, min(limit, 200), q, filter)
+
+
+@app.post("/api/drug-master/manual-unit")
+async def dm_manual_unit(body: dict):
+    c, _ = _require_admin()
+    res = master_db.add_manual_unit(c, (body or {}).get("row_id"), (body or {}).get("unit", ""))
+    if res is None:
+        raise HTTPException(status_code=404, detail="약품을 찾을 수 없습니다.")
+    return res
+
+
+@app.post("/api/drug-master/rename")
+async def dm_rename(body: dict):
+    c, _ = _require_admin()
+    res = master_db.rename_row(c, (body or {}).get("row_id"), (body or {}).get("name", ""))
+    if res is None:
+        raise HTTPException(status_code=400, detail="수정할 수 없습니다 (자유입력 약품만 가능, 빈 이름/중복 불가).")
+    return res
+
+
+@app.post("/api/drug-master/delete")
+async def dm_delete(body: dict):
+    c, _ = _require_admin()
+    if not master_db.delete_row(c, (body or {}).get("row_id")):
+        raise HTTPException(status_code=400, detail="삭제할 수 없습니다 (자유입력 약품만 가능).")
+    return {"deleted": True}
 
 
 # ===================== 정적/페이지 =====================

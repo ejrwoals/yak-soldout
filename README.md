@@ -20,8 +20,8 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 ### 디렉터리 맵 (자동 주문 솔루션)
 
 ```
-cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR→매칭→검수→Supabase 저장
-local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회 + 약품 마스터 엑셀 임포트 (크롤링은 예정)
+cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR(또는 직접 작성)→매칭→검수→Supabase 저장 + 주문 기록 조회
+local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회 + 약품 마스터 엑셀 임포트/뷰어 (크롤링·규격수집은 예정)
 supabase/      # 공유 백엔드 스키마 (migrations/: 0001 스키마+RLS+Storage, 0002 grants, 0003 멀티테넌트 전환, 0004 멤버십 조회 뷰)
 scripts/       # 개발·검증·이전 스크립트 (migrate_drug_master.py, dev_smoke.py 등)
 deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
@@ -43,22 +43,24 @@ deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 약국 직원이 브라우저에서 주문지를 처리하는 경량 FastAPI 앱입니다. **Playwright를 포함하지 않고**(경량), 스테이트리스이며 `$PORT`에 바인딩해 **Google Cloud Run**에 배포됩니다. 데이터 흐름:
 
 1. **Google 로그인 + 약국 소속 확인**(Supabase Auth) — 브라우저의 `supabase-js`가 로그인해 발급한 JWT를 `Authorization: Bearer`로 백엔드에 전달합니다. 로그인 직후 프론트는 `GET /api/me`로 소속(멤버십)을 확인해 **세 상태**(로그인 / 초대코드 합류 / 앱)로 분기합니다 — 소속이 없으면 초대코드 입력 화면이 뜨고, 소속이 있어야 OCR·저장 등 데이터 API를 쓸 수 있습니다(서버 `_require_membership` 게이트, 소속 없으면 403). 백엔드는 그 토큰으로 만든 사용자 스코프 클라이언트에 **membership 기반 RLS**를 적용하며, 멤버십 조회는 짧게 TTL 캐시합니다(`cloud_web/app.py`, `tenant_repo.py`).
-2. **사진 업로드 → OCR** — Gemini 멀티모달로 약품명·포장단위·수량을 추출합니다(`cloud_web/ocr_service.py`, 품절앱 `utils/ocr_service.py`를 자체 완결 사본으로 이식).
+2. **입력 방식 — 사진(OCR) / 직접 작성** — 상단 토글로 두 방식 중 고릅니다. *사진으로 읽기*는 업로드한 이미지를 Gemini 멀티모달로 약품명·포장단위·수량을 추출하고(`cloud_web/ocr_service.py`, 품절앱 `utils/ocr_service.py`를 자체 완결 사본으로 이식), *직접 작성*은 업로드·이미지 없이 빈 검수 테이블을 바로 열어 약품명 자동완성(`/api/drug-search`)으로 손으로 입력합니다(이미지 없이 저장).
 3. **약품명 오타 보정** — 그 약국의 `drug_master`(Supabase)로 한글 자모 fuzzy 매칭을 수행해 검수 테이블에 결과를 붙입니다(`cloud_web/drug_matcher.py` + `master_repo.py`, 품절앱 `utils/drug_matcher.py`에서 이식). 매칭 인덱스는 **약국(`pharmacy_id`)별로** TTL 캐시합니다.
 4. **검수·수정 UI** — `static/index.html` + `static/js/order-ocr.js`(품절앱 CSS 재사용), 타이핑 자동완성(`/api/drug-search`)으로 마스터 후보를 제시합니다.
 5. **Supabase 저장** — 검수본을 `orders`/`order_items`(`status='pending'`)로, 원본 이미지를 Supabase Storage(`order-images/<pharmacy_id>/…`)로 저장합니다(`cloud_web/orders_repo.py`). 저장 경로는 JWT를 GoTrue로 검증해 사용자를 얻고 소속 약국을 확인한 뒤, **service_role 키**로 서버가 그 `pharmacy_id` 스코프로 신뢰 기록합니다. 같은 `(pharmacy_id, 날짜, 차수)`가 이미 있으면 409를 반환합니다.
+6. **주문 기록 조회** — 상단 바의 "주문 기록" 토글로 주문 작성 화면과 **주문 기록** 목록을 오갑니다. 목록은 그 약국의 저장된 주문을 품목과 함께 최신순으로 보여주며(`GET /api/orders`, RLS로 소속 약국만), 각 주문은 접기/펼치기로 품목 테이블을 열고 상태 배지(크롤링 대기 `pending` / 주문완료 `ordered`)를 표시합니다.
 
-주요 엔드포인트: `GET /api/healthz` · `GET /api/config`(브라우저 supabase-js 초기화용 공개 설정) · `GET /api/me`(소속 조회) · `POST /api/accept-invite`(초대코드로 합류) · `POST /api/invites`(관리자 전용 초대코드 발행) · `POST /api/ocr` · `GET /api/drug-search` · `POST /api/save` · `POST /api/preview`(HEIC 등 미리보기용 JPEG 변환).
+주요 엔드포인트: `GET /api/healthz` · `GET /api/config`(브라우저 supabase-js 초기화용 공개 설정) · `GET /api/me`(소속 조회) · `GET /api/orders`(주문 기록) · `POST /api/accept-invite`(초대코드로 합류) · `POST /api/invites`(관리자 전용 초대코드 발행) · `POST /api/ocr` · `GET /api/drug-search` · `POST /api/save` · `POST /api/preview`(HEIC 등 미리보기용 JPEG 변환).
 
 ### 스택 2 — 로컬 관리자 앱 (`local_app/`)
 
-약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 두 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회, (2) 약품 마스터 엑셀 임포트. 실행: `uv run python local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
+약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 두 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회, (2) 약품 마스터 엑셀 임포트 + 뷰어/편집. 실행: `uv run python local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
 
 - **관리자 전용**: 직원(`staff`)도 로그인은 되지만 "관리자 전용" 안내 화면만 보게 되며, `/api/pending-orders`와 `/api/drug-master/*`는 서버에서 `role == 'admin'`을 강제합니다(`_require_admin`, 소속 없으면 403).
 - **Google OAuth (시스템 브라우저 + loopback)**: Google 정책상 임베디드 웹뷰에서 OAuth가 막히므로, PyWebView JS 브릿지(`Api.start_login`)가 로그인을 **시스템 브라우저**로 엽니다(RFC 8252). 브라우저의 `/auth/start`가 `supabase-js`로 Google 로그인을 시작하고, `http://localhost:8770/auth/callback`(loopback)로 돌아와 `?code=`를 세션으로 교환한 뒤 그 토큰을 로컬 서버 `/auth/store`로 전달합니다. 서버는 **refresh token만** `local_app/.session.json`에 보관하고 access token은 메모리에 캐시하다 만료 시 자동 갱신하며(Supabase가 refresh를 회전), 그 사용자 세션을 실은 클라이언트로 RLS 스코프 읽기를 수행합니다(`local_app/app.py`).
 - **pending 주문 조회**: 웹(스택 1)이 저장한 `status='pending'` 주문을 품목과 함께 오래된 순으로 읽어 창에 표시합니다(`GET /api/pending-orders`, `local_app/orders_repo.py`). 품목은 OCR 추출 순서(`position`)로 정렬됩니다. 이것이 웹→Supabase→로컬로 이어지는 주문 파이프라인의 로컬 끝단입니다.
 - **약품 마스터 엑셀 임포트(관리자)**: `drug_master`를 채우는 경로입니다. 엑셀 업로드 → 미리보기(머리글 행 자동추정 + 약품명·보험코드·제약사 컬럼 자동 제안, `POST /api/drug-master/preview`) → 임포트(`POST /api/drug-master/import`)로, 그 약국(`pharmacy_id`) 스코프의 마스터를 **전체 교체**합니다. 단 크롤링으로 채운 규격(`unit`/`unit_manual`)은 `(약품명, 보험코드)` 매칭으로 보존합니다. 엑셀 파싱 로직은 품절앱 `utils/drug_master.py`에서 이식했습니다(`local_app/master_import.py`). 등록 현황은 `GET /api/drug-master/status`로 조회합니다.
-- **크롤링은 예정**: 도매상 사이트 자동 로그인·장바구니 담기는 대상 도매상이 확정될 때까지 **의도적으로 보류**되어 있습니다. `orders_repo.py`에는 크롤링 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back하는 스캐폴딩(`set_item_cart_status`·`mark_order_ordered`)만 준비되어 있습니다.
+- **약품 마스터 뷰어/편집(관리자)**: 약품 DB 탭에 페이지 단위 마스터 테이블 뷰어가 있습니다(`local_app/master_db.py`). 약품명·보험코드 검색과 상태 필터(규격수집됨 `filled` / 규격미수집 `missing` / 보험코드없음 `nocode` / 자유입력 `manual`) + 페이지네이션으로 조회하고(`GET /api/drug-master/rows`), 크롤링으로 수집된 규격(`unit`)은 읽기 전용 칩으로만 보여줍니다. 사용자가 직접 입력한 규격은 `unit_manual`에 append-only로 추가하며(`POST /api/drug-master/manual-unit`, 중복 스킵), 자유입력(`source='manual'`) 행에 한해 이름 수정(`POST /api/drug-master/rename`, 중복·빈 이름 불가)·삭제(`POST /api/drug-master/delete`)가 가능합니다. 엑셀 임포트분(`source='excel'`)은 안전상 수정·삭제 대상이 아니며 엑셀 재업로드로 관리합니다.
+- **크롤링·규격수집은 예정**: 도매상 사이트 자동 로그인·장바구니 담기와 보험코드 기반 규격 일괄 수집(규격수집)은 대상 도매상(바로팜 등)이 확정될 때까지 **의도적으로 보류**되어 있습니다. 그래서 위 뷰어의 `unit`은 읽기 전용이고, 직접추가(`unit_manual`)만 가능합니다. `orders_repo.py`에는 크롤링 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back하는 스캐폴딩(`set_item_cart_status`·`mark_order_ordered`)만 준비되어 있습니다.
 
 ### 공유 백엔드 — Supabase (`supabase/`)
 

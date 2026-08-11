@@ -57,6 +57,32 @@
     .dm-hdr { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; }
     .dm-sample { overflow-x:auto; margin-top:10px; border:1px solid var(--line); border-radius:8px; }
     .dm-sample table td, .dm-sample table th { font-size:12px; padding:5px 9px; white-space:nowrap; }
+    /* 약품 DB 뷰어 */
+    .dm-viewer-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .dm-viewer-head h3 { margin:0; font-size:15px; }
+    .dm-viewer-head input { flex:0 0 280px; padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:#fafafe; font:inherit; }
+    .dm-filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+    .dm-filter { background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:20px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer; }
+    .dm-filter.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .dm-tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+    .dm-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .dm-table th, .dm-table td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .dm-table th { color:var(--muted); font-size:11px; white-space:nowrap; }
+    .dm-table tr:last-child td { border-bottom:none; }
+    .dm-table .c-idx { color:var(--muted); width:40px; }
+    .uchip { display:inline-block; font-size:11px; padding:2px 8px; border-radius:14px; margin:1px 2px 1px 0; white-space:nowrap; }
+    .uchip.scraped { background:rgba(108,92,231,.10); color:var(--primary); }
+    .uchip.manual { background:var(--amber-bg); color:var(--amber); }
+    .uadd { display:inline-flex; gap:4px; align-items:center; margin-top:3px; }
+    .uadd input { width:66px; padding:3px 6px; border:1px solid var(--line); border-radius:6px; font:inherit; font-size:12px; }
+    .uadd button { padding:3px 9px; border:1px solid var(--line); background:#fff; color:var(--primary); border-radius:6px; font-weight:700; cursor:pointer; }
+    .dm-name-input { border:1px solid transparent; border-radius:6px; padding:4px 6px; font:inherit; font-size:13px; background:transparent; width:100%; min-width:150px; }
+    .dm-name-input:focus { border-color:var(--primary); background:#fff; outline:none; }
+    .src-badge { font-size:10px; font-weight:700; padding:1px 7px; border-radius:10px; background:var(--amber-bg); color:var(--amber); }
+    .dm-del { color:#d63b52; background:transparent; border:none; cursor:pointer; font-size:15px; padding:2px 5px; }
+    .dm-pager { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:14px; }
+    .dm-pager button { background:transparent; border:1px solid var(--line); color:var(--primary); border-radius:8px; padding:6px 14px; cursor:pointer; font-weight:600; }
+    .dm-pager button:disabled { color:var(--muted); cursor:default; opacity:.6; }
   </style>
 </head>
 <body>
@@ -100,12 +126,47 @@
       <section id="masterView" class="tabview hidden">
         <div class="card" id="dmStatus">불러오는 중…</div>
         <div class="card">
+          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
+            엑셀을 올리면 <b>기존 약품은 그대로 유지</b>되고, 목록에 없던 <b>신규 약품만 추가</b>됩니다.
+            수집·직접추가한 규격도 보존돼요. (엑셀에 없는 기존 약품도 삭제되지 않습니다.)
+          </p>
           <div class="dm-uploadrow">
-            <label class="btn-primary btn-sm" for="dmFile" style="cursor:pointer">엑셀 파일 선택</label>
+            <label class="btn-primary btn-sm" for="dmFile" style="cursor:pointer">엑셀 파일 올려서 갱신</label>
             <input type="file" id="dmFile" accept=".xlsx,.xls" style="display:none" />
             <span class="muted" id="dmFileName"></span>
           </div>
           <div id="dmPreview"></div>
+        </div>
+
+        <!-- 약품 DB 뷰어 -->
+        <div class="card">
+          <div class="dm-viewer-head">
+            <h3>약품 DB 뷰어 <span class="muted" id="dmTotal" style="font-size:13px"></span></h3>
+            <input id="dmSearch" placeholder="약품명·보험코드 검색…" autocomplete="off" />
+          </div>
+          <p class="muted" style="font-size:12px; margin:0 0 12px">
+            <span class="uchip scraped">수집 규격</span>은 읽기 전용,
+            <span class="uchip manual">직접 추가</span>만 가능(삭제 불가).
+            <span class="src-badge">자유입력</span> 약품만 수정·삭제됩니다.
+          </p>
+          <div class="dm-filters" id="dmFilters">
+            <button class="dm-filter active" data-filter="">전체</button>
+            <button class="dm-filter" data-filter="filled">규격수집됨</button>
+            <button class="dm-filter" data-filter="missing">규격미수집</button>
+            <button class="dm-filter" data-filter="nocode">보험코드없음</button>
+            <button class="dm-filter" data-filter="manual">자유입력</button>
+          </div>
+          <div class="dm-tablewrap">
+            <table class="dm-table">
+              <thead><tr><th class="c-idx">#</th><th>약품명</th><th>보험코드</th><th>제약사</th><th>수집 규격</th><th>직접 추가 규격</th></tr></thead>
+              <tbody id="dmBody"></tbody>
+            </table>
+          </div>
+          <div class="dm-pager">
+            <button id="dmPrev" disabled>← 이전</button>
+            <span class="muted" id="dmPageInfo"></span>
+            <button id="dmNext" disabled>다음 →</button>
+          </div>
         </div>
       </section>
     </main>
@@ -178,8 +239,98 @@
       const tab = t.dataset.tab;
       $('ordersView').classList.toggle('hidden', tab !== 'orders');
       $('masterView').classList.toggle('hidden', tab !== 'master');
-      if (tab === 'master') loadDmStatus();
+      if (tab === 'master') { loadDmStatus(); loadDmRows(); }
     }));
+
+    async function postJson(url, obj) {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || r.status);
+      return d;
+    }
+    function debounce2(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+    // ---- 약품 DB 뷰어 ----
+    let dmOffset = 0, dmQ = '', dmFilter = '';
+    const DM_LIMIT = 50;
+
+    async function loadDmRows() {
+      const body = $('dmBody');
+      body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">불러오는 중…</td></tr>`;
+      let data;
+      try {
+        const p = new URLSearchParams({ offset: dmOffset, limit: DM_LIMIT, q: dmQ, filter: dmFilter });
+        data = await jget('/api/drug-master/rows?' + p);
+      } catch (e) { body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">조회 실패: ${esc(e.message)}</td></tr>`; return; }
+      renderDmRows(data);
+    }
+    function chips(str, cls) {
+      return (str || '').split(',').map((s) => s.trim()).filter(Boolean).map((u) => `<span class="uchip ${cls}">${esc(u)}</span>`).join('');
+    }
+    function renderDmRows(data) {
+      const body = $('dmBody'); body.innerHTML = '';
+      $('dmTotal').textContent = data.total ? `· 총 ${data.total.toLocaleString()}건` : '';
+      if (!data.rows.length) { body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">결과가 없습니다.</td></tr>`; }
+      data.rows.forEach((r, i) => body.appendChild(dmRow(r, dmOffset + i + 1)));
+      const end = dmOffset + data.rows.length;
+      $('dmPageInfo').textContent = data.total ? `${(dmOffset + 1).toLocaleString()}–${end.toLocaleString()} / ${data.total.toLocaleString()}` : '';
+      $('dmPrev').disabled = dmOffset <= 0;
+      $('dmNext').disabled = end >= data.total;
+    }
+    function dmRow(r, idx) {
+      const tr = document.createElement('tr');
+      const isManual = r.source === 'manual';
+      tr.innerHTML = `
+        <td class="c-idx">${idx}</td>
+        <td class="name-cell">${isManual ? `<input class="dm-name-input" value="${esc(r.name)}"> <span class="src-badge">자유입력</span>` : esc(r.name)}</td>
+        <td>${esc(r.insurance_code) || '<span class="muted">—</span>'}</td>
+        <td>${esc(r.maker)}</td>
+        <td>${chips(r.unit, 'scraped') || '<span class="muted">—</span>'}</td>
+        <td class="manual-cell">${chips(r.unit_manual, 'manual')}<div class="uadd"><input placeholder="예: 30정" maxlength="20"><button title="추가">+</button></div></td>`;
+      // 직접 추가 규격
+      const addWrap = tr.querySelector('.uadd'), addInput = addWrap.querySelector('input'), addBtn = addWrap.querySelector('button');
+      const doAdd = async () => {
+        const u = addInput.value.trim(); if (!u) return;
+        addBtn.disabled = true;
+        try {
+          const res = await postJson('/api/drug-master/manual-unit', { row_id: r.id, unit: u });
+          const cell = tr.querySelector('.manual-cell');
+          cell.querySelectorAll('.uchip').forEach((c) => c.remove());
+          (res.unit_manual || '').split(',').map((s) => s.trim()).filter(Boolean).forEach((uu) => {
+            const sp = document.createElement('span'); sp.className = 'uchip manual'; sp.textContent = uu; cell.insertBefore(sp, addWrap);
+          });
+          addInput.value = '';
+        } catch (e) { alert(e.message); } finally { addBtn.disabled = false; }
+      };
+      addBtn.addEventListener('click', doAdd);
+      addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+      // 자유입력: 수정 + 삭제
+      if (isManual) {
+        const nameInput = tr.querySelector('.dm-name-input'), orig = r.name;
+        nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
+        nameInput.addEventListener('blur', async () => {
+          const nn = nameInput.value.trim();
+          if (nn === orig || !nn) { nameInput.value = orig; return; }
+          try { await postJson('/api/drug-master/rename', { row_id: r.id, name: nn }); r.name = nn; }
+          catch (e) { alert(e.message); nameInput.value = orig; }
+        });
+        const del = document.createElement('button');
+        del.className = 'dm-del'; del.title = '삭제'; del.textContent = '🗑';
+        del.addEventListener('click', async () => {
+          if (!confirm(`'${r.name}' 자유입력 약품을 삭제할까요?`)) return;
+          try { await postJson('/api/drug-master/delete', { row_id: r.id }); loadDmRows(); } catch (e) { alert(e.message); }
+        });
+        tr.querySelector('.name-cell').appendChild(del);
+      }
+      return tr;
+    }
+    $('dmSearch').addEventListener('input', debounce2(() => { dmQ = $('dmSearch').value; dmOffset = 0; loadDmRows(); }, 250));
+    document.querySelectorAll('.dm-filter').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('.dm-filter').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active'); dmFilter = b.dataset.filter; dmOffset = 0; loadDmRows();
+    }));
+    $('dmPrev').addEventListener('click', () => { dmOffset = Math.max(0, dmOffset - DM_LIMIT); loadDmRows(); });
+    $('dmNext').addEventListener('click', () => { dmOffset += DM_LIMIT; loadDmRows(); });
 
     // ---- 약품 DB 엑셀 임포트 ----
     async function loadDmStatus() {
@@ -224,7 +375,7 @@
         </div>
         ${sample}
         <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
-          <button class="btn-primary btn-sm" id="dmImport">임포트 (전체 교체)</button>
+          <button class="btn-primary btn-sm" id="dmImport">신규 약품 추가</button>
           <span class="muted" id="dmImportMsg"></span>
         </div>`;
       $('dmReHdr').addEventListener('click', () => previewFile(file, $('dmHeader').value));
@@ -233,8 +384,8 @@
     async function doImport(file) {
       const name = $('dmName').value;
       if (!name) { $('dmImportMsg').textContent = '약품명 컬럼을 선택하세요.'; return; }
-      if (!confirm('현재 약품 DB를 이 엑셀로 전체 교체합니다.\n(크롤링으로 채운 규격은 약품명·코드가 같으면 보존됩니다)\n계속할까요?')) return;
-      const btn = $('dmImport'); btn.disabled = true; $('dmImportMsg').textContent = '임포트 중… (수 초)';
+      if (!confirm('엑셀의 신규 약품을 추가합니다.\n기존 약품·규격은 그대로 유지되고, 없던 약품만 추가돼요.\n계속할까요?')) return;
+      const btn = $('dmImport'); btn.disabled = true; $('dmImportMsg').textContent = '추가 중… (수 초)';
       const fd = new FormData();
       fd.append('file', file); fd.append('name_col', name);
       fd.append('code_col', $('dmCode').value); fd.append('maker_col', $('dmMaker').value);
@@ -242,8 +393,8 @@
       try {
         const r = await fetch('/api/drug-master/import', { method: 'POST', body: fd });
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || '임포트 실패');
-        $('dmImportMsg').textContent = `✓ ${d.count.toLocaleString()}개 등록 완료`;
-        loadDmStatus();
+        $('dmImportMsg').textContent = `✓ 신규 ${(d.inserted ?? 0).toLocaleString()}개 추가 (총 ${(d.count ?? 0).toLocaleString()}개)`;
+        loadDmStatus(); loadDmRows();
       } catch (e) { $('dmImportMsg').textContent = '실패: ' + e.message; }
       finally { btn.disabled = false; }
     }
