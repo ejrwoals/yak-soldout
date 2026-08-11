@@ -26,6 +26,7 @@ import drug_matcher
 import master_repo
 import ocr_service
 import orders_repo
+import tenant_repo
 
 BASE = Path(__file__).parent
 load_dotenv(BASE / ".env")
@@ -82,14 +83,21 @@ def _verify_user_id(authorization: str | None) -> str:
         raise HTTPException(status_code=401, detail="유효하지 않은 로그인입니다. 다시 로그인해주세요.")
 
 
+_svc_client = None
+
+
 def _service_client():
-    """서버 전용 service_role 클라이언트 (신뢰된 쓰기: Storage 업로드/저장)."""
+    """서버 전용 service_role 클라이언트 (신뢰된 쓰기/멤버십 조회). 프로세스 내 재사용."""
+    global _svc_client
+    if _svc_client is not None:
+        return _svc_client
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not SUPABASE_URL or not key:
         raise HTTPException(status_code=500, detail="SUPABASE_SERVICE_KEY 가 설정되지 않았습니다.")
     from supabase import create_client
 
-    return create_client(SUPABASE_URL, key)
+    _svc_client = create_client(SUPABASE_URL, key)
+    return _svc_client
 
 
 def _token_sub(authorization: str | None) -> str:
@@ -103,19 +111,42 @@ def _token_sub(authorization: str | None) -> str:
         raise HTTPException(status_code=401, detail="유효하지 않은 로그인 토큰입니다.")
 
 
-# 사용자별 drug_master 매칭 인덱스 캐시 (자동완성이 매 요청마다 전량 재조회하지 않도록)
+# 멤버십 캐시 (엔드포인트마다 memberships 재조회하지 않도록). 가입 시 무효화.
+_membership_cache: dict[str, tuple[float, dict | None]] = {}
+_MEMBERSHIP_TTL = 120
+
+
+def _get_membership_cached(user_id: str) -> dict | None:
+    now = time.monotonic()
+    hit = _membership_cache.get(user_id)
+    if hit and now - hit[0] < _MEMBERSHIP_TTL:
+        return hit[1]
+    m = tenant_repo.get_membership(_service_client(), user_id)
+    _membership_cache[user_id] = (now, m)
+    return m
+
+
+def _require_membership(user_id: str) -> dict:
+    """소속 멤버십을 반환. 없으면 403 (초대코드로 합류 유도)."""
+    m = _get_membership_cached(user_id)
+    if not m:
+        raise HTTPException(status_code=403, detail="약국 소속이 없습니다. 초대코드로 합류하세요.")
+    return m
+
+
+# 약국별 drug_master 매칭 인덱스 캐시 (자동완성이 매 요청마다 전량 재조회하지 않도록)
 _index_cache: dict[str, tuple[float, dict]] = {}
 _INDEX_TTL = 120  # 초. drug_master 변경이 반영되도록 짧게 유지.
 
 
-def _get_user_index(client, user_id: str) -> dict:
+def _get_pharmacy_index(client, pharmacy_id: str) -> dict:
     now = time.monotonic()
-    hit = _index_cache.get(user_id)
+    hit = _index_cache.get(pharmacy_id)
     if hit and now - hit[0] < _INDEX_TTL:
         return hit[1]
     drugs = master_repo.fetch_drug_master(client)
     index = drug_matcher.build_index(drugs)
-    _index_cache[user_id] = (now, index)
+    _index_cache[pharmacy_id] = (now, index)
     return index
 
 
@@ -160,7 +191,7 @@ async def api_ocr(image: UploadFile = File(...), authorization: str = Header(Non
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY 가 설정되지 않았습니다.")
 
     client = _user_client(authorization)  # 로그인 필수 (401 if 없음)
-    user_id = _token_sub(authorization)
+    membership = _require_membership(_token_sub(authorization))  # 소속 필수 (403 if 없음)
 
     mime = _resolve_mime(image)
     if mime not in _ALLOWED_MIME:
@@ -176,7 +207,7 @@ async def api_ocr(image: UploadFile = File(...), authorization: str = Header(Non
 
     # 오타 교정: 그 약국의 drug_master 로 매칭 (실패해도 OCR 결과는 반환)
     try:
-        index = await asyncio.to_thread(_get_user_index, client, user_id)
+        index = await asyncio.to_thread(_get_pharmacy_index, client, membership["pharmacy_id"])
         items = drug_matcher.attach_matches(index, items)
     except Exception:
         for it in items:
@@ -189,13 +220,50 @@ async def api_ocr(image: UploadFile = File(...), authorization: str = Header(Non
 async def api_drug_search(q: str = "", authorization: str = Header(None)):
     """약품 마스터 자동완성 검색 — 사용자가 약품명을 타이핑할 때 후보를 준다."""
     client = _user_client(authorization)
-    user_id = _token_sub(authorization)
+    membership = _require_membership(_token_sub(authorization))
     q = (q or "").strip()
     if not q:
         return {"results": []}
-    index = await asyncio.to_thread(_get_user_index, client, user_id)
+    index = await asyncio.to_thread(_get_pharmacy_index, client, membership["pharmacy_id"])
     results = await asyncio.to_thread(drug_matcher.search, index, q, 12)
     return {"results": results}
+
+
+@app.get("/api/me")
+async def api_me(authorization: str = Header(None)):
+    """로그인 사용자의 소속(멤버십) 정보. 프론트가 앱 진입 vs 초대코드 입력을 판단."""
+    user_id = _verify_user_id(authorization)
+    m = tenant_repo.get_membership(_service_client(), user_id)  # 최신값(비캐시)
+    if not m:
+        return {"member": False}
+    return {"member": True, **m}
+
+
+@app.post("/api/accept-invite")
+async def api_accept_invite(body: dict, authorization: str = Header(None)):
+    """초대코드로 약국에 합류(직원). 성공 시 멤버십 반환."""
+    user_id = _verify_user_id(authorization)
+    try:
+        m = await asyncio.to_thread(
+            tenant_repo.accept_invite, _service_client(), user_id, (body or {}).get("code", "")
+        )
+    except tenant_repo.InviteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _membership_cache.pop(user_id, None)  # 방금 가입 → 캐시 무효화
+    return {"joined": True, **m}
+
+
+@app.post("/api/invites")
+async def api_create_invite(authorization: str = Header(None)):
+    """직원 초대코드 발행 (관리자만). 반환 {code}."""
+    user_id = _verify_user_id(authorization)
+    m = _require_membership(user_id)
+    if m["role"] != "admin":
+        raise HTTPException(status_code=403, detail="초대 발행은 관리자만 가능합니다.")
+    code = await asyncio.to_thread(
+        tenant_repo.create_invite, _service_client(), m["pharmacy_id"], user_id, "staff"
+    )
+    return {"code": code}
 
 
 @app.post("/api/save")
@@ -206,9 +274,10 @@ async def api_save(
 ):
     """검토 완료된 주문 저장: 이미지 → Storage, orders/order_items(status=pending).
 
-    토큰을 GoTrue로 검증해 user_id를 얻고, 저장(Storage+DB)은 서버의 service 키로 수행한다
-    (Storage RLS를 사용자 토큰으로 태우는 대신 신뢰된 서버가 user_id 스코프로 기록)."""
+    토큰을 GoTrue로 검증해 user_id를 얻고 소속 약국을 확인한 뒤, 저장(Storage+DB)은 서버의
+    service 키로 그 pharmacy_id 스코프로 기록한다."""
     user_id = _verify_user_id(authorization)
+    membership = _require_membership(user_id)
     client = _service_client()
 
     try:
@@ -240,7 +309,7 @@ async def api_save(
     try:
         order_id = await asyncio.to_thread(
             orders_repo.save_reviewed_order,
-            client, user_id, order_date, order_round, items, image_bytes, image_mime,
+            client, membership["pharmacy_id"], order_date, order_round, items, image_bytes, image_mime,
         )
     except orders_repo.DuplicateOrderError as e:
         raise HTTPException(status_code=409, detail=str(e))

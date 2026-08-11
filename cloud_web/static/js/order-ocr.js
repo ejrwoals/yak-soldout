@@ -5,11 +5,16 @@
 (function () {
     'use strict';
 
-    // =================== 인증 (Supabase Google 로그인) ===================
-    let sb = null;
-    let session = null;
+    // =================== 인증 + 멤버십 (멀티테넌트) ===================
+    let sb = null, session = null, membership = null;
 
     async function initAuth() {
+        // 초대링크(?invite=코드)를 OAuth 왕복 전에 보관 (redirect 후 URL 파라미터가 사라져도 유지)
+        const inviteFromUrl = new URL(location.href).searchParams.get('invite');
+        if (inviteFromUrl) {
+            sessionStorage.setItem('pending_invite', inviteFromUrl);
+            const u = new URL(location.href); u.searchParams.delete('invite'); history.replaceState({}, '', u);
+        }
         const cfg = await fetch('/api/config').then((r) => r.json()).catch(() => ({}));
         if (!cfg.url || !cfg.anonKey) {
             showLoginStatus('error', '서버 설정(SUPABASE_URL/ANON_KEY)이 비어 있습니다.');
@@ -17,18 +22,90 @@
         }
         sb = supabase.createClient(cfg.url, cfg.anonKey);
         session = (await sb.auth.getSession()).data.session;
-        renderGate();
-        sb.auth.onAuthStateChange((_e, s) => { session = s; renderGate(); });
+        await afterAuth();
+        sb.auth.onAuthStateChange(async (_e, s) => { session = s; await afterAuth(); });
     }
-    function renderGate() {
-        const authed = !!session;
-        document.getElementById('loginView').hidden = authed;
-        document.getElementById('appView').hidden = !authed;
-        document.getElementById('navControls').hidden = !authed;
-        if (authed) document.getElementById('userEmail').textContent = session.user?.email || '';
+
+    async function afterAuth() {
+        if (!session) { membership = null; renderState('login'); return; }
+        await refreshMe();
+        // 초대링크로 들어왔으면(sessionStorage 보관) 아직 소속이 없을 때 자동 합류
+        if (!membership) {
+            const code = sessionStorage.getItem('pending_invite');
+            if (code) {
+                sessionStorage.removeItem('pending_invite');
+                await doAccept(code);
+            }
+        }
     }
+
+    async function refreshMe() {
+        try {
+            const me = await fetch('/api/me', { headers: authHeader() }).then((r) => r.json());
+            membership = me.member ? me : null;
+        } catch (e) { membership = null; }
+        renderState(membership ? 'app' : 'join');
+    }
+
+    // state: 'login' | 'join' | 'app'
+    function renderState(state) {
+        document.getElementById('loginView').hidden = state !== 'login';
+        document.getElementById('joinView').hidden = state !== 'join';
+        document.getElementById('appView').hidden = state !== 'app';
+        document.getElementById('navControls').hidden = state === 'login';
+        if (session) document.getElementById('userEmail').textContent = session.user?.email || '';
+        const isAdmin = state === 'app' && membership && membership.role === 'admin';
+        document.getElementById('inviteBtn').hidden = !isAdmin;
+        // 약국 이름 + 역할 배지
+        const badge = document.getElementById('pharmacyBadge');
+        if (state === 'app' && membership) {
+            document.getElementById('pharmacyName').textContent = membership.pharmacy_name || '';
+            const roleEl = document.getElementById('roleBadge');
+            roleEl.textContent = membership.role === 'admin' ? '관리자' : '직원';
+            roleEl.className = 'role-badge ' + (membership.role === 'admin' ? 'role-admin' : 'role-staff');
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    async function doAccept(code) {
+        if (!code || !code.trim()) { showJoinStatus('error', '초대코드를 입력하세요.'); return; }
+        showJoinStatus('loading', '합류 처리 중…');
+        try {
+            const r = await fetch('/api/accept-invite', {
+                method: 'POST',
+                headers: { ...authHeader(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code.trim() }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.detail || '합류 실패');
+            await refreshMe();
+        } catch (e) { showJoinStatus('error', e.message); }
+    }
+
+    // 관리자: 직원 초대 링크 발행
+    async function createInvite() {
+        try {
+            const r = await fetch('/api/invites', { method: 'POST', headers: authHeader() });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.detail || '초대 발행 실패');
+            document.getElementById('inviteLink').value = `${location.origin}/?invite=${encodeURIComponent(d.code)}`;
+            document.getElementById('inviteModalStatus').hidden = true;
+            document.getElementById('inviteModal').hidden = false;
+        } catch (e) { alert(e.message); }
+    }
+
     function showLoginStatus(kind, text) {
         const el = document.getElementById('loginStatus');
+        el.hidden = false; el.className = `status-msg ${kind}`; el.textContent = text;
+    }
+    function showJoinStatus(kind, text) {
+        const el = document.getElementById('joinStatus');
+        el.hidden = false; el.className = `status-msg ${kind}`; el.textContent = text;
+    }
+    function showInviteModalStatus(kind, text) {
+        const el = document.getElementById('inviteModalStatus');
         el.hidden = false; el.className = `status-msg ${kind}`; el.textContent = text;
     }
     function authHeader() {
@@ -549,10 +626,20 @@
         document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
         document.getElementById('googleBtn')?.addEventListener('click', async () => {
             showLoginStatus('loading', 'Google 로그인 창으로 이동 중…');
+            // redirectTo 는 origin(known-working). 초대코드는 sessionStorage 로 보존한다.
             const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
             if (error) showLoginStatus('error', error.message);
         });
         document.getElementById('logoutBtn')?.addEventListener('click', async () => { await sb?.auth.signOut(); });
+        document.getElementById('joinBtn')?.addEventListener('click', () => doAccept(document.getElementById('inviteCode').value));
+        document.getElementById('inviteCode')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAccept(e.target.value); });
+        document.getElementById('inviteBtn')?.addEventListener('click', createInvite);
+        document.getElementById('copyInviteBtn')?.addEventListener('click', async () => {
+            const link = document.getElementById('inviteLink').value;
+            try { await navigator.clipboard.writeText(link); showInviteModalStatus('success', '복사되었습니다.'); }
+            catch { document.getElementById('inviteLink').select(); showInviteModalStatus('error', '수동으로 복사하세요 (Cmd/Ctrl+C).'); }
+        });
+        document.getElementById('closeInviteBtn')?.addEventListener('click', () => { document.getElementById('inviteModal').hidden = true; });
         if (orderDate) {
             const d = new Date();
             const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);

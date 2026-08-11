@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>로그인</title>
+<style>body{font-family:-apple-system,sans-serif;display:flex;min-height:90vh;align-items:center;justify-content:center;color:#444}</style>
+</head>
+<body>
+  <div>Google 로그인으로 이동 중…</div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    (async () => {
+      try {
+        const cfg = await fetch('/api/config').then((r) => r.json());
+        const sb = supabase.createClient(cfg.url, cfg.anonKey);
+        const { error } = await sb.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: location.origin + '/auth/callback' },
+        });
+        if (error) document.body.textContent = '로그인 오류: ' + error.message;
+      } catch (e) {
+        document.body.textContent = '오류: ' + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>

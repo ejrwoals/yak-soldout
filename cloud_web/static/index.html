@@ -34,6 +34,25 @@
              border: 1px solid #dadce0; padding: 12px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 15px; }
     .g-btn:hover { background: #f7f8f8; }
     .user-email { color: var(--text-secondary); font-size: 13px; margin-right: 4px; }
+    .pharmacy-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600;
+                      color: var(--text-primary); margin-right: 8px; }
+    .pharmacy-badge .bi-shop { color: var(--primary); }
+    .role-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+    .role-badge.role-admin { color: var(--primary); background: rgba(124, 58, 237, 0.13); }
+    .role-badge.role-staff { color: var(--text-secondary); background: var(--bg-tertiary); }
+    .join-input { width: 100%; box-sizing: border-box; padding: 11px 14px; border: 1px solid var(--border-color);
+                  border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; text-align: center; }
+    .join-input:focus { outline: none; border-color: var(--primary); background: var(--bg-primary); }
+    /* 초대 모달 */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center;
+                     justify-content: center; z-index: 1000; padding: 20px; }
+    .modal-card { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 16px;
+                  padding: 26px; max-width: 460px; width: 100%; box-shadow: var(--shadow-lg); }
+    .modal-card h3 { margin-bottom: 6px; color: var(--text-primary); }
+    .modal-desc { color: var(--text-secondary); font-size: 13px; margin-bottom: 16px; }
+    .invite-link-row { display: flex; gap: 8px; }
+    .invite-link-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-color);
+                             border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
   </style>
 </head>
 <body>
@@ -45,7 +64,15 @@
         <span>주문지 OCR</span>
       </div>
       <div class="nav-controls" id="navControls" hidden>
+        <span class="pharmacy-badge" id="pharmacyBadge" hidden>
+          <i class="bi bi-shop"></i>
+          <span id="pharmacyName"></span>
+          <span class="role-badge" id="roleBadge"></span>
+        </span>
         <span class="user-email" id="userEmail"></span>
+        <button id="inviteBtn" class="theme-toggle nav-label-btn" title="직원 초대" hidden style="text-decoration:none;">
+          <i class="bi bi-person-plus"></i><span>직원 초대</span>
+        </button>
         <button id="logoutBtn" class="theme-toggle nav-label-btn" title="로그아웃" style="text-decoration:none;">
           <i class="bi bi-box-arrow-right"></i><span>로그아웃</span>
         </button>
@@ -67,6 +94,32 @@
         Google로 로그인
       </button>
       <div id="loginStatus" class="status-msg" hidden></div>
+    </div>
+  </div>
+
+  <!-- 합류 게이트 (로그인은 됐지만 약국 소속이 없을 때) -->
+  <div class="login-wrap" id="joinView" hidden>
+    <div class="login-card">
+      <div class="login-logo"><i class="bi bi-people"></i></div>
+      <h1>약국 합류</h1>
+      <p>관리자에게 받은 초대코드를 입력하면 우리 약국에 합류됩니다.</p>
+      <input id="inviteCode" class="join-input" placeholder="초대코드" autocomplete="off">
+      <button class="btn btn-primary" id="joinBtn" style="width:100%; margin-top:12px; justify-content:center;">합류하기</button>
+      <div id="joinStatus" class="status-msg" hidden></div>
+    </div>
+  </div>
+
+  <!-- 직원 초대 링크 모달 (관리자) -->
+  <div id="inviteModal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <h3>직원 초대 링크</h3>
+      <p class="modal-desc">이 링크를 직원에게 보내세요. 직원이 Google 로그인하면 우리 약국에 합류됩니다.</p>
+      <div class="invite-link-row">
+        <input id="inviteLink" readonly>
+        <button class="btn btn-primary btn-sm" id="copyInviteBtn">복사</button>
+      </div>
+      <div id="inviteModalStatus" class="status-msg" hidden></div>
+      <button class="btn btn-ghost" id="closeInviteBtn" style="margin-top:14px;">닫기</button>
     </div>
   </div>
 

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>자동주문 (로컬)</title>
+  <style>
+    :root { --bg:#f5f5fa; --card:#fff; --line:#e6e6ef; --primary:#6c5ce7; --primary-d:#5a4bd1; --muted:#8a8a9a; --text:#22222c;
+            --green:#1f9d63; --green-bg:#e7f7ee; --amber:#b7791f; --amber-bg:#fdf3e0; --grey:#8a8a9a; --grey-bg:#eee; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+    header .brand { font-weight:700; } header .brand b { color:var(--primary); }
+    .pharm { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+    .role { font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; }
+    .role.admin { color:var(--primary); background:rgba(108,92,231,.13); }
+    .role.staff { color:var(--muted); background:var(--grey-bg); }
+    .email { color:var(--muted); font-size:13px; margin:0 6px; }
+    main { max-width:900px; margin:0 auto; padding:22px; }
+    button { font:inherit; border:none; border-radius:10px; padding:10px 16px; cursor:pointer; font-weight:600; }
+    .btn-primary { background:var(--primary); color:#fff; } .btn-primary:hover { background:var(--primary-d); }
+    .btn-ghost { background:transparent; color:var(--primary); border:1px solid var(--line); }
+    .btn-sm { padding:6px 11px; font-size:13px; }
+    /* 로그인 */
+    .login-wrap { min-height:82vh; display:flex; align-items:center; justify-content:center; }
+    .login-card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:40px; text-align:center; max-width:380px; }
+    .login-card h1 { font-size:20px; margin:0 0 6px; } .login-card p { color:var(--muted); margin:0 0 22px; font-size:14px; }
+    .g-btn { display:inline-flex; align-items:center; gap:10px; background:#fff; color:#3c4043; border:1px solid #dadce0; padding:11px 18px; border-radius:10px; font-weight:600; cursor:pointer; }
+    /* 주문 목록 */
+    .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .toolbar h2 { font-size:18px; margin:0; }
+    .order { background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:12px; overflow:hidden; }
+    .order-head { display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; }
+    .order-head .date { font-weight:700; } .order-head .cnt { color:var(--muted); font-size:13px; }
+    .status-badge { font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; margin-left:auto; }
+    .status-pending { color:var(--amber); background:var(--amber-bg); }
+    .status-ordered { color:var(--green); background:var(--green-bg); }
+    .items { border-top:1px solid var(--line); padding:6px 0; display:none; }
+    .order.open .items { display:block; }
+    table { width:100%; border-collapse:collapse; }
+    td, th { padding:7px 18px; text-align:left; font-size:14px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-size:12px; font-weight:600; }
+    tr:last-child td { border-bottom:none; }
+    .order-actions { padding:12px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; }
+    .muted { color:var(--muted); } .empty { text-align:center; color:var(--muted); padding:50px; }
+    .hidden { display:none !important; }
+    /* 탭 */
+    .tabs { display:flex; gap:4px; margin-bottom:18px; border-bottom:1px solid var(--line); }
+    .tab { background:transparent; border:none; border-radius:0; padding:10px 16px; font-weight:600; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; }
+    .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    /* 약품 DB */
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:12px; }
+    .dm-uploadrow { display:flex; align-items:center; gap:12px; }
+    .dm-map { display:flex; gap:14px; flex-wrap:wrap; margin:14px 0; }
+    .dm-map label { font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .dm-map select, .dm-hdr input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#fafafe; }
+    .dm-hdr { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; }
+    .dm-sample { overflow-x:auto; margin-top:10px; border:1px solid var(--line); border-radius:8px; }
+    .dm-sample table td, .dm-sample table th { font-size:12px; padding:5px 9px; white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <!-- 로그인 -->
+  <div class="login-wrap" id="loginView">
+    <div class="login-card">
+      <h1>자동주문 · 로컬</h1>
+      <p>관리자 계정(Google)으로 로그인하세요.</p>
+      <button class="g-btn" id="googleBtn">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Google로 로그인
+      </button>
+      <div id="loginStatus" class="muted" style="margin-top:14px; font-size:13px;"></div>
+    </div>
+  </div>
+
+  <!-- 앱 -->
+  <div id="appView" class="hidden">
+    <header>
+      <div class="brand"><b>자동주문</b> · 로컬</div>
+      <div>
+        <span class="pharm">🏪 <span id="pharmName"></span> <span class="role" id="roleBadge"></span></span>
+        <span class="email" id="email"></span>
+        <button class="btn-ghost btn-sm" id="logoutBtn">로그아웃</button>
+      </div>
+    </header>
+    <main>
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="orders">크롤링 대기 주문</button>
+        <button class="tab" data-tab="master">약품 DB</button>
+      </div>
+
+      <section id="ordersView" class="tabview">
+        <div class="toolbar">
+          <h2>크롤링 대기 주문 <span class="muted" id="pendCount"></span></h2>
+          <button class="btn-ghost btn-sm" id="refreshBtn">새로고침</button>
+        </div>
+        <div id="orders"></div>
+      </section>
+
+      <section id="masterView" class="tabview hidden">
+        <div class="card" id="dmStatus">불러오는 중…</div>
+        <div class="card">
+          <div class="dm-uploadrow">
+            <label class="btn-primary btn-sm" for="dmFile" style="cursor:pointer">엑셀 파일 선택</label>
+            <input type="file" id="dmFile" accept=".xlsx,.xls" style="display:none" />
+            <span class="muted" id="dmFileName"></span>
+          </div>
+          <div id="dmPreview"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pollTimer = null;
+
+    async function jget(url) { const r = await fetch(url); if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || r.status); return r.json(); }
+
+    // ---- 인증 흐름 ----
+    async function boot() {
+      const s = await jget('/api/session').catch(() => ({ logged_in: false }));
+      if (s.logged_in) { showApp(); } else { showLogin(); }
+    }
+    function showLogin() {
+      $('appView').classList.add('hidden');
+      $('loginView').classList.remove('hidden');
+    }
+    $('googleBtn').addEventListener('click', () => {
+      $('loginStatus').textContent = '시스템 브라우저에서 로그인 후, 이 창으로 돌아오면 자동으로 진행돼요…';
+      // PyWebView: Python이 시스템 브라우저를 연다. 일반 브라우저: 새 탭.
+      if (window.pywebview && window.pywebview.api && window.pywebview.api.start_login) {
+        window.pywebview.api.start_login();
+      } else {
+        window.open('/auth/start', '_blank');
+      }
+      // 로그인 완료를 폴링
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        const s = await jget('/api/session').catch(() => ({ logged_in: false }));
+        if (s.logged_in) { clearInterval(pollTimer); pollTimer = null; showApp(); }
+      }, 2000);
+    });
+    $('logoutBtn').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); showLogin(); });
+
+    // ---- 앱 ----
+    async function showApp() {
+      $('loginView').classList.add('hidden');
+      $('appView').classList.remove('hidden');
+      const me = await jget('/api/me').catch(() => null);
+      $('pendCount').textContent = '';
+      $('tabs').classList.add('hidden');
+      $('masterView').classList.add('hidden');
+      $('ordersView').classList.remove('hidden');
+      if (!me || !me.member) {
+        $('orders').innerHTML = `<div class="empty">이 계정은 약국 소속이 없습니다.<br>웹에서 관리자 계정으로 로그인했는지 확인하세요.</div>`;
+        $('pharmName').textContent = ''; $('roleBadge').textContent = '';
+        $('email').textContent = me ? me.email : '';
+        return;
+      }
+      $('pharmName').textContent = me.pharmacy_name || '';
+      $('roleBadge').textContent = me.role === 'admin' ? '관리자' : '직원';
+      $('roleBadge').className = 'role ' + (me.role === 'admin' ? 'admin' : 'staff');
+      $('email').textContent = me.email || '';
+      // 로컬 앱은 관리자 전용 — 직원은 차단
+      if (me.role !== 'admin') {
+        $('orders').innerHTML = `<div class="empty">이 앱은 <b>관리자 전용</b>입니다.<br>직원 계정은 웹에서 주문지를 작성해주세요.</div>`;
+        return;
+      }
+      $('tabs').classList.remove('hidden');  // 관리자만 탭 노출
+      loadOrders();
+    }
+
+    // ---- 탭 ----
+    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      const tab = t.dataset.tab;
+      $('ordersView').classList.toggle('hidden', tab !== 'orders');
+      $('masterView').classList.toggle('hidden', tab !== 'master');
+      if (tab === 'master') loadDmStatus();
+    }));
+
+    // ---- 약품 DB 엑셀 임포트 ----
+    async function loadDmStatus() {
+      try {
+        const s = await jget('/api/drug-master/status');
+        $('dmStatus').innerHTML = s.count
+          ? `현재 <b>${s.count.toLocaleString()}</b>개 등록됨`
+            + (s.source_file ? ` · ${esc(s.source_file)}` : '')
+            + (s.imported_at ? ` · ${esc(String(s.imported_at).slice(0, 10))}` : '')
+          : '아직 등록된 약품이 없습니다. 엑셀을 업로드하세요.';
+      } catch (e) { $('dmStatus').textContent = '상태 조회 실패: ' + e.message; }
+    }
+    $('dmFile').addEventListener('change', (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      $('dmFileName').textContent = f.name;
+      previewFile(f, null);
+    });
+    async function previewFile(file, headerRow) {
+      $('dmPreview').innerHTML = '<div class="muted" style="margin-top:12px">미리보기 준비 중…</div>';
+      const fd = new FormData(); fd.append('file', file);
+      if (headerRow != null) fd.append('header_row', headerRow);
+      let pv;
+      try { const r = await fetch('/api/drug-master/preview', { method: 'POST', body: fd }); pv = await r.json(); if (!r.ok) throw new Error(pv.detail); }
+      catch (e) { $('dmPreview').innerHTML = `<div class="muted" style="margin-top:12px">미리보기 실패: ${esc(e.message)}</div>`; return; }
+      renderPreview(file, pv);
+    }
+    function colOpts(cols, sel) {
+      return '<option value="">(없음)</option>' + cols.map((c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
+    }
+    function renderPreview(file, pv) {
+      const cols = pv.columns || [], sc = pv.suggested_cols || {};
+      const sample = `<div class="dm-sample"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${(pv.sample_rows || []).map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      $('dmPreview').innerHTML = `
+        <div class="dm-hdr">머리글 행 <input type="number" id="dmHeader" value="${pv.used_header_row}" min="0" style="width:56px">
+          <button class="btn-ghost btn-sm" id="dmReHdr">적용</button>
+          <span class="muted">· 총 ${pv.total_rows}행</span></div>
+        <div class="dm-map">
+          <label>약품명 컬럼 *<select id="dmName">${colOpts(cols, sc.name)}</select></label>
+          <label>보험코드 컬럼<select id="dmCode">${colOpts(cols, sc.code)}</select></label>
+          <label>제약사 컬럼<select id="dmMaker">${colOpts(cols, sc.maker)}</select></label>
+        </div>
+        ${sample}
+        <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+          <button class="btn-primary btn-sm" id="dmImport">임포트 (전체 교체)</button>
+          <span class="muted" id="dmImportMsg"></span>
+        </div>`;
+      $('dmReHdr').addEventListener('click', () => previewFile(file, $('dmHeader').value));
+      $('dmImport').addEventListener('click', () => doImport(file));
+    }
+    async function doImport(file) {
+      const name = $('dmName').value;
+      if (!name) { $('dmImportMsg').textContent = '약품명 컬럼을 선택하세요.'; return; }
+      if (!confirm('현재 약품 DB를 이 엑셀로 전체 교체합니다.\n(크롤링으로 채운 규격은 약품명·코드가 같으면 보존됩니다)\n계속할까요?')) return;
+      const btn = $('dmImport'); btn.disabled = true; $('dmImportMsg').textContent = '임포트 중… (수 초)';
+      const fd = new FormData();
+      fd.append('file', file); fd.append('name_col', name);
+      fd.append('code_col', $('dmCode').value); fd.append('maker_col', $('dmMaker').value);
+      fd.append('header_row', $('dmHeader').value);
+      try {
+        const r = await fetch('/api/drug-master/import', { method: 'POST', body: fd });
+        const d = await r.json(); if (!r.ok) throw new Error(d.detail || '임포트 실패');
+        $('dmImportMsg').textContent = `✓ ${d.count.toLocaleString()}개 등록 완료`;
+        loadDmStatus();
+      } catch (e) { $('dmImportMsg').textContent = '실패: ' + e.message; }
+      finally { btn.disabled = false; }
+    }
+
+    async function loadOrders() {
+      $('orders').innerHTML = `<div class="empty">불러오는 중…</div>`;
+      let data;
+      try { data = await jget('/api/pending-orders'); }
+      catch (e) { $('orders').innerHTML = `<div class="empty">불러오기 실패: ${e.message}</div>`; return; }
+      $('pendCount').textContent = data.count ? `${data.count}건` : '';
+      if (!data.orders.length) { $('orders').innerHTML = `<div class="empty">크롤링 대기 중인 주문이 없습니다.<br>웹에서 주문을 저장하면 여기 표시돼요.</div>`; return; }
+      $('orders').innerHTML = '';
+      data.orders.forEach((o) => $('orders').appendChild(orderCard(o)));
+    }
+
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+    function orderCard(o) {
+      const el = document.createElement('div');
+      el.className = 'order';
+      const items = o.order_items || [];
+      const rows = items.map((it) => `<tr>
+        <td>${esc(it.drug_name)}</td><td>${esc(it.package_unit)}</td>
+        <td style="text-align:center">${esc(it.quantity)}</td></tr>`).join('');
+      el.innerHTML = `
+        <div class="order-head">
+          <span class="date">${esc(o.order_date)} ${esc(o.order_round)}차</span>
+          <span class="cnt">${items.length}품목</span>
+          <span class="status-badge status-${esc(o.status)}">${o.status === 'ordered' ? '주문완료' : '크롤링 대기'}</span>
+        </div>
+        <div class="items">
+          <table><thead><tr><th>약품명</th><th>포장단위</th><th style="text-align:center">수량</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+          <div class="order-actions">
+            <button class="btn-primary btn-sm crawl-btn">웹 크롤링으로 주문하기</button>
+          </div>
+        </div>`;
+      el.querySelector('.order-head').addEventListener('click', () => el.classList.toggle('open'));
+      el.querySelector('.crawl-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        alert('크롤링 기능은 준비 중입니다.\n(도매상 확정 후 구현 예정)');
+      });
+      return el;
+    }
+
+    $('refreshBtn').addEventListener('click', loadOrders);
+    boot();
+  </script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>로그인 처리</title>
+<style>
+  body{font-family:-apple-system,sans-serif;display:flex;min-height:90vh;align-items:center;justify-content:center;text-align:center;color:#333}
+  .ok h2{color:#1f9d63} .err{color:#d63b52}
+</style>
+</head>
+<body>
+  <div id="msg">로그인 처리 중…</div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    (async () => {
+      const msg = document.getElementById('msg');
+      try {
+        const cfg = await fetch('/api/config').then((r) => r.json());
+        const sb = supabase.createClient(cfg.url, cfg.anonKey);
+        // detectSessionInUrl 이 ?code= 를 세션으로 교환
+        let s = (await sb.auth.getSession()).data.session;
+        if (!s) {
+          s = await new Promise((res) => {
+            sb.auth.onAuthStateChange((_e, ss) => { if (ss) res(ss); });
+            setTimeout(() => res(null), 4000);
+          });
+        }
+        if (!s) { msg.className = 'err'; msg.textContent = '세션을 받지 못했습니다. 앱에서 다시 시도해주세요.'; return; }
+        await fetch('/auth/store', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token }),
+        });
+        document.body.className = 'ok';
+        msg.innerHTML = '<h2>✓ 로그인 완료</h2><p>이 창을 닫고 앱으로 돌아가세요.</p>';
+      } catch (e) {
+        msg.className = 'err'; msg.textContent = '오류: ' + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>

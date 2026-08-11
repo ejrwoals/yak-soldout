@@ -1,8 +1,8 @@
 """검토 완료된 주문 저장 — Cloud Run 웹 UI 전용.
 
-이미지를 Supabase Storage(order-images/<user_id>/…)에 올리고, orders/order_items 를
-status='pending' 으로 저장한다. (날짜, 차수)가 이미 있으면 DuplicateOrderError.
-전달 client 는 로그인 사용자 세션이어야 RLS/Storage 정책을 통과한다.
+이미지를 Supabase Storage(order-images/<pharmacy_id>/…)에 올리고, orders/order_items 를
+status='pending' 으로 저장한다. (약국, 날짜, 차수)가 이미 있으면 DuplicateOrderError.
+멀티테넌트: 데이터는 약국(pharmacy_id) 소유. 전달 client 는 service 또는 소속 멤버 세션.
 """
 
 import uuid
@@ -14,21 +14,21 @@ _MIME_EXT = {
 
 
 class DuplicateOrderError(RuntimeError):
-    """같은 (user_id, order_date, order_round) 주문이 이미 존재."""
+    """같은 (pharmacy_id, order_date, order_round) 주문이 이미 존재."""
 
 
-def _upload_image(client, user_id: str, order_date: str, order_round: int,
+def _upload_image(client, pharmacy_id: str, order_date: str, order_round: int,
                   image_bytes: bytes, mime: str) -> str:
     ext = _MIME_EXT.get(mime, ".jpg")
-    # Storage 키는 ASCII만 허용 → 한글 없이 구성 (r{차수})
-    path = f"{user_id}/{order_date}_r{order_round}_{uuid.uuid4().hex[:8]}{ext}"
+    # Storage 키는 ASCII만 허용 → 한글 없이 구성. 폴더 = pharmacy_id (RLS 격리 단위)
+    path = f"{pharmacy_id}/{order_date}_r{order_round}_{uuid.uuid4().hex[:8]}{ext}"
     client.storage.from_("order-images").upload(
         path, image_bytes, {"content-type": mime, "upsert": "false"}
     )
     return path
 
 
-def save_reviewed_order(client, user_id: str, order_date: str, order_round: int,
+def save_reviewed_order(client, pharmacy_id: str, order_date: str, order_round: int,
                         items: list[dict], image_bytes: bytes | None = None,
                         image_mime: str | None = None) -> str:
     """주문 저장 후 order_id 반환. 중복이면 DuplicateOrderError."""
@@ -36,7 +36,7 @@ def save_reviewed_order(client, user_id: str, order_date: str, order_round: int,
     dup = (
         client.table("orders")
         .select("id")
-        .eq("user_id", user_id)
+        .eq("pharmacy_id", pharmacy_id)
         .eq("order_date", order_date)
         .eq("order_round", order_round)
         .execute()
@@ -46,12 +46,12 @@ def save_reviewed_order(client, user_id: str, order_date: str, order_round: int,
 
     image_path = None
     if image_bytes:
-        image_path = _upload_image(client, user_id, order_date, order_round, image_bytes, image_mime or "image/jpeg")
+        image_path = _upload_image(client, pharmacy_id, order_date, order_round, image_bytes, image_mime or "image/jpeg")
 
     order = (
         client.table("orders")
         .insert({
-            "user_id": user_id,
+            "pharmacy_id": pharmacy_id,
             "order_date": order_date,
             "order_round": order_round,
             "status": "pending",
