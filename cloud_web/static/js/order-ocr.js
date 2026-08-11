@@ -114,6 +114,9 @@
     }
 
     // =================== 주문 기록 뷰 ===================
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
     let currentView = 'form';
     function showView(v) {
         currentView = v;
