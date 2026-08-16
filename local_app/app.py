@@ -19,12 +19,14 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import master_db
 import master_import
 import orders_repo
+import settings
+from unit_collector import UnitCollector
 
 BASE = Path(__file__).parent
 load_dotenv(BASE / ".env")
@@ -34,6 +36,9 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
 SESSION_FILE = BASE / ".session.json"   # refresh token 보관 (gitignore)
 
 app = FastAPI(title="자동주문 로컬 앱")
+
+# 규격 수집(기준 도매상 크롤링) 세션 — 앱당 하나, 동시에 하나만 실행된다.
+unit_collector = UnitCollector()
 
 # ===================== 세션 관리 =====================
 # access token 은 메모리에 캐시(만료 시 refresh 로 갱신), refresh token 만 디스크 보관.
@@ -130,6 +135,14 @@ def authed_client():
         return None
     c = _client()
     c.postgrest.auth(access)  # 이 사용자 토큰으로 RLS 적용
+    return c
+
+
+def _require_client():
+    """유효한 세션의 클라이언트. 만료돼 갱신도 실패하면 예외 — 긴 작업(규격 수집)용."""
+    c = authed_client()
+    if c is None:
+        raise RuntimeError("Supabase 세션이 만료됐습니다. 다시 로그인해주세요.")
     return c
 
 
@@ -298,6 +311,98 @@ async def dm_delete(body: dict):
     if not master_db.delete_row(c, (body or {}).get("row_id")):
         raise HTTPException(status_code=400, detail="삭제할 수 없습니다 (자유입력 약품만 가능).")
     return {"deleted": True}
+
+
+# ===================== 규격(포장단위) 수집 =====================
+# unit 이 빈 행을 기준 도매상에 보험코드로 검색해 채운다. 크롤링은 이 PC 에서 돌고,
+# 결과만 Supabase 로 write-back 된다.
+
+@app.get("/api/drug-master/unit-stats")
+def dm_unit_stats():
+    c, m = _require_admin()
+    stats = master_db.unit_stats(c, m["pharmacy_id"])
+    creds = settings.get_primary()
+    return {
+        **stats,
+        "running": unit_collector.is_running,
+        "distributor": creds["name"],
+        "configured": bool(creds["username"] and creds["password"]),
+    }
+
+
+@app.post("/api/drug-master/collect-units")
+async def dm_collect_units():
+    """규격 일괄 수집 실행. 진행 상황은 SSE(/collect-units/stream), 응답은 완료 요약."""
+    _, m = _require_admin()
+    if unit_collector.is_running:
+        raise HTTPException(status_code=409, detail="이미 규격 수집이 진행 중입니다.")
+
+    creds = settings.get_primary()
+    if not creds["username"] or not creds["password"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{creds['name']} 계정이 설정되지 않았습니다. 설정 탭에서 입력하세요.",
+        )
+    try:
+        return await unit_collector.run(_require_client, m["pharmacy_id"], creds)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"규격 수집 실패: {e}")
+
+
+@app.post("/api/drug-master/collect-units/stop")
+def dm_collect_units_stop():
+    """진행 중인 수집 중단 요청 (현재 항목까지 마무리하고 멈춘다)."""
+    _require_admin()
+    unit_collector.request_stop()
+    return {"message": "중단을 요청했습니다."}
+
+
+@app.get("/api/drug-master/collect-units/stream")
+def dm_collect_units_stream():
+    """진행 상황 SSE 스트림. 클라이언트가 EventSource 로 구독한다."""
+    _require_admin()
+
+    async def gen():
+        q = unit_collector.subscribe()
+        try:
+            while True:
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"   # 유휴 연결 유지
+                    continue
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        finally:
+            unit_collector.unsubscribe(q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache"})
+
+
+# ===================== 설정 (도매상 계정) =====================
+@app.get("/api/settings/distributor")
+def get_distributor_settings():
+    """기준 도매상 설정 조회. 비밀번호는 내려보내지 않고 설정 여부만 알린다."""
+    _require_admin()
+    return settings.describe()
+
+
+@app.post("/api/settings/distributor")
+async def save_distributor_settings(body: dict):
+    """기준 도매상과 계정 저장 (이 PC 의 local_app/.settings.json)."""
+    _require_admin()
+    b = body or {}
+    try:
+        return settings.save_distributor(
+            (b.get("primary") or "").strip(),
+            b.get("username") or "",
+            b.get("password"),          # 빈 값이면 기존 비밀번호 유지
+            b.get("region") or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ===================== 정적/페이지 =====================

@@ -83,6 +83,13 @@
     .dm-pager { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:14px; }
     .dm-pager button { background:transparent; border:1px solid var(--line); color:var(--primary); border-radius:8px; padding:6px 14px; cursor:pointer; font-weight:600; }
     .dm-pager button:disabled { color:var(--muted); cursor:default; opacity:.6; }
+    /* 규격 수집 진행바 */
+    .pbar { height:8px; background:var(--grey-bg); border-radius:6px; overflow:hidden; margin-top:12px; }
+    .pbar i { display:block; height:100%; width:0; background:var(--primary); transition:width .25s ease; }
+    /* 설정 */
+    .set-form { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
+    .set-form label { font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .set-form select, .set-form input { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fafafe; min-width:180px; }
   </style>
 </head>
 <body>
@@ -113,6 +120,7 @@
       <div class="tabs" id="tabs">
         <button class="tab active" data-tab="orders">크롤링 대기 주문</button>
         <button class="tab" data-tab="master">약품 DB</button>
+        <button class="tab" data-tab="settings">설정</button>
       </div>
 
       <section id="ordersView" class="tabview">
@@ -136,6 +144,24 @@
             <span class="muted" id="dmFileName"></span>
           </div>
           <div id="dmPreview"></div>
+        </div>
+
+        <!-- 규격 수집 -->
+        <div class="card">
+          <div class="dm-viewer-head">
+            <h3>규격 수집 <span class="muted" id="ucDist" style="font-size:13px"></span></h3>
+            <div style="display:flex; gap:8px">
+              <button class="btn-primary btn-sm" id="ucStart">규격 수집 시작</button>
+              <button class="btn-ghost btn-sm hidden" id="ucStop">중단</button>
+            </div>
+          </div>
+          <p class="muted" style="font-size:13px; margin:0 0 10px; line-height:1.55">
+            엑셀에는 규격 컬럼이 없어서, <b>보험코드가 있고 규격이 비어 있는 약품</b>을 기준 도매상에서
+            검색해 채웁니다. 크롤링은 <b>이 PC</b>에서 돌고 결과만 클라우드에 저장돼요.
+          </p>
+          <div id="ucStats" class="muted" style="font-size:13px">불러오는 중…</div>
+          <div class="pbar hidden" id="ucBarWrap"><i id="ucBar"></i></div>
+          <div class="muted" id="ucMsg" style="font-size:13px; margin-top:8px"></div>
         </div>
 
         <!-- 약품 DB 뷰어 -->
@@ -166,6 +192,26 @@
             <button id="dmPrev" disabled>← 이전</button>
             <span class="muted" id="dmPageInfo"></span>
             <button id="dmNext" disabled>다음 →</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="settingsView" class="tabview hidden">
+        <div class="card">
+          <h3 style="margin:0 0 6px; font-size:15px">기준 도매상 계정</h3>
+          <p class="muted" style="font-size:13px; margin:0; line-height:1.55">
+            규격 수집(그리고 앞으로의 장바구니 담기) 크롤링에 쓰는 도매상 로그인 정보입니다.
+            <b>이 PC에만 저장</b>되며 클라우드로 전송되지 않아요.
+          </p>
+          <div class="set-form">
+            <label>기준 도매상<select id="setDist"></select></label>
+            <label id="setRegionWrap">지역<select id="setRegion"></select></label>
+            <label>아이디<input id="setUser" autocomplete="off" /></label>
+            <label>비밀번호<input id="setPw" type="password" autocomplete="new-password" /></label>
+          </div>
+          <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+            <button class="btn-primary btn-sm" id="setSave">저장</button>
+            <span class="muted" id="setMsg" style="font-size:13px"></span>
           </div>
         </div>
       </section>
@@ -211,8 +257,7 @@
       const me = await jget('/api/me').catch(() => null);
       $('pendCount').textContent = '';
       $('tabs').classList.add('hidden');
-      $('masterView').classList.add('hidden');
-      $('ordersView').classList.remove('hidden');
+      showTab('orders');
       if (!me || !me.member) {
         $('orders').innerHTML = `<div class="empty">이 계정은 약국 소속이 없습니다.<br>웹에서 관리자 계정으로 로그인했는지 확인하세요.</div>`;
         $('pharmName').textContent = ''; $('roleBadge').textContent = '';
@@ -233,14 +278,14 @@
     }
 
     // ---- 탭 ----
-    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-      t.classList.add('active');
-      const tab = t.dataset.tab;
-      $('ordersView').classList.toggle('hidden', tab !== 'orders');
-      $('masterView').classList.toggle('hidden', tab !== 'master');
-      if (tab === 'master') { loadDmStatus(); loadDmRows(); }
-    }));
+    const VIEWS = { orders: 'ordersView', master: 'masterView', settings: 'settingsView' };
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
+      Object.entries(VIEWS).forEach(([k, id]) => $(id).classList.toggle('hidden', k !== tab));
+      if (tab === 'master') { loadDmStatus(); loadDmRows(); loadUnitStats(); }
+      if (tab === 'settings') loadSettings();
+    }
+    document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
     async function postJson(url, obj) {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
@@ -398,6 +443,118 @@
       } catch (e) { $('dmImportMsg').textContent = '실패: ' + e.message; }
       finally { btn.disabled = false; }
     }
+
+    // ---- 규격 수집 ----
+    let ucStream = null;
+
+    async function loadUnitStats() {
+      try {
+        const s = await jget('/api/drug-master/unit-stats');
+        $('ucDist').textContent = `· 기준 도매상 ${s.distributor}` + (s.configured ? '' : ' (계정 미설정)');
+        $('ucStats').innerHTML = `총 <b>${s.total.toLocaleString()}</b>건 · 수집됨 <b>${s.filled.toLocaleString()}</b>건`
+          + ` · 수집 대상 <b>${s.missing_with_code.toLocaleString()}</b>건`;
+        ucRunning(s.running);
+      } catch (e) { $('ucStats').textContent = '현황 조회 실패: ' + e.message; }
+    }
+    function ucRunning(on) {
+      $('ucStart').disabled = on;
+      $('ucStart').textContent = on ? '수집 중…' : '규격 수집 시작';
+      $('ucStop').classList.toggle('hidden', !on);
+      $('ucStop').disabled = false;
+      $('ucBarWrap').classList.toggle('hidden', !on);
+    }
+    function ucBar(done, total) {
+      $('ucBar').style.width = total ? `${Math.round((done / total) * 100)}%` : '0';
+    }
+    function ucOpenStream() {
+      if (ucStream) return;
+      ucStream = new EventSource('/api/drug-master/collect-units/stream');
+      ucStream.onmessage = (ev) => {
+        let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        ucProgress(m);
+      };
+      ucStream.onerror = () => { /* 브라우저가 자동 재연결 */ };
+    }
+    function ucCloseStream() { if (ucStream) { ucStream.close(); ucStream = null; } }
+    function ucProgress(m) {
+      switch (m.type) {
+        case 'unit_collect_started':
+          ucBar(0, m.total || 0);
+          $('ucMsg').textContent = `${m.distributor || '기준 도매상'}에서 ${(m.total || 0).toLocaleString()}건 검색 시작…`;
+          break;
+        case 'unit_collect_progress': {
+          ucBar(m.done || 0, m.total || 0);
+          const tag = m.result === 'ok' ? `→ ${m.unit || ''}` : m.result === 'notfound' ? '→ 규격 없음' : '→ 오류';
+          $('ucMsg').textContent = `${m.done || 0} / ${m.total || 0} · ${m.name || ''} ${tag}`;
+          break;
+        }
+        case 'unit_collect_error':
+          $('ucMsg').textContent = '수집 오류: ' + (m.message || '');
+          break;
+        case 'unit_collect_done':
+          ucBar(m.total || 0, m.total || 0);
+          break;
+      }
+    }
+    $('ucStart').addEventListener('click', async () => {
+      if (!confirm('규격 수집을 시작할까요?\n기준 도매상에 로그인해 보험코드로 하나씩 검색합니다.\n건수가 많으면 오래 걸릴 수 있어요 (중간에 중단 가능).')) return;
+      ucRunning(true); ucBar(0, 0); $('ucMsg').textContent = '기준 도매상 로그인 중…';
+      ucOpenStream();
+      try {
+        const d = await postJson('/api/drug-master/collect-units', {});
+        const head = d.stopped ? '중단됨' : '수집 완료';
+        $('ucMsg').textContent = d.error
+          ? `실패: ${d.error}`
+          : `${head} — 채움 ${d.updated}건 · 미발견 ${d.notfound}건` + (d.failed ? ` · 실패 ${d.failed}건` : '');
+      } catch (e) {
+        $('ucMsg').textContent = '실패: ' + e.message;
+      } finally {
+        ucCloseStream(); ucRunning(false); loadUnitStats(); loadDmRows();
+      }
+    });
+    $('ucStop').addEventListener('click', async () => {
+      $('ucStop').disabled = true;
+      $('ucMsg').textContent = '중단 요청 중… (현재 항목까지 마무리합니다)';
+      try { await postJson('/api/drug-master/collect-units/stop', {}); } catch (e) { /* best-effort */ }
+    });
+
+    // ---- 설정 (기준 도매상 계정) ----
+    let setData = null;
+    async function loadSettings() {
+      try { setData = await jget('/api/settings/distributor'); }
+      catch (e) { $('setMsg').textContent = '조회 실패: ' + e.message; return; }
+      $('setDist').innerHTML = setData.choices
+        .map((c) => `<option value="${esc(c.key)}"${c.key === setData.primary ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+      $('setUser').value = setData.username || '';
+      $('setPw').value = '';
+      $('setPw').placeholder = setData.has_password ? '저장됨 (바꿀 때만 입력)' : '';
+      renderRegion();
+    }
+    function renderRegion() {
+      const key = $('setDist').value;
+      const c = (setData?.choices || []).find((x) => x.key === key) || {};
+      const opts = c.region_options || {};
+      const keys = Object.keys(opts);
+      $('setRegionWrap').classList.toggle('hidden', keys.length === 0);
+      const cur = (setData.primary === key ? setData.region : '') || c.default_region || keys[0] || '';
+      $('setRegion').innerHTML = keys.map((k) => `<option value="${esc(k)}"${k === cur ? ' selected' : ''}>${esc(opts[k])}</option>`).join('');
+    }
+    $('setDist').addEventListener('change', renderRegion);
+    $('setSave').addEventListener('click', async () => {
+      const btn = $('setSave'); btn.disabled = true; $('setMsg').textContent = '저장 중…';
+      try {
+        setData = await postJson('/api/settings/distributor', {
+          primary: $('setDist').value,
+          username: $('setUser').value,
+          password: $('setPw').value,
+          region: $('setRegionWrap').classList.contains('hidden') ? '' : $('setRegion').value,
+        });
+        $('setPw').value = '';
+        $('setPw').placeholder = setData.has_password ? '저장됨 (바꿀 때만 입력)' : '';
+        $('setMsg').textContent = '✓ 저장됐습니다.';
+      } catch (e) { $('setMsg').textContent = '실패: ' + e.message; }
+      finally { btn.disabled = false; }
+    });
 
     async function loadOrders() {
       $('orders').innerHTML = `<div class="empty">불러오는 중…</div>`;

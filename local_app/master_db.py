@@ -4,6 +4,7 @@
 - 필터: filled(규격수집됨) / missing(규격미수집) / nocode(보험코드없음) / manual(자유입력)
 - 직접추가 규격: unit_manual 에 append-only (중복 스킵)
 - 수정/삭제: 자유입력(source='manual') 행만 가능
+- 규격수집(unit_collector)이 쓰는 조회/갱신도 여기에 둔다 (unit_stats / rows_missing_unit / set_unit)
 """
 
 _COLS = "id, name, insurance_code, maker, unit, unit_manual, source"
@@ -96,3 +97,58 @@ def delete_row(client, row_id: str) -> bool:
         return False
     client.table("drug_master").delete().eq("id", row_id).execute()
     return True
+
+
+# ===================== 규격(포장단위) 수집용 =====================
+# 엑셀에는 규격 컬럼이 없어, unit 이 빈 행을 기준 도매상에 보험코드로 검색해 채운다.
+# 보험코드가 없으면 검색할 수 없으므로 수집 대상에서 제외한다(레거시 db.py 와 동일한 기준).
+
+def unit_stats(client, pharmacy_id: str) -> dict:
+    """규격 수집 현황 — total / filled(수집됨) / missing_with_code(수집 가능)."""
+    def counter():
+        """이 약국 행을 세는 쿼리 빌더 (뒤에 필터를 더 붙일 수 있다)."""
+        return (
+            client.table("drug_master")
+            .select("id", count="exact")
+            .eq("pharmacy_id", pharmacy_id)
+            .limit(1)
+        )
+
+    def count(query) -> int:
+        return query.execute().count or 0
+
+    return {
+        "total": count(counter()),
+        "filled": count(counter().not_.is_("unit", "null")),
+        "missing_with_code": count(
+            counter().is_("unit", "null").not_.is_("insurance_code", "null").neq("insurance_code", "")
+        ),
+    }
+
+
+def rows_missing_unit(client, pharmacy_id: str) -> list[dict]:
+    """규격 수집 대상 행(id, name, insurance_code) 전체. 페이지네이션으로 모두 가져온다."""
+    rows, start, page = [], 0, 1000
+    while True:
+        res = (
+            client.table("drug_master")
+            .select("id, name, insurance_code")
+            .eq("pharmacy_id", pharmacy_id)
+            .is_("unit", "null")
+            .not_.is_("insurance_code", "null")
+            .neq("insurance_code", "")
+            .order("name")
+            .range(start, start + page - 1)
+            .execute()
+        )
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page:
+            break
+        start += page
+    return rows
+
+
+def set_unit(client, row_id: str, unit: str) -> None:
+    """수집한 규격 저장. 빈 값은 NULL 로 둬서 다음 수집 대상으로 남긴다."""
+    client.table("drug_master").update({"unit": (unit or "").strip() or None}).eq("id", row_id).execute()

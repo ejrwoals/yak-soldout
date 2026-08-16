@@ -1,5 +1,7 @@
 # 스택 2 — 로컬 PyWebView 앱 의존성
-# 크롤링용 playwright 는 해당 기능 개발 시 추가.
+# 크롤링(규격 수집·장바구니 담기)은 루트 scrapers/ 를 그대로 쓴다 → playwright 필요.
+# 최초 1회: python -m playwright install chromium
+playwright>=1.40.0
 supabase>=2.4.0
 python-dotenv>=1.0.0
 fastapi>=0.100.0

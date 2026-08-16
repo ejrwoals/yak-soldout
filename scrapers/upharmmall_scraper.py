@@ -14,6 +14,8 @@ class UpharmMallScraper(BaseScraper):
 
     LOGIN_URL = "https://www.upharmmall.co.kr/Member/Login.aspx"
     ORDER_URL = "https://www.upharmmall.co.kr/WosN/Shop/Cust/SimpleOrder"
+    # 쇼핑몰 세션 → 자동사입(W.O.S) 세션을 만들어주는 중계 페이지. 여길 거쳐야 주문 페이지가 열린다.
+    REDIRECT_URL = "https://www.upharmmall.co.kr/Member/RedirectWosN.aspx"
 
     # 결과 테이블 셀렉터
     ROW_SELECTOR = 'tr[id^="tr_"]'
@@ -217,6 +219,17 @@ class UpharmMallScraper(BaseScraper):
             return True
         except Exception:
             pass
+
+        # 로그인이 쇼핑몰 홈(/)으로 끝난 경우: 아직 자동사입 세션이 없어 SimpleOrder로 바로 가면
+        # 홈으로 되돌려보내진다. RedirectWosN.aspx를 태워 세션을 만든 뒤 자동 리다이렉트를 기다린다.
+        try:
+            self.page.goto(self.REDIRECT_URL, wait_until='domcontentloaded', timeout=15000)
+            self.page.wait_for_url('**/SimpleOrder*', timeout=10000)
+            self.page.wait_for_selector('#btnSearch', timeout=5000)
+            print("유팜몰 주문 페이지 이동 완료 (자동사입 리다이렉트 경유)")
+            return True
+        except Exception as e:
+            print(f"유팜몰 자동사입 리다이렉트 경유 실패, 직접 이동 시도... ({e})")
 
         # 폴백: 명시적 goto (ERR_ABORTED 대비 재시도)
         for attempt in range(2):

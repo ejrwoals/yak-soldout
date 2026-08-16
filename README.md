@@ -13,7 +13,7 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - **품절약 서치앱** — *이 README의 주 대상.* 도매상 품절 약품을 모니터링하는 로컬 앱입니다. 로컬 SQLite(`data/yak_soldout.db`) + Playwright 기반이며 **로컬 전용**으로 유지됩니다(Supabase를 쓰지 않습니다). 아래 [주요 기능](#-주요-기능) 이하 문서 전체가 이 앱을 설명합니다.
 - **자동 주문 솔루션** — 손글씨 주문지를 OCR로 읽어 검수·저장하고, 저장된 주문을 자동으로 도매상 장바구니에 담는 것을 목표로 하는 **신규 앱**입니다. 데이터는 전적으로 **Supabase**(Postgres + Auth + Storage)에 두며, 두 개의 스택으로 나뉩니다.
 
-두 앱은 코드·프로세스·저장소가 분리되어 있고, 공유하는 것은 Supabase 데이터(특히 `drug_master`)뿐입니다. 품절앱의 로컬 SQLite는 건드리지 않습니다.
+두 앱은 프로세스·저장소가 분리되어 있고, 공유하는 것은 Supabase 데이터(특히 `drug_master`)뿐입니다. 품절앱의 로컬 SQLite는 건드리지 않습니다. 코드 공유는 딱 하나 — 크롤링이 필요한 **로컬 앱(스택 2)만** 루트의 `scrapers/`(Playwright 스크래퍼)와 `models/`를 **읽기 전용으로 재사용**합니다(`local_app/repo_path.py`가 리포지토리 루트를 `sys.path`에 올립니다). 이 두 모듈은 `db.py`(로컬 SQLite)를 임포트하지 않으므로 "자동 주문 솔루션은 로컬 DB를 쓰지 않는다"는 전제는 유지됩니다. 클라우드 웹(스택 1)은 Playwright가 없으므로 여전히 코드를 공유하지 않습니다.
 
 > 전체 설계: [주문-자동화-워크플로우-구현-계획.md](주문-자동화-워크플로우-구현-계획.md)
 
@@ -21,13 +21,13 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 
 ```
 cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR(또는 직접 작성)→매칭→검수→Supabase 저장 + 주문 기록 조회
-local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회 + 약품 마스터 엑셀 임포트/뷰어 (크롤링·규격수집은 예정)
+local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회 + 약품 마스터 엑셀 임포트/뷰어 + 규격(포장단위) 수집 크롤링 + 도매상 계정 설정 (장바구니 담기는 예정)
 supabase/      # 공유 백엔드 스키마 (migrations/: 0001 스키마+RLS+Storage, 0002 grants, 0003 멀티테넌트 전환, 0004 멤버십 조회 뷰)
 scripts/       # 개발·검증·이전 스크립트 (migrate_drug_master.py, dev_smoke.py 등)
 deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 ```
 
-각 폴더에 자체 README가 있습니다 — [cloud_web/README.md](cloud_web/README.md), [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md), [supabase/README.md](supabase/README.md).
+각 폴더에 자체 README가 있습니다 — [cloud_web/README.md](cloud_web/README.md), [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md), [local_app/README.md](local_app/README.md), [supabase/README.md](supabase/README.md).
 
 ### 멀티테넌트 모델 (약국 = 테넌트)
 
@@ -53,14 +53,17 @@ deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 
 ### 스택 2 — 로컬 관리자 앱 (`local_app/`)
 
-약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 두 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회, (2) 약품 마스터 엑셀 임포트 + 뷰어/편집. 실행: `uv run python local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
+약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 네 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회, (2) 약품 마스터 엑셀 임포트 + 뷰어/편집, (3) 기준 도매상 크롤링으로 규격(포장단위) 일괄 수집, (4) 그 크롤링에 쓰는 도매상 계정 설정. UI는 세 개의 탭(크롤링 대기 주문 / 약품 DB / 설정)으로 나뉩니다. 실행: `uv pip install -r local_app/requirements.txt` → `uv run python -m playwright install chromium`(크롤링용, 최초 1회) → `uv run python local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
 
-- **관리자 전용**: 직원(`staff`)도 로그인은 되지만 "관리자 전용" 안내 화면만 보게 되며, `/api/pending-orders`와 `/api/drug-master/*`는 서버에서 `role == 'admin'`을 강제합니다(`_require_admin`, 소속 없으면 403).
+- **관리자 전용**: 직원(`staff`)도 로그인은 되지만 "관리자 전용" 안내 화면만 보게 되며, `/api/pending-orders`·`/api/drug-master/*`·`/api/settings/*`는 서버에서 `role == 'admin'`을 강제합니다(`_require_admin`, 소속 없으면 403).
 - **Google OAuth (시스템 브라우저 + loopback)**: Google 정책상 임베디드 웹뷰에서 OAuth가 막히므로, PyWebView JS 브릿지(`Api.start_login`)가 로그인을 **시스템 브라우저**로 엽니다(RFC 8252). 브라우저의 `/auth/start`가 `supabase-js`로 Google 로그인을 시작하고, `http://localhost:8770/auth/callback`(loopback)로 돌아와 `?code=`를 세션으로 교환한 뒤 그 토큰을 로컬 서버 `/auth/store`로 전달합니다. 서버는 **refresh token만** `local_app/.session.json`에 보관하고 access token은 메모리에 캐시하다 만료 시 자동 갱신하며(Supabase가 refresh를 회전), 그 사용자 세션을 실은 클라이언트로 RLS 스코프 읽기를 수행합니다(`local_app/app.py`).
 - **pending 주문 조회**: 웹(스택 1)이 저장한 `status='pending'` 주문을 품목과 함께 오래된 순으로 읽어 창에 표시합니다(`GET /api/pending-orders`, `local_app/orders_repo.py`). 품목은 OCR 추출 순서(`position`)로 정렬됩니다. 이것이 웹→Supabase→로컬로 이어지는 주문 파이프라인의 로컬 끝단입니다.
 - **약품 마스터 엑셀 임포트(관리자)**: `drug_master`를 채우는 경로입니다. 엑셀 업로드 → 미리보기(머리글 행 자동추정 + 약품명·보험코드·제약사 컬럼 자동 제안, `POST /api/drug-master/preview`) → 임포트(`POST /api/drug-master/import`)로, 그 약국(`pharmacy_id`) 스코프의 마스터를 **전체 교체**합니다. 단 크롤링으로 채운 규격(`unit`/`unit_manual`)은 `(약품명, 보험코드)` 매칭으로 보존합니다. 엑셀 파싱 로직은 품절앱 `utils/drug_master.py`에서 이식했습니다(`local_app/master_import.py`). 등록 현황은 `GET /api/drug-master/status`로 조회합니다.
 - **약품 마스터 뷰어/편집(관리자)**: 약품 DB 탭에 페이지 단위 마스터 테이블 뷰어가 있습니다(`local_app/master_db.py`). 약품명·보험코드 검색과 상태 필터(규격수집됨 `filled` / 규격미수집 `missing` / 보험코드없음 `nocode` / 자유입력 `manual`) + 페이지네이션으로 조회하고(`GET /api/drug-master/rows`), 크롤링으로 수집된 규격(`unit`)은 읽기 전용 칩으로만 보여줍니다. 사용자가 직접 입력한 규격은 `unit_manual`에 append-only로 추가하며(`POST /api/drug-master/manual-unit`, 중복 스킵), 자유입력(`source='manual'`) 행에 한해 이름 수정(`POST /api/drug-master/rename`, 중복·빈 이름 불가)·삭제(`POST /api/drug-master/delete`)가 가능합니다. 엑셀 임포트분(`source='excel'`)은 안전상 수정·삭제 대상이 아니며 엑셀 재업로드로 관리합니다.
-- **크롤링·규격수집은 예정**: 도매상 사이트 자동 로그인·장바구니 담기와 보험코드 기반 규격 일괄 수집(규격수집)은 대상 도매상(바로팜 등)이 확정될 때까지 **의도적으로 보류**되어 있습니다. 그래서 위 뷰어의 `unit`은 읽기 전용이고, 직접추가(`unit_manual`)만 가능합니다. `orders_repo.py`에는 크롤링 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back하는 스캐폴딩(`set_item_cart_status`·`mark_order_ordered`)만 준비되어 있습니다.
+- **규격(포장단위) 수집(관리자)**: 엑셀에는 규격 컬럼이 없으므로, 그 약국 `drug_master`에서 **보험코드가 있고 `unit`이 빈 행**을 기준 도매상(지오영·유팜몰)에 보험코드로 하나씩 검색해 결과의 규격을 채웁니다(`local_app/unit_collector.py`). 도매상 사이트가 데이터센터 IP를 막기 때문에 **크롤링은 이 PC에서만** 돌고(루트 `scrapers/` 재사용, 기본 headless — `HEADLESS=false`로 창을 볼 수 있음) 결과만 Supabase `drug_master.unit`으로 write-back합니다(사용자가 직접 넣은 `unit_manual`과는 계속 분리). 한 보험코드가 여러 규격을 가질 수 있어 검색 결과의 distinct 규격을 모두 `", "`로 합쳐 저장하고, 같은 코드는 한 번만 검색하도록 캐싱합니다. 대상 조회·저장은 `master_db.rows_missing_unit`/`set_unit`(페이지네이션·약국 스코프)이고, 수집이 오래 걸려 access token이 만료돼도 매번 **갱신된 클라이언트를 받아** 계속 씁니다.
+- **규격 수집 실행/진행 표시**: 배치는 앱당 하나만 돕니다(단일 워커 스레드). `POST /api/drug-master/collect-units`로 시작해(계정 미설정이면 400, 이미 진행 중이면 409) 응답으로 완료 요약을 받고, `POST /api/drug-master/collect-units/stop`으로 다음 행 경계에서 중단합니다. 진행 상황은 **SSE**(`GET /api/drug-master/collect-units/stream`, 프론트는 `EventSource`, 유휴 시 keepalive 주석 전송)로 브로드캐스트되어 약품 DB 탭의 진행바·현재 항목에 실시간 표시되고 터미널에도 로그를 남깁니다(품절앱의 WebSocket 브로드캐스트와 대응되는 구조). 수집 현황(총계/수집됨/수집 대상)은 `GET /api/drug-master/unit-stats`로 조회합니다.
+- **설정 탭 — 기준 도매상 계정**: 자동 주문 솔루션은 품절앱의 로컬 SQLite(`distributors` 테이블)를 쓰지 않으므로, 크롤링에 필요한 도매상 로그인 정보를 **이 PC의 `local_app/.settings.json`**에 따로 보관합니다(`local_app/settings.py`). 평문 파일이며 `.gitignore` 대상이고, **비밀번호는 Supabase(클라우드)로 올라가지 않습니다**. 설정 탭에서 기준 도매상(텍스트·보험코드 검색을 지원하는 지오영·유팜몰만 선택 가능)과 지역·아이디·비밀번호를 저장하며(`GET|POST /api/settings/distributor`), 조회 응답은 비밀번호 대신 설정 여부(`has_password`)만 내려보내고 저장 시 빈 비밀번호는 기존 값을 유지합니다. 지역 드롭다운 항목은 `scrapers/registry.py`의 `region_options`/`extra_params`에서 그대로 가져옵니다.
+- **장바구니 담기는 예정**: 저장된 주문을 도매상 사이트 장바구니에 자동으로 담는 단계는 대상 도매상(바로팜 등)이 확정될 때까지 **의도적으로 보류**되어 있습니다. `orders_repo.py`에는 그 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back하는 스캐폴딩(`set_item_cart_status`·`mark_order_ordered`)만 준비되어 있습니다.
 
 ### 공유 백엔드 — Supabase (`supabase/`)
 
@@ -293,7 +296,7 @@ yak-soldout/
 ├── db.py                      # SQLite 데이터 액세스 레이어 (스키마/마이그레이션/JSON 시딩)
 ├── analyze_units.py           # drug_master.unit 규격 빈도 분석 스크립트 → unit_frequency.json 출력
 │
-├── scrapers/                  # Playwright 기반 도매상 스크래퍼
+├── scrapers/                  # Playwright 기반 도매상 스크래퍼 (자동주문 로컬 앱도 이 폴더를 그대로 재사용)
 │   ├── registry.py            # 도매상 레지스트리 — Single Source of Truth
 │   ├── base_scraper.py        # 기본 스크래퍼 공통 기능
 │   ├── browser_manager.py     # 브라우저 인스턴스 중앙 관리
@@ -316,7 +319,7 @@ yak-soldout/
 │   ├── open_site_session.py   # 바로가기 headed 브라우저 세션 관리 (OpenSiteSession)
 │   ├── ocr_service.py         # 손글씨 주문지 OCR — Gemini 호출 및 약품명·포장단위·수량 추출
 │   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드(upsert)/머리글 추정/컬럼 매핑/제약사 정규화
-│   ├── unit_collector.py      # 포장단위(규격) 일괄 수집 배치 — 기준 도매상에 보험코드 검색 + WebSocket 진행상황
+│   ├── unit_collector.py      # 포장단위(규격) 일괄 수집 배치 — 기준 도매상에 보험코드 검색 + WebSocket 진행상황 (품절앱 전용. 자동주문 솔루션은 Supabase판 local_app/unit_collector.py 사용)
 │   ├── drug_matcher.py        # OCR 약품명 오타 보정 — 한글 자모 fuzzy 매칭(rapidfuzz) + 마스터 직접 검색 + 약품별 규격 인덱스
 │   ├── order_reconcile.py     # 자유입력(manual) 마스터 약품을 정식(excel) 약품으로 fuzzy 매칭·승격(병합)
 │   ├── file_manager.py        # 약품 목록 / 결과 표시 제외 목록 I/O (DB 위임)
