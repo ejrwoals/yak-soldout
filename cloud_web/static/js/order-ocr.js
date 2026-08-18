@@ -62,7 +62,7 @@
         if (state === 'app' && membership) {
             document.getElementById('pharmacyName').textContent = membership.pharmacy_name || '';
             const roleEl = document.getElementById('roleBadge');
-            roleEl.textContent = membership.role === 'admin' ? '관리자' : '직원';
+            roleEl.textContent = membership.role === 'admin' ? '관리자' : '스탭';
             roleEl.className = 'role-badge ' + (membership.role === 'admin' ? 'role-admin' : 'role-staff');
             badge.hidden = false;
         } else {
@@ -85,7 +85,7 @@
         } catch (e) { showJoinStatus('error', e.message); }
     }
 
-    // 관리자: 직원 초대 링크 발행
+    // 관리자: 스탭 초대 링크 발행
     async function createInvite() {
         try {
             const r = await fetch('/api/invites', { method: 'POST', headers: authHeader() });
@@ -117,16 +117,22 @@
     function escapeHtml(s) {
         return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-    let currentView = 'form';
+    // view: 'home'(런처) | 'form'(주문지 OCR) | 'history'(주문 기록) | 'drugs'(약 목록 조회)
+    let currentView = 'home';
     function showView(v) {
         currentView = v;
+        document.getElementById('homeView').hidden = v !== 'home';
         document.getElementById('formView').hidden = v !== 'form';
         document.getElementById('historyView').hidden = v !== 'history';
+        document.getElementById('drugsView').hidden = v !== 'drugs';
+        document.getElementById('homeBtn').hidden = v === 'home';
         const lbl = document.getElementById('viewToggleLabel');
         const icon = document.querySelector('#viewToggleBtn i');
-        if (lbl) lbl.textContent = v === 'form' ? '주문 기록' : '주문 작성';
-        if (icon) icon.className = v === 'form' ? 'bi bi-clock-history' : 'bi bi-pencil-square';
+        if (lbl) lbl.textContent = v === 'history' ? '주문 작성' : '주문 기록';
+        if (icon) icon.className = v === 'history' ? 'bi bi-pencil-square' : 'bi bi-clock-history';
         if (v === 'history') loadHistory();
+        if (v === 'drugs') loadDrugs(true);
+        window.scrollTo({ top: 0 });
     }
     async function loadHistory() {
         const list = document.getElementById('historyList');
@@ -148,6 +154,46 @@
           <div class="hist-items"><table><thead><tr><th>약품명</th><th>포장단위</th><th style="text-align:center">수량</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         el.querySelector('.hist-head').addEventListener('click', () => el.classList.toggle('open'));
         return el;
+    }
+
+    // =================== 약 목록 조회 (읽기 전용) ===================
+    const DRUG_PAGE = 50;
+    let drugQuery = '', drugOffset = 0, drugLoading = false;
+
+    function showDrugStatus(text) {
+        const el = document.getElementById('drugStatus');
+        if (text) { el.hidden = false; el.textContent = text; }
+        else el.hidden = true;
+    }
+    async function loadDrugs(reset) {
+        if (drugLoading) return;
+        drugLoading = true;
+        const rowsEl = document.getElementById('drugRows');
+        const moreBtn = document.getElementById('drugMoreBtn');
+        if (reset) { drugOffset = 0; rowsEl.innerHTML = ''; moreBtn.hidden = true; showDrugStatus('불러오는 중…'); }
+        try {
+            const p = new URLSearchParams({ q: drugQuery, limit: DRUG_PAGE, offset: drugOffset });
+            const r = await fetch('/api/drug-master?' + p, { headers: authHeader() });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.detail || `조회 실패 (${r.status})`);
+            (d.rows || []).forEach((row, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td class="col-idx">${drugOffset + i + 1}</td>
+                    <td>${escapeHtml(row.name)}</td>
+                    <td>${escapeHtml(row.maker || '')}</td>
+                    <td>${escapeHtml(row.unit_manual || row.unit || '')}</td>
+                    <td class="cell-code">${escapeHtml(row.insurance_code || '')}</td>`;
+                rowsEl.appendChild(tr);
+            });
+            drugOffset += (d.rows || []).length;
+            document.getElementById('drugCount').textContent = `총 ${d.total ?? 0}개`;
+            moreBtn.hidden = drugOffset >= (d.total || 0);
+            showDrugStatus(drugOffset === 0 ? (drugQuery ? '검색 결과가 없습니다.' : '등록된 약품이 없습니다.') : null);
+        } catch (e) {
+            showDrugStatus(`조회 실패: ${e.message}`);
+        } finally {
+            drugLoading = false;
+        }
     }
 
     // =================== 테마 ===================
@@ -702,8 +748,22 @@
             const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin } });
             if (error) showLoginStatus('error', error.message);
         });
-        document.getElementById('logoutBtn')?.addEventListener('click', async () => { showView('form'); await sb?.auth.signOut(); });
-        document.getElementById('viewToggleBtn')?.addEventListener('click', () => showView(currentView === 'form' ? 'history' : 'form'));
+        document.getElementById('logoutBtn')?.addEventListener('click', async () => { showView('home'); await sb?.auth.signOut(); });
+        document.getElementById('viewToggleBtn')?.addEventListener('click', () => showView(currentView === 'history' ? 'form' : 'history'));
+        document.getElementById('homeBtn')?.addEventListener('click', () => showView('home'));
+        document.getElementById('navBrand')?.addEventListener('click', () => { if (session && membership) showView('home'); });
+        // 홈 카드 → 기능 진입 (클릭 + 키보드)
+        [['cardOcr', 'form'], ['cardDrugs', 'drugs']].forEach(([id, view]) => {
+            const card = document.getElementById(id);
+            card?.addEventListener('click', () => showView(view));
+            card?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showView(view); } });
+        });
+        // 약 목록 검색 (디바운스)
+        document.getElementById('drugSearchInput')?.addEventListener('input', debounce((e) => {
+            drugQuery = e.target.value.trim();
+            loadDrugs(true);
+        }, 250));
+        document.getElementById('drugMoreBtn')?.addEventListener('click', () => loadDrugs(false));
         document.getElementById('joinBtn')?.addEventListener('click', () => doAccept(document.getElementById('inviteCode').value));
         document.getElementById('inviteCode')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAccept(e.target.value); });
         document.getElementById('inviteBtn')?.addEventListener('click', createInvite);

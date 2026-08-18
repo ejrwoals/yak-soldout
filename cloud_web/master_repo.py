@@ -10,6 +10,15 @@ _PAGE = 1000
 _COLS = "name, insurance_code, maker, maker_norm, unit, unit_manual"
 
 
+def search_drug_master(client, q: str = "", limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+    """약품 DB 조회(읽기 전용) — 이름 부분일치 검색 + 페이지네이션. (rows, 전체 개수) 반환."""
+    query = client.table("drug_master").select(_COLS, count="exact").order("name")
+    if q:
+        query = query.ilike("name", f"%{q}%")
+    res = query.range(offset, offset + limit - 1).execute()
+    return (res.data or []), (res.count or 0)
+
+
 def fetch_drug_master(client) -> list[dict]:
     """drug_master 전체 행을 매칭용 dict 리스트로 반환(페이지네이션)."""
     rows: list[dict] = []

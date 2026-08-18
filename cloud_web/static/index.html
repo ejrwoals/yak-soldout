@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>주문지 OCR | 자동주문</title>
+  <title>약국 주문 Agent</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
@@ -70,15 +70,27 @@
     .invite-link-row { display: flex; gap: 8px; }
     .invite-link-row input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-color);
                              border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
+    /* 약 목록 조회 */
+    .drugs-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .drugs-search { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--bg-secondary);
+                    border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; }
+    .drugs-search i { color: var(--text-muted); }
+    .drugs-search input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--text-primary);
+                          font: inherit; outline: none; }
+    .drugs-search:focus-within { border-color: var(--primary); background: var(--bg-primary); }
+    .drugs-count { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .drugs-footer { display: flex; justify-content: center; margin-top: 14px; }
+    #drugsView .review-table td { font-size: 14px; }
+    #drugsView .review-table .cell-code { color: var(--text-muted); font-size: 13px; }
   </style>
 </head>
 <body>
   <!-- 상단 네비게이션 -->
   <nav class="top-nav">
     <div class="nav-content">
-      <div class="nav-brand">
+      <div class="nav-brand" id="navBrand" style="cursor:pointer;" title="홈으로">
         <i class="bi bi-file-earmark-text"></i>
-        <span>주문지 OCR</span>
+        <span>약국 주문 Agent</span>
       </div>
       <div class="nav-controls" id="navControls" hidden>
         <span class="pharmacy-badge" id="pharmacyBadge" hidden>
@@ -87,11 +99,14 @@
           <span class="role-badge" id="roleBadge"></span>
         </span>
         <span class="user-email" id="userEmail"></span>
+        <button id="homeBtn" class="theme-toggle nav-label-btn" title="홈" hidden style="text-decoration:none;">
+          <i class="bi bi-house"></i><span>홈</span>
+        </button>
         <button id="viewToggleBtn" class="theme-toggle nav-label-btn" title="주문 기록" style="text-decoration:none;">
           <i class="bi bi-clock-history"></i><span id="viewToggleLabel">주문 기록</span>
         </button>
-        <button id="inviteBtn" class="theme-toggle nav-label-btn" title="직원 초대" hidden style="text-decoration:none;">
-          <i class="bi bi-person-plus"></i><span>직원 초대</span>
+        <button id="inviteBtn" class="theme-toggle nav-label-btn" title="스탭 초대" hidden style="text-decoration:none;">
+          <i class="bi bi-person-plus"></i><span>스탭 초대</span>
         </button>
         <button id="logoutBtn" class="theme-toggle nav-label-btn" title="로그아웃" style="text-decoration:none;">
           <i class="bi bi-box-arrow-right"></i><span>로그아웃</span>
@@ -107,7 +122,7 @@
   <div class="login-wrap" id="loginView">
     <div class="login-card">
       <div class="login-logo"><i class="bi bi-file-earmark-text"></i></div>
-      <h1>주문지 OCR</h1>
+      <h1>약국 주문 Agent</h1>
       <p>약국 계정(Google)으로 로그인하세요.</p>
       <button class="g-btn" id="googleBtn">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
@@ -129,11 +144,11 @@
     </div>
   </div>
 
-  <!-- 직원 초대 링크 모달 (관리자) -->
+  <!-- 스탭 초대 링크 모달 (관리자) -->
   <div id="inviteModal" class="modal-overlay" hidden>
     <div class="modal-card">
-      <h3>직원 초대 링크</h3>
-      <p class="modal-desc">이 링크를 직원에게 보내세요. 직원이 Google 로그인하면 우리 약국에 합류됩니다.</p>
+      <h3>스탭 초대 링크</h3>
+      <p class="modal-desc">이 링크를 스탭에게 보내세요. 스탭이 Google 로그인하면 우리 약국에 합류됩니다.</p>
       <div class="invite-link-row">
         <input id="inviteLink" readonly>
         <button class="btn btn-primary btn-sm" id="copyInviteBtn">복사</button>
@@ -145,7 +160,33 @@
 
   <!-- 앱 본문 -->
   <main class="main-container ocr-container" id="appView" hidden>
-   <div id="formView">
+   <!-- 홈 (기능 런처) -->
+   <section id="homeView">
+     <section class="home-header">
+       <h1>약국 주문 Agent</h1>
+       <p class="subtitle">사용할 기능을 선택하세요</p>
+     </section>
+     <div class="app-launcher">
+       <div class="app-card" id="cardOcr" role="button" tabindex="0">
+         <div class="app-icon"><i class="bi bi-file-earmark-text"></i></div>
+         <div class="app-info">
+           <h2>주문지 OCR</h2>
+           <p>주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어 주문지를 작성합니다. 직접 작성도 가능합니다.</p>
+         </div>
+         <div class="app-action"><span class="action-open">열기 <i class="bi bi-arrow-right"></i></span></div>
+       </div>
+       <div class="app-card" id="cardDrugs" role="button" tabindex="0">
+         <div class="app-icon"><i class="bi bi-capsule"></i></div>
+         <div class="app-info">
+           <h2>약 목록 조회</h2>
+           <p>현재 등록되어 있는 약품 DB를 검색하고 조회합니다.</p>
+         </div>
+         <div class="app-action"><span class="action-open">열기 <i class="bi bi-arrow-right"></i></span></div>
+       </div>
+     </div>
+   </section>
+
+   <div id="formView" hidden>
     <section class="home-header">
       <h1>주문지 작성</h1>
       <p id="pageSubtitle" class="subtitle">주문지 사진을 올리면 약품명·포장단위·수량을 자동으로 읽어옵니다</p>
@@ -262,6 +303,43 @@
        <p class="subtitle">저장된 주문 목록입니다. 크롤링 대기(pending) / 주문완료(ordered).</p>
      </section>
      <div id="historyList"></div>
+   </section>
+
+   <!-- 약 목록 조회 (읽기 전용) -->
+   <section id="drugsView" hidden>
+     <section class="home-header">
+       <h1>약 목록 조회</h1>
+       <p class="subtitle">현재 등록되어 있는 약품 DB입니다. 약품명으로 검색할 수 있습니다.</p>
+     </section>
+     <section class="ocr-card">
+       <div class="drugs-toolbar">
+         <div class="drugs-search">
+           <i class="bi bi-search"></i>
+           <input id="drugSearchInput" placeholder="약품명으로 검색" autocomplete="off">
+         </div>
+         <span id="drugCount" class="drugs-count"></span>
+       </div>
+       <div class="table-wrap">
+         <table class="review-table">
+           <thead>
+             <tr>
+               <th class="col-idx">#</th>
+               <th>약품명</th>
+               <th>제약사</th>
+               <th>포장단위</th>
+               <th>보험코드</th>
+             </tr>
+           </thead>
+           <tbody id="drugRows"></tbody>
+         </table>
+       </div>
+       <div id="drugStatus" class="hist-empty" hidden></div>
+       <div class="drugs-footer">
+         <button id="drugMoreBtn" class="btn btn-ghost" hidden>
+           <i class="bi bi-chevron-down"></i> 더 보기
+         </button>
+       </div>
+     </section>
    </section>
   </main>
 

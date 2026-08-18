@@ -265,12 +265,12 @@
         return;
       }
       $('pharmName').textContent = me.pharmacy_name || '';
-      $('roleBadge').textContent = me.role === 'admin' ? '관리자' : '직원';
+      $('roleBadge').textContent = me.role === 'admin' ? '관리자' : '스탭';
       $('roleBadge').className = 'role ' + (me.role === 'admin' ? 'admin' : 'staff');
       $('email').textContent = me.email || '';
-      // 로컬 앱은 관리자 전용 — 직원은 차단
+      // 로컬 앱은 관리자 전용 — 스탭은 차단
       if (me.role !== 'admin') {
-        $('orders').innerHTML = `<div class="empty">이 앱은 <b>관리자 전용</b>입니다.<br>직원 계정은 웹에서 주문지를 작성해주세요.</div>`;
+        $('orders').innerHTML = `<div class="empty">이 앱은 <b>관리자 전용</b>입니다.<br>스탭 계정은 웹에서 주문지를 작성해주세요.</div>`;
         return;
       }
       $('tabs').classList.remove('hidden');  // 관리자만 탭 노출

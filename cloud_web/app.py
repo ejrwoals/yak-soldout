@@ -229,6 +229,21 @@ async def api_drug_search(q: str = "", authorization: str = Header(None)):
     return {"results": results}
 
 
+@app.get("/api/drug-master")
+async def api_drug_master(
+    q: str = "", limit: int = 50, offset: int = 0, authorization: str = Header(None)
+):
+    """약품 DB 목록 조회(읽기 전용) — 약 목록 조회 화면용. 이름 검색 + 페이지네이션."""
+    client = _user_client(authorization)
+    _require_membership(_token_sub(authorization))
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    rows, total = await asyncio.to_thread(
+        master_repo.search_drug_master, client, (q or "").strip(), limit, offset
+    )
+    return {"rows": rows, "total": total, "count": len(rows)}
+
+
 @app.get("/api/me")
 async def api_me(authorization: str = Header(None)):
     """로그인 사용자의 소속(멤버십) 정보. 프론트가 앱 진입 vs 초대코드 입력을 판단."""
@@ -261,7 +276,7 @@ async def api_orders(authorization: str = Header(None)):
 
 @app.post("/api/accept-invite")
 async def api_accept_invite(body: dict, authorization: str = Header(None)):
-    """초대코드로 약국에 합류(직원). 성공 시 멤버십 반환."""
+    """초대코드로 약국에 합류(스탭). 성공 시 멤버십 반환."""
     user_id = _verify_user_id(authorization)
     try:
         m = await asyncio.to_thread(
@@ -275,7 +290,7 @@ async def api_accept_invite(body: dict, authorization: str = Header(None)):
 
 @app.post("/api/invites")
 async def api_create_invite(authorization: str = Header(None)):
-    """직원 초대코드 발행 (관리자만). 반환 {code}."""
+    """스탭 초대코드 발행 (관리자만). 반환 {code}."""
     user_id = _verify_user_id(authorization)
     m = _require_membership(user_id)
     if m["role"] != "admin":
