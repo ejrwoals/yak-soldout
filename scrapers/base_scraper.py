@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Tuple
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
-from models.drug_data import Drug, DistributorType
+from scrapers.drug_data import Drug, DistributorType
 
 
 class BaseScraper(ABC):

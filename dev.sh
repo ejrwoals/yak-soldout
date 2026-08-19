@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# yak-soldout dev 환경 실행 스크립트
+# 약국 주문 Agent — 로컬 관리자 앱 실행 스크립트 (apps/local_app/)
+# FastAPI 서버(포트 8770)를 띄우고 PyWebView 데스크톱 창을 연다.
 # 사용법: ./dev.sh
 
 set -e
 
 cd "$(dirname "$0")"
+ROOT="$(pwd)"
 
-VENV_PYTHON=".venv/bin/python"
-# 8000/8001은 다른 로컬 프로젝트가 사용하므로 8002 사용.
-# export 해야 web_server.py 가 이 값을 읽는다 (안 하면 좀비 정리만 8002, 서버는 기본값으로 떠 불일치).
-export PORT=8002
+VENV_PYTHON="$ROOT/.venv/bin/python"
+PORT=8770   # apps/local_app/main.py 의 고정 포트 (loopback OAuth 콜백 주소와 맞물려 있음)
 
 # 1) .venv 확인
 if [ ! -x "$VENV_PYTHON" ]; then
     echo "❌ $VENV_PYTHON 을 찾을 수 없습니다."
-    echo "   먼저 'uv venv' 로 가상환경을 만들고 의존성을 설치하세요."
+    echo "   먼저 'uv venv' 로 가상환경을 만들고 의존성을 설치하세요:"
+    echo "   uv pip install -r apps/local_app/requirements.txt"
     exit 1
 fi
 
-# 2) 해당 포트를 점유 중인 좀비 프로세스 정리 (say-boyak의 8000은 건드리지 않음)
+# 2) 해당 포트를 점유 중인 좀비 프로세스 정리
 ZOMBIES=$(lsof -ti tcp:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$ZOMBIES" ]; then
     echo "⚠️  포트 $PORT 점유 프로세스 정리: $ZOMBIES"
@@ -26,5 +27,5 @@ if [ -n "$ZOMBIES" ]; then
     sleep 1
 fi
 
-# 3) 서버 실행 (exec로 교체하여 Ctrl+C 시그널을 직접 받도록)
-exec "$VENV_PYTHON" web_server.py
+# 3) 로컬 앱 실행 (PyWebView 창 + 로컬 서버)
+exec "$VENV_PYTHON" apps/local_app/main.py

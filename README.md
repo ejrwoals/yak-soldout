@@ -13,56 +13,57 @@ FastAPI 기반의 웹 인터페이스와 Playwright를 활용한 안정적인 �
 - **품절약 서치앱** — *이 README의 주 대상.* 도매상 품절 약품을 모니터링하는 로컬 앱입니다. 로컬 SQLite(`data/yak_soldout.db`) + Playwright 기반이며 **로컬 전용**으로 유지됩니다(Supabase를 쓰지 않습니다). 아래 [주요 기능](#-주요-기능) 이하 문서 전체가 이 앱을 설명합니다.
 - **자동 주문 솔루션** — 손글씨 주문지를 OCR로 읽어 검수·저장하고, 저장된 주문을 자동으로 도매상 장바구니에 담는 것을 목표로 하는 **신규 앱**입니다. 데이터는 전적으로 **Supabase**(Postgres + Auth + Storage)에 두며, 두 개의 스택으로 나뉩니다.
 
-두 앱은 프로세스·저장소가 분리되어 있고, 공유하는 것은 Supabase 데이터(특히 `drug_master`)뿐입니다. 품절앱의 로컬 SQLite는 건드리지 않습니다. 코드 공유는 딱 하나 — 크롤링이 필요한 **로컬 앱(스택 2)만** 루트의 `scrapers/`(Playwright 스크래퍼)와 `models/`를 **읽기 전용으로 재사용**합니다(`local_app/repo_path.py`가 리포지토리 루트를 `sys.path`에 올립니다). 이 두 모듈은 `db.py`(로컬 SQLite)를 임포트하지 않으므로 "자동 주문 솔루션은 로컬 DB를 쓰지 않는다"는 전제는 유지됩니다. 클라우드 웹(스택 1)은 Playwright가 없으므로 여전히 코드를 공유하지 않습니다.
+두 앱은 프로세스·저장소가 분리되어 있고, 공유하는 것은 Supabase 데이터(특히 `drug_master`)뿐입니다. 품절앱의 로컬 SQLite는 건드리지 않습니다. 코드 공유는 딱 하나 — 크롤링이 필요한 **로컬 앱(스택 2)만** 루트의 공유 패키지 `scrapers/`(Playwright 스크래퍼 + drug_data 데이터 모델)를 **읽기 전용으로 재사용**합니다(`apps/local_app/repo_path.py`가 리포지토리 루트를 `sys.path`에 올립니다). 이 두 모듈은 `db.py`(로컬 SQLite)를 임포트하지 않으므로 "자동 주문 솔루션은 로컬 DB를 쓰지 않는다"는 전제는 유지됩니다. 클라우드 웹(스택 1)은 Playwright가 없으므로 여전히 코드를 공유하지 않습니다.
 
 > 전체 설계: [주문-자동화-워크플로우-구현-계획.md](주문-자동화-워크플로우-구현-계획.md)
 
 ### 디렉터리 맵 (자동 주문 솔루션)
 
 ```
-cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR(또는 직접 작성)→매칭→검수→Supabase 저장 + 주문 기록 조회
-local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회 + 약품 마스터 엑셀 임포트/뷰어 + 규격(포장단위) 수집 크롤링 + 도매상 계정 설정 (장바구니 담기는 예정)
+apps/cloud_web/     # 스택 1 — Cloud Run 웹 UI (FastAPI). 업로드→OCR(또는 직접 작성)→매칭→검수→Supabase 저장 + 주문 기록(달력)·약품 DB 조회
+apps/local_app/     # 스택 2 — 로컬 PyWebView+FastAPI 관리자 앱. pending 주문 조회·품목별 주문 도매상 지정 + 약품 마스터 엑셀 임포트/뷰어 + 규격(포장단위) 수집 크롤링 + 도매상 계정 설정 (장바구니 담기는 예정)
 supabase/      # 공유 백엔드 스키마 (migrations/: 0001 스키마+RLS+Storage, 0002 grants, 0003 멀티테넌트 전환, 0004 멤버십 조회 뷰)
 scripts/       # 개발·검증·이전 스크립트 (migrate_drug_master.py, dev_smoke.py 등)
 deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 ```
 
-각 폴더에 자체 README가 있습니다 — [cloud_web/README.md](cloud_web/README.md), [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md), [local_app/README.md](local_app/README.md), [supabase/README.md](supabase/README.md).
+각 폴더에 자체 README가 있습니다 — [apps/cloud_web/README.md](apps/cloud_web/README.md), [apps/cloud_web/DEPLOY.md](apps/cloud_web/DEPLOY.md), [apps/local_app/README.md](apps/local_app/README.md), [supabase/README.md](supabase/README.md).
 
 ### 멀티테넌트 모델 (약국 = 테넌트)
 
 자동 주문 솔루션의 데이터 주인은 개인 사용자가 아니라 **약국(pharmacy)**입니다. 약국 1곳이 하나의 테넌트이며, 사용자는 `memberships`로 약국에 소속되고(역할 `admin`|`staff`), 소속을 통해서만 그 약국의 `orders`·`drug_master`·주문 이미지에 접근합니다. 격리는 애플리케이션 코드가 아니라 **Supabase RLS**로 물리적으로 강제됩니다(`supabase/migrations/0003_multitenant.sql`).
 
-- **역할(role)**: `admin`은 약국을 부트스트랩하고 직원 초대코드를 발행하며(로컬 크롤링·엑셀 마스터 관리도 관리자 몫), `staff`는 초대로 합류해 업로드·OCR·검수·저장을 수행합니다.
-- **초대 기반 합류**: 관리자가 발행한 초대코드(`invites` 테이블, 추측 불가능한 랜덤 코드)를 직원이 Google 로그인 후 `POST /api/accept-invite`로 redeem하면 `memberships` 행이 생겨 합류됩니다. 관리자는 앱 상단의 "직원 초대" 버튼으로 초대 링크(`/?invite=CODE`)를 만들며, 그 링크로 들어온 사용자는 로그인 직후 자동 합류합니다.
-- **membership 기반 RLS**: 모든 정책이 `security definer` 헬퍼 함수 `auth_pharmacy_ids()`(내가 속한 약국 id 집합)와 `auth_is_admin(pharmacy_id)`를 기준으로 동작합니다. `orders`/`order_items`/`drug_master`/`pharmacies`/Storage 객체는 내가 속한 약국 것만 CRUD할 수 있고, `invites`는 그 약국 admin만 관리합니다. 멤버십·초대의 쓰기는 RLS로 막혀 있어, 서버가 JWT를 검증한 뒤 **service_role**로만 수행합니다(`cloud_web/tenant_repo.py`).
+- **역할(role)**: `admin`은 약국을 부트스트랩하고 스탭 초대코드를 발행하며(로컬 크롤링·엑셀 마스터 관리도 관리자 몫), `staff`는 초대로 합류해 업로드·OCR·검수·저장을 수행합니다.
+- **초대 기반 합류**: 관리자가 발행한 초대코드(`invites` 테이블, 추측 불가능한 랜덤 코드)를 스탭이 Google 로그인 후 `POST /api/accept-invite`로 redeem하면 `memberships` 행이 생겨 합류됩니다. 관리자는 앱 상단의 "스탭 초대" 버튼으로 초대 링크(`/?invite=CODE`)를 만들며, 그 링크로 들어온 사용자는 로그인 직후 자동 합류합니다.
+- **membership 기반 RLS**: 모든 정책이 `security definer` 헬퍼 함수 `auth_pharmacy_ids()`(내가 속한 약국 id 집합)와 `auth_is_admin(pharmacy_id)`를 기준으로 동작합니다. `orders`/`order_items`/`drug_master`/`pharmacies`/Storage 객체는 내가 속한 약국 것만 CRUD할 수 있고, `invites`는 그 약국 admin만 관리합니다. 멤버십·초대의 쓰기는 RLS로 막혀 있어, 서버가 JWT를 검증한 뒤 **service_role**로만 수행합니다(`apps/cloud_web/tenant_repo.py`).
 - **초기 셋업**: 0003 마이그레이션은 (폐기 가능 전제로) 기존 `user_id` 기반 `orders`/`drug_master` 데이터를 비우고 스키마를 `pharmacy_id` 기준으로 전환합니다. 적용 후 약국(`pharmacies`) 1행과 관리자 멤버십(`memberships`, `role='admin'`)을 만들고, `drug_master`는 로컬 앱의 관리자 엑셀 임포트로 채웁니다.
 
-### 스택 1 — Cloud Run 웹 UI (`cloud_web/`)
+### 스택 1 — Cloud Run 웹 UI (`apps/cloud_web/`)
 
-약국 직원이 브라우저에서 주문지를 처리하는 경량 FastAPI 앱입니다. **Playwright를 포함하지 않고**(경량), 스테이트리스이며 `$PORT`에 바인딩해 **Google Cloud Run**에 배포됩니다. 데이터 흐름:
+약국 스탭이 브라우저에서 주문지를 처리하는 경량 FastAPI 앱입니다. **Playwright를 포함하지 않고**(경량), 스테이트리스이며 `$PORT`에 바인딩해 **Google Cloud Run**에 배포됩니다. 로그인하면 **홈 화면(런처)**이 먼저 뜨고, 세 개의 카드 — **주문지 OCR**(주문지 작성) / **과거 주문 기록**(달력 조회) / **약 목록 조회**(약품 DB 뷰어) — 로 화면을 오갑니다. 데이터 흐름:
 
-1. **Google 로그인 + 약국 소속 확인**(Supabase Auth) — 브라우저의 `supabase-js`가 로그인해 발급한 JWT를 `Authorization: Bearer`로 백엔드에 전달합니다. 로그인 직후 프론트는 `GET /api/me`로 소속(멤버십)을 확인해 **세 상태**(로그인 / 초대코드 합류 / 앱)로 분기합니다 — 소속이 없으면 초대코드 입력 화면이 뜨고, 소속이 있어야 OCR·저장 등 데이터 API를 쓸 수 있습니다(서버 `_require_membership` 게이트, 소속 없으면 403). 백엔드는 그 토큰으로 만든 사용자 스코프 클라이언트에 **membership 기반 RLS**를 적용하며, 멤버십 조회는 짧게 TTL 캐시합니다(`cloud_web/app.py`, `tenant_repo.py`).
-2. **입력 방식 — 사진(OCR) / 직접 작성** — 상단 토글로 두 방식 중 고릅니다. *사진으로 읽기*는 업로드한 이미지를 Gemini 멀티모달로 약품명·포장단위·수량을 추출하고(`cloud_web/ocr_service.py`, 품절앱 `utils/ocr_service.py`를 자체 완결 사본으로 이식), *직접 작성*은 업로드·이미지 없이 빈 검수 테이블을 바로 열어 약품명 자동완성(`/api/drug-search`)으로 손으로 입력합니다(이미지 없이 저장).
-3. **약품명 오타 보정** — 그 약국의 `drug_master`(Supabase)로 한글 자모 fuzzy 매칭을 수행해 검수 테이블에 결과를 붙입니다(`cloud_web/drug_matcher.py` + `master_repo.py`, 품절앱 `utils/drug_matcher.py`에서 이식). 매칭 인덱스는 **약국(`pharmacy_id`)별로** TTL 캐시합니다.
-4. **검수·수정 UI** — `static/index.html` + `static/js/order-ocr.js`(품절앱 CSS 재사용), 타이핑 자동완성(`/api/drug-search`)으로 마스터 후보를 제시합니다.
-5. **Supabase 저장** — 검수본을 `orders`/`order_items`(`status='pending'`)로, 원본 이미지를 Supabase Storage(`order-images/<pharmacy_id>/…`)로 저장합니다(`cloud_web/orders_repo.py`). 저장 경로는 JWT를 GoTrue로 검증해 사용자를 얻고 소속 약국을 확인한 뒤, **service_role 키**로 서버가 그 `pharmacy_id` 스코프로 신뢰 기록합니다. 같은 `(pharmacy_id, 날짜, 차수)`가 이미 있으면 409를 반환합니다.
-6. **주문 기록 조회** — 상단 바의 "주문 기록" 토글로 주문 작성 화면과 **주문 기록** 목록을 오갑니다. 목록은 그 약국의 저장된 주문을 품목과 함께 최신순으로 보여주며(`GET /api/orders`, RLS로 소속 약국만), 각 주문은 접기/펼치기로 품목 테이블을 열고 상태 배지(크롤링 대기 `pending` / 주문완료 `ordered`)를 표시합니다.
+1. **Google 로그인 + 약국 소속 확인**(Supabase Auth) — 브라우저의 `supabase-js`가 로그인해 발급한 JWT를 `Authorization: Bearer`로 백엔드에 전달합니다. 로그인 직후 프론트는 `GET /api/me`로 소속(멤버십)을 확인해 **세 상태**(로그인 / 초대코드 합류 / 앱)로 분기합니다 — 소속이 없으면 초대코드 입력 화면이 뜨고, 소속이 있어야 OCR·저장 등 데이터 API를 쓸 수 있습니다(서버 `_require_membership` 게이트, 소속 없으면 403). 백엔드는 그 토큰으로 만든 사용자 스코프 클라이언트에 **membership 기반 RLS**를 적용하며, 멤버십 조회는 짧게 TTL 캐시합니다(`apps/cloud_web/app.py`, `tenant_repo.py`).
+2. **입력 방식 — 사진(OCR) / 직접 작성** — 상단 토글로 두 방식 중 고릅니다. *사진으로 읽기*는 업로드한 이미지를 Gemini 멀티모달로 약품명·포장단위·수량을 추출하고(`apps/cloud_web/ocr_service.py`, 구 품절앱 OCR 코드 `legacy_codes/utils/ocr_service.py`를 자체 완결 사본으로 이식), *직접 작성*은 업로드·이미지 없이 빈 검수 테이블을 바로 열어 약품명 자동완성(`/api/drug-search`)으로 손으로 입력합니다(이미지 없이 저장).
+3. **약품명 오타 보정** — 그 약국의 `drug_master`(Supabase)로 한글 자모 fuzzy 매칭을 수행해 검수 테이블에 결과를 붙입니다(`apps/cloud_web/drug_matcher.py` + `master_repo.py`, 구 품절앱 OCR 코드 `legacy_codes/utils/drug_matcher.py`에서 이식). 매칭 인덱스는 **약국(`pharmacy_id`)별로** TTL 캐시합니다.
+4. **검수·수정 UI** — `static/index.html` + `static/js/order-ocr.js`(구 품절앱 CSS 이식), 타이핑 자동완성(`/api/drug-search`)으로 마스터 후보를 제시합니다.
+5. **Supabase 저장** — 검수본을 `orders`/`order_items`(`status='pending'`)로, 원본 이미지를 Supabase Storage(`order-images/<pharmacy_id>/…`)로 저장합니다(`apps/cloud_web/orders_repo.py`). 저장 경로는 JWT를 GoTrue로 검증해 사용자를 얻고 소속 약국을 확인한 뒤, **service_role 키**로 서버가 그 `pharmacy_id` 스코프로 신뢰 기록합니다. 같은 `(pharmacy_id, 날짜, 차수)`가 이미 있으면 409를 반환하고, 프론트가 사용자 동의를 받아 `overwrite=true`로 재요청하면 기존 주문(품목·원본 이미지 포함)을 교체합니다. 저장 시 마스터에 없던 **자유입력 약품은 `drug_master`에 `source='manual'` 행으로 자동 등록**되어(입력한 포장단위는 `unit_manual`로 보관, `master_repo.register_free_input_drugs`) 곧바로 OCR 매칭·자동완성에 활용됩니다(매칭 인덱스 캐시도 즉시 무효화).
+6. **주문 기록 조회 (달력)** — 홈의 "과거 주문 기록" 카드로 진입하는 **달력 화면**입니다. 왼쪽 달력에 주문이 있는 날짜가 표시되고, 오른쪽에 그 약국의 저장된 주문이 품목 테이블과 함께 카드 목록으로 펼쳐집니다(`GET /api/orders`, RLS로 소속 약국만). 각 카드는 상태 배지(크롤링 대기 `pending` / 주문완료 `ordered`)와 함께 **원본 주문지 이미지 조회**(`GET /api/orders/{id}/image` — Storage 경로는 노출하지 않고 서버가 소속 확인 후 내려줌)와 **주문 삭제**(`DELETE /api/orders/{id}` — 품목 CASCADE + Storage 이미지 정리)를 지원합니다.
+7. **약 목록 조회** — 홈의 "약 목록 조회" 카드로 진입하는 읽기 전용 **약품 DB 뷰어**입니다. 그 약국의 `drug_master`를 약품명 검색 + 페이지네이션으로 조회합니다(`GET /api/drug-master`, `master_repo.search_drug_master`).
 
-주요 엔드포인트: `GET /api/healthz` · `GET /api/config`(브라우저 supabase-js 초기화용 공개 설정) · `GET /api/me`(소속 조회) · `GET /api/orders`(주문 기록) · `POST /api/accept-invite`(초대코드로 합류) · `POST /api/invites`(관리자 전용 초대코드 발행) · `POST /api/ocr` · `GET /api/drug-search` · `POST /api/save` · `POST /api/preview`(HEIC 등 미리보기용 JPEG 변환).
+주요 엔드포인트: `GET /api/healthz` · `GET /api/config`(브라우저 supabase-js 초기화용 공개 설정) · `GET /api/me`(소속 조회) · `GET /api/orders`(주문 기록) · `GET /api/orders/{id}/image`(원본 주문지 이미지) · `DELETE /api/orders/{id}`(주문 삭제) · `GET /api/drug-master`(약품 DB 뷰어 조회) · `POST /api/accept-invite`(초대코드로 합류) · `POST /api/invites`(관리자 전용 초대코드 발행) · `POST /api/ocr` · `GET /api/drug-search` · `POST /api/save`(`overwrite` 지원 + 자유입력 약품 자동 등록) · `POST /api/preview`(HEIC 등 미리보기용 JPEG 변환).
 
-### 스택 2 — 로컬 관리자 앱 (`local_app/`)
+### 스택 2 — 로컬 관리자 앱 (`apps/local_app/`)
 
-약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 네 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회, (2) 약품 마스터 엑셀 임포트 + 뷰어/편집, (3) 기준 도매상 크롤링으로 규격(포장단위) 일괄 수집, (4) 그 크롤링에 쓰는 도매상 계정 설정. UI는 세 개의 탭(크롤링 대기 주문 / 약품 DB / 설정)으로 나뉩니다. 실행: `uv pip install -r local_app/requirements.txt` → `uv run python -m playwright install chromium`(크롤링용, 최초 1회) → `uv run python local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
+약국 **관리자**가 데스크톱에서 실행하는 **PyWebView + FastAPI** 앱입니다(`apps/local_app/main.py`가 진입점 — `uvicorn`으로 로컬 서버를 포트 `8770`에 띄우고 PyWebView 창으로 그 UI를 엽니다). 로컬 SQLite가 아니라 **anon key + 로그인한 관리자 세션**으로 Supabase에 접속하며(RLS 적용, service 키는 두지 않습니다), 현재 네 가지 기능을 제공합니다: (1) 약국의 `pending` 주문 조회 + 품목별 주문 도매상 지정, (2) 약품 마스터 엑셀 임포트 + 뷰어/편집, (3) 기준 도매상 크롤링으로 규격(포장단위) 일괄 수집, (4) 그 크롤링에 쓰는 도매상 계정 설정. UI는 세 개의 탭(크롤링 대기 주문 / 약품 DB / 설정)으로 나뉩니다. 실행: `uv pip install -r apps/local_app/requirements.txt` → `uv run python -m playwright install chromium`(크롤링용, 최초 1회) → `uv run python apps/local_app/main.py`(브라우저 테스트만 하려면 `uv run uvicorn app:app --port 8770`).
 
-- **관리자 전용**: 직원(`staff`)도 로그인은 되지만 "관리자 전용" 안내 화면만 보게 되며, `/api/pending-orders`·`/api/drug-master/*`·`/api/settings/*`는 서버에서 `role == 'admin'`을 강제합니다(`_require_admin`, 소속 없으면 403).
-- **Google OAuth (시스템 브라우저 + loopback)**: Google 정책상 임베디드 웹뷰에서 OAuth가 막히므로, PyWebView JS 브릿지(`Api.start_login`)가 로그인을 **시스템 브라우저**로 엽니다(RFC 8252). 브라우저의 `/auth/start`가 `supabase-js`로 Google 로그인을 시작하고, `http://localhost:8770/auth/callback`(loopback)로 돌아와 `?code=`를 세션으로 교환한 뒤 그 토큰을 로컬 서버 `/auth/store`로 전달합니다. 서버는 **refresh token만** `local_app/.session.json`에 보관하고 access token은 메모리에 캐시하다 만료 시 자동 갱신하며(Supabase가 refresh를 회전), 그 사용자 세션을 실은 클라이언트로 RLS 스코프 읽기를 수행합니다(`local_app/app.py`).
-- **pending 주문 조회**: 웹(스택 1)이 저장한 `status='pending'` 주문을 품목과 함께 오래된 순으로 읽어 창에 표시합니다(`GET /api/pending-orders`, `local_app/orders_repo.py`). 품목은 OCR 추출 순서(`position`)로 정렬됩니다. 이것이 웹→Supabase→로컬로 이어지는 주문 파이프라인의 로컬 끝단입니다.
-- **약품 마스터 엑셀 임포트(관리자)**: `drug_master`를 채우는 경로입니다. 엑셀 업로드 → 미리보기(머리글 행 자동추정 + 약품명·보험코드·제약사 컬럼 자동 제안, `POST /api/drug-master/preview`) → 임포트(`POST /api/drug-master/import`)로, 그 약국(`pharmacy_id`) 스코프의 마스터를 **전체 교체**합니다. 단 크롤링으로 채운 규격(`unit`/`unit_manual`)은 `(약품명, 보험코드)` 매칭으로 보존합니다. 엑셀 파싱 로직은 품절앱 `utils/drug_master.py`에서 이식했습니다(`local_app/master_import.py`). 등록 현황은 `GET /api/drug-master/status`로 조회합니다.
-- **약품 마스터 뷰어/편집(관리자)**: 약품 DB 탭에 페이지 단위 마스터 테이블 뷰어가 있습니다(`local_app/master_db.py`). 약품명·보험코드 검색과 상태 필터(규격수집됨 `filled` / 규격미수집 `missing` / 보험코드없음 `nocode` / 자유입력 `manual`) + 페이지네이션으로 조회하고(`GET /api/drug-master/rows`), 크롤링으로 수집된 규격(`unit`)은 읽기 전용 칩으로만 보여줍니다. 사용자가 직접 입력한 규격은 `unit_manual`에 append-only로 추가하며(`POST /api/drug-master/manual-unit`, 중복 스킵), 자유입력(`source='manual'`) 행에 한해 이름 수정(`POST /api/drug-master/rename`, 중복·빈 이름 불가)·삭제(`POST /api/drug-master/delete`)가 가능합니다. 엑셀 임포트분(`source='excel'`)은 안전상 수정·삭제 대상이 아니며 엑셀 재업로드로 관리합니다.
-- **규격(포장단위) 수집(관리자)**: 엑셀에는 규격 컬럼이 없으므로, 그 약국 `drug_master`에서 **보험코드가 있고 `unit`이 빈 행**을 기준 도매상(지오영·유팜몰)에 보험코드로 하나씩 검색해 결과의 규격을 채웁니다(`local_app/unit_collector.py`). 도매상 사이트가 데이터센터 IP를 막기 때문에 **크롤링은 이 PC에서만** 돌고(루트 `scrapers/` 재사용, 기본 headless — `HEADLESS=false`로 창을 볼 수 있음) 결과만 Supabase `drug_master.unit`으로 write-back합니다(사용자가 직접 넣은 `unit_manual`과는 계속 분리). 한 보험코드가 여러 규격을 가질 수 있어 검색 결과의 distinct 규격을 모두 `", "`로 합쳐 저장하고, 같은 코드는 한 번만 검색하도록 캐싱합니다. 대상 조회·저장은 `master_db.rows_missing_unit`/`set_unit`(페이지네이션·약국 스코프)이고, 수집이 오래 걸려 access token이 만료돼도 매번 **갱신된 클라이언트를 받아** 계속 씁니다.
+- **관리자 전용**: 스탭(`staff`)도 로그인은 되지만 "관리자 전용" 안내 화면만 보게 되며, `/api/pending-orders`·`/api/drug-master/*`·`/api/settings/*`는 서버에서 `role == 'admin'`을 강제합니다(`_require_admin`, 소속 없으면 403).
+- **Google OAuth (시스템 브라우저 + loopback)**: Google 정책상 임베디드 웹뷰에서 OAuth가 막히므로, PyWebView JS 브릿지(`Api.start_login`)가 로그인을 **시스템 브라우저**로 엽니다(RFC 8252). 브라우저의 `/auth/start`가 `supabase-js`로 Google 로그인을 시작하고, `http://localhost:8770/auth/callback`(loopback)로 돌아와 `?code=`를 세션으로 교환한 뒤 그 토큰을 로컬 서버 `/auth/store`로 전달합니다. 서버는 **refresh token만** `apps/local_app/.session.json`에 보관하고 access token은 메모리에 캐시하다 만료 시 자동 갱신하며(Supabase가 refresh를 회전), 그 사용자 세션을 실은 클라이언트로 RLS 스코프 읽기를 수행합니다(`apps/local_app/app.py`).
+- **pending 주문 조회 + 품목별 도매상 지정**: 웹(스택 1)이 저장한 `status='pending'` 주문을 품목과 함께 오래된 순으로 읽어 창에 표시합니다(`GET /api/pending-orders`, `apps/local_app/orders_repo.py`). 품목은 OCR 추출 순서(`position`)로 정렬됩니다. 각 품목 행에는 **주문 도매상 드롭다운**(`scrapers/registry.py` 기준 전체 도매상, `GET /api/distributors`)이 있어, 주문 카드를 처음 펼칠 때 그 약품의 **가장 최근 주문 이력의 도매상이 기본값으로 자동 선택·저장**되고(`POST /api/order-context` — 약품별 과거 주문 이력 + 마지막 도매상), 바꾸면 즉시 Supabase `order_items.distributor`에 반영됩니다(`POST /api/order-items/distributor`). 행을 클릭하면 오른쪽 패널에 그 약품의 과거 주문 이력(주문일자·차수·도매상·수량)이 표시되어 평소 주문처를 보고 고를 수 있습니다. 이것이 웹→Supabase→로컬로 이어지는 주문 파이프라인의 로컬 끝단입니다.
+- **약품 마스터 엑셀 임포트(관리자)**: `drug_master`를 채우는 경로입니다. 엑셀 업로드 → 미리보기(머리글 행 자동추정 + 약품명·보험코드·제약사 컬럼 자동 제안, `POST /api/drug-master/preview`) → 임포트(`POST /api/drug-master/import`)로, 그 약국(`pharmacy_id`) 스코프의 마스터를 **전체 교체**합니다. 단 크롤링으로 채운 규격(`unit`/`unit_manual`)은 `(약품명, 보험코드)` 매칭으로 보존합니다. 엑셀 파싱 로직은 레거시 품절앱 OCR 코드(`legacy_codes/utils/drug_master.py`)에서 이식했습니다(`apps/local_app/master_import.py`). 등록 현황은 `GET /api/drug-master/status`로 조회합니다. 임포트 시 엑셀의 신규 약품이 기존 **자유입력(`source='manual'`) 약품과 이름이 비슷하면**(한글 자모 분해 + rapidfuzz 유사도 ≥85) 그 행의 임포트를 보류하고 확인 모달("같은 약품인지 확인해주세요")을 띄웁니다 — 같은 약품으로 확인하면 자유입력 행을 **병합·승격**(공식 명칭·보험코드·제약사로 갱신 + `source='excel'`, 등록해둔 규격은 유지)하고, 다른 약품이면 엑셀 행을 신규로 추가합니다(`POST /api/drug-master/resolve-conflict`, `master_import.resolve_conflict`).
+- **약품 마스터 뷰어/편집(관리자)**: 약품 DB 탭에 페이지 단위 마스터 테이블 뷰어가 있습니다(`apps/local_app/master_db.py`). 약품명·보험코드 검색과 상태 필터(규격수집됨 `filled` / 규격미수집 `missing` / 보험코드없음 `nocode` / 자유입력 `manual`) + 페이지네이션으로 조회하고(`GET /api/drug-master/rows`), 크롤링으로 수집된 규격(`unit`)은 읽기 전용 칩으로만 보여줍니다. 사용자가 직접 입력한 규격은 `unit_manual`에 append-only로 추가하며(`POST /api/drug-master/manual-unit`, 중복 스킵), 자유입력(`source='manual'`) 행에 한해 이름 수정(`POST /api/drug-master/rename`, 중복·빈 이름 불가)·삭제(`POST /api/drug-master/delete`)가 가능합니다. 엑셀 임포트분(`source='excel'`)은 안전상 수정·삭제 대상이 아니며 엑셀 재업로드로 관리합니다.
+- **규격(포장단위) 수집(관리자)**: 엑셀에는 규격 컬럼이 없으므로, 그 약국 `drug_master`에서 **보험코드가 있고 `unit`이 빈 행**을 기준 도매상(지오영·유팜몰)에 보험코드로 하나씩 검색해 결과의 규격을 채웁니다(`apps/local_app/unit_collector.py`). 도매상 사이트가 데이터센터 IP를 막기 때문에 **크롤링은 이 PC에서만** 돌고(루트 `scrapers/` 재사용, 기본 headless — `HEADLESS=false`로 창을 볼 수 있음) 결과만 Supabase `drug_master.unit`으로 write-back합니다(사용자가 직접 넣은 `unit_manual`과는 계속 분리). 한 보험코드가 여러 규격을 가질 수 있어 검색 결과의 distinct 규격을 모두 `", "`로 합쳐 저장하고, 같은 코드는 한 번만 검색하도록 캐싱합니다. 대상 조회·저장은 `master_db.rows_missing_unit`/`set_unit`(페이지네이션·약국 스코프)이고, 수집이 오래 걸려 access token이 만료돼도 매번 **갱신된 클라이언트를 받아** 계속 씁니다.
 - **규격 수집 실행/진행 표시**: 배치는 앱당 하나만 돕니다(단일 워커 스레드). `POST /api/drug-master/collect-units`로 시작해(계정 미설정이면 400, 이미 진행 중이면 409) 응답으로 완료 요약을 받고, `POST /api/drug-master/collect-units/stop`으로 다음 행 경계에서 중단합니다. 진행 상황은 **SSE**(`GET /api/drug-master/collect-units/stream`, 프론트는 `EventSource`, 유휴 시 keepalive 주석 전송)로 브로드캐스트되어 약품 DB 탭의 진행바·현재 항목에 실시간 표시되고 터미널에도 로그를 남깁니다(품절앱의 WebSocket 브로드캐스트와 대응되는 구조). 수집 현황(총계/수집됨/수집 대상)은 `GET /api/drug-master/unit-stats`로 조회합니다.
-- **설정 탭 — 기준 도매상 계정**: 자동 주문 솔루션은 품절앱의 로컬 SQLite(`distributors` 테이블)를 쓰지 않으므로, 크롤링에 필요한 도매상 로그인 정보를 **이 PC의 `local_app/.settings.json`**에 따로 보관합니다(`local_app/settings.py`). 평문 파일이며 `.gitignore` 대상이고, **비밀번호는 Supabase(클라우드)로 올라가지 않습니다**. 설정 탭에서 기준 도매상(텍스트·보험코드 검색을 지원하는 지오영·유팜몰만 선택 가능)과 지역·아이디·비밀번호를 저장하며(`GET|POST /api/settings/distributor`), 조회 응답은 비밀번호 대신 설정 여부(`has_password`)만 내려보내고 저장 시 빈 비밀번호는 기존 값을 유지합니다. 지역 드롭다운 항목은 `scrapers/registry.py`의 `region_options`/`extra_params`에서 그대로 가져옵니다.
+- **설정 탭 — 기준 도매상 계정**: 자동 주문 솔루션은 품절앱의 로컬 SQLite(`distributors` 테이블)를 쓰지 않으므로, 크롤링에 필요한 도매상 로그인 정보를 **이 PC의 `apps/local_app/.settings.json`**에 따로 보관합니다(`apps/local_app/settings.py`). 평문 파일이며 `.gitignore` 대상이고, **비밀번호는 Supabase(클라우드)로 올라가지 않습니다**. 설정 탭에서 기준 도매상(텍스트·보험코드 검색을 지원하는 지오영·유팜몰만 선택 가능)과 지역·아이디·비밀번호를 저장하며(`GET|POST /api/settings/distributor`), 조회 응답은 비밀번호 대신 설정 여부(`has_password`)만 내려보내고 저장 시 빈 비밀번호는 기존 값을 유지합니다. 지역 드롭다운 항목은 `scrapers/registry.py`의 `region_options`/`extra_params`에서 그대로 가져옵니다.
 - **장바구니 담기는 예정**: 저장된 주문을 도매상 사이트 장바구니에 자동으로 담는 단계는 대상 도매상(바로팜 등)이 확정될 때까지 **의도적으로 보류**되어 있습니다. `orders_repo.py`에는 그 결과를 품목별 `cart_status`(`none`/`added`/`failed`)와 주문 `status='ordered'`로 write-back하는 스캐폴딩(`set_item_cart_status`·`mark_order_ordered`)만 준비되어 있습니다.
 
 ### 공유 백엔드 — Supabase (`supabase/`)
@@ -76,7 +77,7 @@ deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 
 ### 배포
 
-`cloud_web/`은 Docker 이미지로 **Cloud Run**에 배포합니다(`cloud_web/Dockerfile`, 로컬 Docker 없이 Cloud Build가 서버에서 빌드). 루트의 **`./deploy.sh` 한 줄**로 시크릿 동기화(`GEMINI_API_KEY`·`SUPABASE_SERVICE_KEY` → Secret Manager), 빌드·배포, 커스텀 도메인 매핑까지 처리합니다(프로젝트 `gen-lang-client-0011046539`, 리전 `asia-northeast1`, 서비스 `yak-order`, 도메인 `yak-order.chajjaem.dev`). 상세는 [cloud_web/DEPLOY.md](cloud_web/DEPLOY.md).
+`apps/cloud_web/`은 Docker 이미지로 **Cloud Run**에 배포합니다(`apps/cloud_web/Dockerfile`, 로컬 Docker 없이 Cloud Build가 서버에서 빌드). 루트의 **`./deploy.sh` 한 줄**로 시크릿 동기화(`GEMINI_API_KEY`·`SUPABASE_SERVICE_KEY` → Secret Manager), 빌드·배포, 커스텀 도메인 매핑까지 처리합니다(프로젝트 `gen-lang-client-0011046539`, 리전 `asia-northeast1`, 서비스 `yak-order`, 도메인 `yak-order.chajjaem.dev`). 상세는 [apps/cloud_web/DEPLOY.md](apps/cloud_web/DEPLOY.md).
 
 ---
 
@@ -87,20 +88,12 @@ deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 - 🔍 **실시간 재고 검색**: 지오영, 백제약품, 인천약품, 지오팜, 복산, 유팜몰, HMP몰, 티제이팜 도매상 자동 로그인 및 재고 확인
 - 🔎 **약품 미리보기 검색**: 약품 목록에 약품을 추가할 때 기준 도매상에 실시간으로 질의하여 약품명, 보험코드, 제약사, 규격, 재고를 즉시 조회 (세션 기반 브라우저 재사용으로 로그인 비용 절감)
 - 🪟 **도매상 사이트 바로가기**: 재고 카드의 바로가기 아이콘을 클릭하면 headed 브라우저가 해당 도매상을 자동 로그인하고 약품 검색까지 마친 상태로 사용자에게 노출 (지원 도매상 전체)
-- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱", "주문지 OCR"이 활성화되어 있고, 나머지는 "새 기능 준비 중"(Coming Soon) placeholder 카드로 표시됩니다. (주문 기록은 별도 최상위 카드가 아니라 주문지 OCR의 하위 화면입니다 — 아래 참고.) 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
-- ✍️ **손글씨 주문지 OCR**: 손으로 작성한 약국 주문지를 사진으로 올리면 멀티모달 LLM(Google Gemini)이 약품명·포장단위·수량을 구조화 추출(`/order-ocr`). `AxB` 표기를 포장단위×주문수량으로, 함량/규격은 약품명에 포함하는 약국 도메인 프롬프트를 사용합니다. 한 줄도 빠뜨리지 않도록 흐린 글씨·동그라미 주석이 있는 줄까지 모두 추출하며, 결과는 사용자가 직접 확인·수정하는 검수 테이블(Human-in-the-loop)로 제공됩니다. 검수(검수→다음) 후 약품별로 주문할 **도매상을 선택**하는 단계를 거쳐, (주문일자, 차수) 단위로 로컬 SQLite에 원본 이미지와 함께 저장합니다.
-- 🏪 **주문 도매상 선택**: 검수를 마치고 "다음"을 누르면 약품별 도매상 선택 화면으로 넘어갑니다. 각 행의 드롭다운은 그 약품을 마지막으로 주문했던 도매상(없으면 기준 도매상)을 기본값으로 두고, 행을 클릭하면 왼쪽 패널에 그 약품의 과거 주문 이력(주문일자·차수·도매상·수량)이 표시되어 평소 어디서 주문했는지 보고 고를 수 있습니다. 선택한 도매상은 품목별로 함께 저장됩니다.
-- 📅 **주문 기록 (달력 조회)**: 저장된 주문지 내역을 달력 UI로 조회·관리하는 화면(`/orders`). 주문지 OCR 페이지(`/order-ocr`)의 상단 바에 있는 "주문 기록" 버튼(시계 아이콘)을 통해서만 진입하는 OCR 기능의 하위 화면이며, 뒤로가기 버튼은 홈이 아니라 주문지 작성 화면(`/order-ocr`)으로 돌아갑니다. 주문이 있는 날짜는 표시되며, 날짜를 클릭하면 그날의 차수별 주문이 품목 테이블(약품명·포장단위·수량·도매상)·원본 이미지 썸네일·삭제 버튼이 달린 카드로 펼쳐집니다.
-- 🔤 **OCR 약품명 오타 보정**: 약품 마스터가 등록돼 있으면, OCR로 읽은 약품명을 한글 자모(초/중/종성) 기반 fuzzy 매칭으로 마스터와 대조해 검수 테이블 각 행에 결과 배지를 표시합니다 — "약품명 일치"(공식 전체명 자동 적용, 원본으로 되돌리기 가능), "확인 필요"(후보 드롭다운에서 선택), "미등록". 용량(600mg≠300mg)·접두(짧은 손글씨명↔긴 공식명) 인식, 제형 접미·제약사 접두 제거를 반영하며, 후보에 없으면 행별 "직접 검색" 박스로 마스터 DB를 직접 조회할 수 있습니다.
-- 📏 **OCR 규격(포장단위) 자동 보정**: 약품명이 마스터와 매칭되면, 그 약품이 마스터에 보유한 알려진 규격 집합(수집 규격 + 직접추가 규격)으로 검수 테이블의 규격칸을 (개수 기준으로) 검증·자동보정합니다. 빈칸이거나 유효 규격이 하나뿐이면 자동으로 채우고, 개수만 맞고 표기가 다르면 정식 표기로 교정하며(같은 개수의 다른 포장 선택은 보존), 유효하지 않은 개수면 오인식 의심으로 경고 색상을 표시합니다. 알려진 규격은 클릭 가능한 칩으로도 노출됩니다.
-- 🆕 **자유입력 약품 자동 등록**: 주문을 저장할 때 마스터에 없던 자유입력 약품은 마스터에 `source='manual'` 행으로 자동 등록되어(입력한 포장단위는 `unit_manual`로 보관) 곧바로 OCR 약품명 매칭·직접 검색에 활용됩니다. 마스터 DB 뷰어는 이런 행을 "자유입력" 배지/필터로 구분하고, 이름 수정(주문 항목까지 연동)·삭제를 지원합니다.
-- 🔗 **자유입력 약품 정식 승격(소급 연결)**: 엑셀 마스터를 갱신한 뒤, 자유입력(manual) 약품 중 공식(excel) 약품과 fuzzy 매칭되는 것을 약품 DB 관리 화면의 확인 모달에서 정식 약품으로 승격(병합)할 수 있습니다. 승격하면 그 약품의 주문 항목이 공식명으로 갱신되고, 자유입력 규격이 공식 행으로 이관된 뒤 manual 행은 삭제됩니다.
-- 💊 **약품 DB 관리**: 약국이 취급하는 전체 약품 목록을 엑셀로 업로드해 로컬에 등록(`/drug-master`). (UI에는 "약품 DB"로 표기되며, 내부 코드·테이블명은 `drug_master`를 그대로 사용합니다.) 머리글 행 자동 추정 + 컬럼 매핑(약품명 필수, 보험코드·제약사 선택)을 거쳐 SQLite DB(`drug_master` 테이블)에 병합(upsert) 저장하며, 위의 OCR 약품명 오타 보정의 기준 데이터로 사용됩니다. 엑셀엔 없는 포장단위(규격)는 기준 도매상에 보험코드로 검색해 일괄 수집하고, 페이지형 마스터 DB 뷰어에서 검색·확인하거나 직접 규격을 추가할 수 있습니다. 행은 출처(엑셀 임포트 / 자유입력 자동등록)로 구분되며, 자유입력 행은 이름 수정·삭제가 가능합니다.
+- 🏠 **홈 화면 (앱 런처)**: 루트(`/`)에 여러 약국 업무 자동화 기능의 진입점을 모은 런처 화면. 현재 "품절 약 서치앱"이 활성화되어 있고, 나머지는 "새 기능 준비 중"(Coming Soon) placeholder 카드로 표시됩니다. (한때 이 앱에 있던 주문지 OCR·주문 기록·약품 DB 기능은 클라우드 **약국 주문 Agent**(자동 주문 솔루션, `apps/cloud_web/`)로 이전되었고, 당시 코드는 `legacy_codes/`에 보관되어 있습니다.) 자동 검색이 진행 중이면 카드에 "검색 중" 배지가 실시간 표시됩니다.
 - 📱 **웹 인터페이스**: 실시간 WebSocket 업데이트가 포함된 웹 대시보드(`/checker`)
 - 👁️ **결과 표시 제외 기능**: 도매상별로 독립적인 약품 결과 필터링 (검색은 계속 수행)
 - 🔔 **스마트 알림**: 품절약 재고 발견시 알림 시스템 (날짜별 제외 관리)
 - 📈 **진행 상황 추적**: 약품 검색 진행률 실시간 표시
-- 🏗️ **모듈형 설계**: 확장 가능한 아키텍처와 포괄적인 테스트 커버리지
+- 🏗️ **모듈형 설계**: 레지스트리 패턴 기반의 확장 가능한 아키텍처
 - 🎨 **도매상별 색상 구분**: 검색 결과 카드를 도매상별 색상으로 시각 구분, 색상 커스터마이징 지원
 - ⚙️ **설정 관리**: 웹 UI를 통한 도매상 계정, 약품 목록, 결과 표시 제외 목록 관리
 - 🔒 **안전한 스크래핑**: 팝업 자동 처리 및 안전한 요소 클릭 보장
@@ -139,11 +132,8 @@ deploy.sh      # 스택 1을 Cloud Run에 한 줄로 배포
 - **Web Scraping**: Playwright (Chromium)
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Real-time Communication**: WebSocket
-- **OCR / LLM**: Google Gemini (멀티모달, `google-genai` SDK), 키는 `.env`에서 로드(`python-dotenv`)
-- **Data Storage**: SQLite (Python 표준 `sqlite3`, WAL 모드) — 약품 목록·결과 표시 제외 목록·도매상 자격증명·약품 마스터·검색 세션/결과·주문 기록을 단일 `data/yak_soldout.db`에 통합 저장 (주문지 원본 이미지는 `data/order_images/`에 별도 보관)
-- **Fuzzy Matching**: rapidfuzz (한글 자모 분해 기반 약품명 오타 보정)
-- **Data Processing**: pandas, numpy, openpyxl/xlrd (엑셀 파싱)
-- **Testing**: pytest (단위 테스트 & 통합 테스트)
+- **Data Storage**: SQLite (Python 표준 `sqlite3`, WAL 모드) — 약품 목록·결과 표시 제외 목록·도매상 자격증명·검색 세션/결과를 단일 `data/yak_soldout.db`에 통합 저장
+- **Data Processing**: pandas, numpy
 - **File Handling**: chardet (인코딩 자동 감지)
 
 ## 🚀 빠른 시작
@@ -168,8 +158,7 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # 의존성 설치
-pip install -r requirements.txt
-uv pip install -r requirements.txt
+uv pip install -r apps/soldout/requirements.txt
 
 # Playwright 브라우저 설치 (처음 실행 시 필수)
 python -m playwright install chromium
@@ -177,23 +166,11 @@ python -m playwright install chromium
 
 ### 2. 설정 파일 준비
 
-프로젝트 루트 디렉터리에 다음 파일을 생성하세요:
+`apps/soldout/` 디렉터리에 `config.json` 파일을 생성하세요 (형식은 아래 참고).
 
-```bash
-# 로그인 정보 설정 (config.example.json을 참고하여 생성)
-cp config.example.json config.json
-# config.json 파일을 열어 실제 도매상 계정 정보 입력
-```
-
-> **데이터 저장소(SQLite)**: 도매상 자격증명, 모니터링할 약품 목록, 결과 표시 제외 목록, 약품 마스터, 검색 세션/결과는 모두 `data/yak_soldout.db` (SQLite)에 저장됩니다. DB 파일과 스키마는 첫 실행 시 자동 생성되므로 직접 만들 필요가 없습니다. `config.json`은 이제 도매상 자격증명이 아닌 `monitoring` 설정만 보관합니다(도매상 자격증명/색상/지역은 DB의 `distributors` 테이블로 이전됨). 과거에 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `data/drug_master.json`, `config.json`의 distributors)을 쓰던 환경이라면 첫 실행 시 해당 JSON이 DB로 자동 시딩(멱등)됩니다.
+> **데이터 저장소(SQLite)**: 도매상 자격증명, 모니터링할 약품 목록, 결과 표시 제외 목록, 검색 세션/결과는 모두 `data/yak_soldout.db` (SQLite, `apps/soldout/data/`)에 저장됩니다. DB 파일과 스키마는 첫 실행 시 자동 생성되므로 직접 만들 필요가 없습니다. `config.json`은 이제 도매상 자격증명이 아닌 `monitoring` 설정만 보관합니다(도매상 자격증명/색상/지역은 DB의 `distributors` 테이블로 이전됨). 과거에 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `config.json`의 distributors)을 쓰던 환경이라면 첫 실행 시 해당 JSON이 DB로 자동 시딩(멱등)됩니다.
 
 > **기존 info.txt 사용자**: 기존 `info.txt` 파일이 있으면 첫 실행 시 `config.json`으로 자동 마이그레이션됩니다. 원본은 `info.txt.bak`으로 백업됩니다.
-
-> **손글씨 주문지 OCR 사용 시(`.env`)**: OCR 기능은 Google Gemini API 키가 필요합니다. `.env.example`을 `.env`로 복사한 뒤 [Google AI Studio](https://aistudio.google.com/apikey)에서 발급한 키를 `GEMINI_API_KEY`에 입력하세요. (선택: `GEMINI_MODEL`, 기본값 `gemini-2.5-flash`) 키가 없으면 OCR 기능만 비활성화되고 나머지 기능은 정상 동작합니다.
->
-> ```bash
-> cp .env.example .env   # .env 를 열어 GEMINI_API_KEY 입력
-> ```
 
 `config.json` 파일 형식:
 ```json
@@ -251,30 +228,30 @@ cp config.example.json config.json
 
 #### 🌐 웹 인터페이스 실행 (권장)
 
-개발 환경에서는 `./dev.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, `PORT=8002`를 export한 뒤 해당 포트를 점유 중인 좀비 프로세스를 정리하고 `python web_server.py`를 실행합니다. (기본 포트는 **8002**입니다. 8000/8001은 다른 로컬 프로젝트와 충돌하기 때문입니다.)
+개발 환경에서는 `./dev_soldout.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, `PORT=8002`를 export하고 좀비 프로세스를 정리한 뒤 **`apps/soldout/`에서** `python web_server.py`를 실행합니다. (기본 포트는 **8002**입니다. 8000/8001은 다른 로컬 프로젝트와 충돌하기 때문입니다.)
 
 ```bash
 # 개발 서버 시작 (권장)
-./dev.sh
+./dev_soldout.sh
 
 # 또는 직접 실행
-python web_server.py
+cd apps/soldout && python web_server.py
 
 # 브라우저에서 접속
 # http://localhost:8002
 
 # 포트 변경이 필요한 경우 PORT 환경변수 사용
-PORT=3000 python web_server.py
+cd apps/soldout && PORT=3000 python web_server.py
 ```
 
-> `run_app.py`는 PyInstaller 패키지 빌드용 진입점이며, 개발 시에는 위의 `./dev.sh` 또는 `python web_server.py`를 사용하세요.
+> `run_app.py`는 PyInstaller 패키지 빌드용 진입점이며, 개발 시에는 위의 `./dev_soldout.sh` 또는 `python web_server.py`를 사용하세요.
 
 #### 🔍 디버그 모드 (브라우저 화면 보기)
 
 브라우저 창을 보면서 실행하고 싶다면:
 
 ```bash
-# 웹 인터페이스 디버그 모드
+# 웹 인터페이스 디버그 모드 (apps/soldout/ 에서)
 HEADLESS=false python web_server.py
 
 # Windows에서는
@@ -287,17 +264,30 @@ PORT=3000 HEADLESS=false python web_server.py
 ## 📁 프로젝트 구조
 
 ```
-yak-soldout/
-├── web_server.py              # FastAPI 웹 서버 (개발 실행: ./dev.sh 또는 python web_server.py)
-├── dev.sh                     # 개발 실행 스크립트 (.venv 사용 + 포트 정리 + 서버 실행)
-├── run_app.py                 # PyInstaller 배포 빌드용 진입점
-├── config.json                # monitoring 설정 (직접 생성, distributors는 첫 실행 시 DB로 시딩)
-├── build_config.json          # 약국별 빌드 설정 (선택사항, PyInstaller 배포 시 사용)
-├── db.py                      # SQLite 데이터 액세스 레이어 (스키마/마이그레이션/JSON 시딩)
-├── analyze_units.py           # drug_master.unit 규격 빈도 분석 스크립트 → unit_frequency.json 출력
+yak-soldout/                   # 모노레포 — 앱은 apps/ 아래, 공유 크롤러는 루트 scrapers/
+├── dev.sh                     # 약국 주문 Agent 로컬 앱 실행 (apps/local_app, 포트 8770)
+├── dev_soldout.sh             # 품절약 서치앱 개발 실행 스크립트 (apps/soldout, 포트 8002)
+├── deploy.sh                  # 약국 주문 Agent 웹(apps/cloud_web) Cloud Run 배포
 │
-├── scrapers/                  # Playwright 기반 도매상 스크래퍼 (자동주문 로컬 앱도 이 폴더를 그대로 재사용)
+├── apps/soldout/              # 품절약 서치앱 (로컬 SQLite)
+│   ├── web_server.py          #   FastAPI 웹 서버 (개발 실행: ./dev_soldout.sh)
+│   ├── run_app.py             #   PyInstaller 배포 빌드용 진입점
+│   ├── db.py                  #   SQLite 데이터 액세스 레이어 (data/yak_soldout.db)
+│   ├── config.json            #   monitoring 설정 · build_config.json — 약국별 빌드 설정
+│   ├── models/                #   config.py(ConfigManager), build_config.py(약국별 빌드 설정)
+│   ├── utils/                 #   search_engine.py(검색 엔진 + PreviewSearchSession),
+│   │                          #   open_site_session.py(바로가기 headed 세션), app_state.py,
+│   │                          #   file_manager.py(목록 I/O), data_processor.py, notifications.py,
+│   │                          #   websocket_manager.py
+│   ├── templates/             #   home.html(홈 런처, GET /) · index.html(대시보드, GET /checker)
+│   ├── static/                #   css/ · js/ (home.js = 홈, main.js = 대시보드, 모달별 js)
+│   └── data/                  #   yak_soldout.db — 약품 목록·제외 목록·도매상·검색 세션/결과 (자동 생성)
+├── apps/cloud_web/            # 약국 주문 Agent — 클라우드 웹 (Cloud Run + Supabase)
+├── apps/local_app/            # 약국 주문 Agent — 로컬 관리자 앱 (PyWebView)
+│
+├── scrapers/                  # Playwright 기반 도매상 스크래퍼 — 두 앱이 공유하는 루트 패키지
 │   ├── registry.py            # 도매상 레지스트리 — Single Source of Truth
+│   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
 │   ├── base_scraper.py        # 기본 스크래퍼 공통 기능
 │   ├── browser_manager.py     # 브라우저 인스턴스 중앙 관리
 │   ├── geoweb_scraper.py      # 지오영 스크래퍼
@@ -307,49 +297,16 @@ yak-soldout/
 │   ├── boksan_scraper.py      # 복산 스크래퍼
 │   ├── upharmmall_scraper.py  # 유팜몰 스크래퍼
 │   ├── hmpmall_scraper.py     # HMP몰 스크래퍼 (JSON API 기반 통합 플랫폼)
-│   └── tjpharm_scraper.py    # 티제이팜 스크래퍼 (HTTP API 기반)
+│   └── tjpharm_scraper.py     # 티제이팜 스크래퍼 (HTTP API 기반)
 │
-├── models/                    # 데이터 구조 및 설정
-│   ├── drug_data.py           # Drug, AppConfig, DistributorCredentials 데이터 클래스
-│   ├── config.py              # ConfigManager — config.json 기반 설정 관리 (자동 마이그레이션 포함)
-│   └── build_config.py        # 빌드 설정 관리 — build_config.json 기반 약국별 커스터마이징 및 기준 도매상 설정
+├── supabase/                  # 자동 주문 솔루션 공유 백엔드 스키마 (migrations/)
+├── scripts/                   # 개발·검증·이전 스크립트 (migrate_drug_master.py, dev_smoke.py 등)
+├── docs/                      # 기능 계획·설계 문서
 │
-├── utils/                     # 유틸리티
-│   ├── search_engine.py       # 검색 실행 엔진 (registry 루프 기반) + PreviewSearchSession
-│   ├── open_site_session.py   # 바로가기 headed 브라우저 세션 관리 (OpenSiteSession)
-│   ├── ocr_service.py         # 손글씨 주문지 OCR — Gemini 호출 및 약품명·포장단위·수량 추출
-│   ├── drug_master.py         # 약품 마스터 — 엑셀 업로드(upsert)/머리글 추정/컬럼 매핑/제약사 정규화
-│   ├── unit_collector.py      # 포장단위(규격) 일괄 수집 배치 — 기준 도매상에 보험코드 검색 + WebSocket 진행상황 (품절앱 전용. 자동주문 솔루션은 Supabase판 local_app/unit_collector.py 사용)
-│   ├── drug_matcher.py        # OCR 약품명 오타 보정 — 한글 자모 fuzzy 매칭(rapidfuzz) + 마스터 직접 검색 + 약품별 규격 인덱스
-│   ├── order_reconcile.py     # 자유입력(manual) 마스터 약품을 정식(excel) 약품으로 fuzzy 매칭·승격(병합)
-│   ├── file_manager.py        # 약품 목록 / 결과 표시 제외 목록 I/O (DB 위임)
-│   ├── data_processor.py      # 데이터 처리 및 분류
-│   └── notifications.py       # 크로스 플랫폼 알림
-│
-├── templates/
-│   ├── home.html              # 홈 화면(앱 런처) HTML 템플릿 (GET /)
-│   ├── index.html             # 품절 약 서치앱 대시보드 HTML 템플릿 (GET /checker)
-│   ├── order_ocr.html         # 손글씨 주문지 OCR 업로드·검수·저장 화면 (GET /order-ocr)
-│   ├── order_history.html     # 주문 기록 달력 조회 화면 (GET /orders)
-│   └── drug_master.html       # 약품 DB 관리 화면 (GET /drug-master, UI 표기 "약품 DB")
-│
-├── static/
-│   ├── css/                   # 기능별 CSS 파일 (home.css = 홈, order-ocr.css, order-history.css, drug-master.css 등)
-│   └── js/                    # 모듈별 JavaScript 파일 (home.js = 홈, main.js = 대시보드, order-ocr.js, order-history.js, drug-master.js)
-│
-├── data/                      # 로컬 데이터 (자동 생성)
-│   ├── yak_soldout.db         # SQLite DB — 약품 목록·제외 목록·도매상·약품 마스터·검색 세션/결과·주문 기록
-│   └── order_images/          # 저장된 주문지의 원본 이미지 파일
-│
-├── .env                       # OCR용 Gemini API 키 (직접 생성, .env.example 참고, git 미커밋)
-├── docs/                      # 기능 계획·설계 문서 (예: 손글씨-주문지-OCR-기능-계획.md)
-│
-├── tests/                     # 테스트 (단위 + 통합)
-│   ├── unit/
-│   └── integration/
-│
-└── legacy_codes/              # 구 Selenium/Streamlit 구현 (참고용)
-    └── g50.py
+└── legacy_codes/              # 품절앱에서 이전된 구 OCR/주문 기록/약품 DB 코드 아카이브
+                               #   (utils/, templates/, static/, db_ocr_functions.py,
+                               #    web_server_ocr_routes.py, analyze_units.py …)
+                               #   → 해당 기능은 apps/cloud_web·apps/local_app 로 이전됨
 ```
 
 ## 🏗️ 아키텍처: 도매상 레지스트리
@@ -367,7 +324,7 @@ yak-soldout/
 - **keep-alive WebSocket**: 대시보드에서 홈으로 이동하면 대시보드의 WebSocket이 끊깁니다. 서버는 모든 WebSocket이 끊기면 "브라우저가 닫힘"으로 판단해 종료하므로, 홈 화면도 `/ws`로 keep-alive WebSocket을 열어 이를 방지합니다. 홈은 이 연결로 받은 `cycle_start`/`search_stopped` 메시지와 `/api/status`로 카드의 "검색 중" 배지를 갱신합니다.
 - **로그 히스토리 버퍼**: `ConnectionManager`는 모든 WebSocket 메시지의 단일 통로인 `broadcast_message`에서 로그성 메시지(로그·사이클·검색 완료·긴급 알림 등)를 텍스트로 정규화해 `log_history` 버퍼(최근 300줄)에 누적합니다. 연결 수와 무관하게 누적되며 `GET /api/logs`로 조회, `POST /api/logs/clear`로 비울 수 있습니다.
 - **세션 복원**: 홈 → 대시보드로 다시 진입하면 `main.js`가 `/api/logs`로 진행상황 로그를, `/api/status`의 `current_search`로 직전 완료 사이클의 재고/품절 결과 카드를 복원합니다. 사용자가 대시보드에서 로그를 지우면 서버 버퍼(`/api/logs/clear`)도 함께 비워 재진입 시 되살아나지 않습니다.
-- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`, `/order-ocr`, `/drug-master`, `/orders`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
+- **no-cache 미들웨어**: `web_server.py`는 정적 파일과 페이지(`/`, `/checker`)에 `Cache-Control: no-cache`를 강제하는 HTTP 미들웨어를 둡니다. `StaticFiles`가 `Cache-Control`을 생략해 브라우저가 옛 파일을 휴리스틱 캐싱하는 문제를 막기 위함이며, 변경이 없으면 304로 저렴하게 끝납니다.
 
 반복 검색 모드에서는 한 사이클이 끝나도(`search_completed`) 검색이 계속 진행되므로, 대시보드의 액션 버튼은 명시적으로 중단하기 전까지 "검색 중단" 상태를 유지합니다.
 
@@ -395,59 +352,9 @@ yak-soldout/
 
 프론트엔드는 WebSocket으로 스트리밍되는 재고 카드의 `insurance_code`를 바로가기 쿼리로 사용합니다. 보험코드가 비어 있으면 약품명을 대신 사용합니다.
 
-### 손글씨 주문지 OCR (Order OCR)
+### 이전된 기능: 주문지 OCR · 주문 기록 · 약품 DB
 
-손으로 작성한 약국 주문지를 사진으로 올리면 약품명·포장단위·주문수량을 구조화 추출하는 기능입니다(`/order-ocr`, `utils/ocr_service.py`).
-
-- **멀티모달 LLM**: `google-genai` SDK로 Google Gemini(`gemini-2.5-flash`, `GEMINI_MODEL`로 변경 가능)를 호출합니다. 응답은 `response_schema`로 `[{drug_name, package_unit, quantity}]` 배열을 강제하고 `temperature=0`으로 안정성을 높입니다.
-- **도메인 프롬프트**: 약국 주문지의 표기 규칙을 학습시킵니다 — 줄 오른쪽의 `AxB`는 'A정짜리 통을 B개 주문'으로 해석해 `package_unit`(예: `30정`)과 `quantity`(예: `2`)로 분리하고, 약품명 뒤 함량/규격(예: `600mg`)은 약품명에 포함하며, 머리글·날짜·메모 등 주문 품목이 아닌 줄은 제외합니다.
-- **누락 방지(recall-first)**: 한 줄도 빠뜨리지 않도록 왼쪽 열을 위에서 아래로, 그다음 오른쪽 열을 전부 추출합니다. 글씨가 흐리거나 동그라미 등 주석이 있어도 모두 포함합니다.
-- **Human-in-the-loop 검수**: 추출이 끝나면 화면이 업로드 카드를 감추고 **좌우 2단 검수 레이아웃**으로 전환됩니다 — 왼쪽은 원본 사진을 sticky로 고정한 패널, 오른쪽은 편집 가능한 검수 테이블입니다. 왼쪽 사진은 원본과 대조하며 확인할 수 있도록 확대(휠/버튼, 커서·핀치 중심 고정)·이동(드래그/태블릿 터치)·원래대로(더블클릭/버튼) 및 '다른 이미지 올리기'(재업로드) 조작을 지원하고, 읽어온 품목 수는 검수 헤더로 옮겨 대조 중에도 보이게 했습니다. 화면이 좁으면(≤900px) 자동으로 위아래 세로 배치로 바뀝니다.
-- **도매상 선택 단계**: 검수 테이블에서 "다음"을 누르면 약품별 **도매상 선택** 화면으로 전환됩니다. 프론트가 약품명 목록을 `POST /api/order-ocr/order-context`로 보내면 서버는 표시 대상 도매상 목록(드롭다운 옵션, 기준 도매상이 맨 앞)·기준 도매상·약품별 과거 주문 이력과 마지막 주문 도매상(`db.get_order_context`)을 돌려줍니다. 각 행의 도매상 드롭다운 기본값은 *그 약품을 마지막으로 주문했던 도매상*이며, 이력이 없으면 기준 도매상이 선택됩니다. 행을 클릭하면 왼쪽 패널에 그 약품의 과거 주문 이력(주문일자·차수·도매상·수량)이 표시되어 평소 주문처를 보고 고를 수 있습니다.
-- **저장(로컬 SQLite)**: 도매상 선택까지 끝나면 "저장" 버튼으로 `POST /api/order-ocr/save`를 호출해 (주문일자, 차수) 단위로 주문을 저장합니다. 약품명이 빈 행은 제외한 품목(`drug_name`·`package_unit`·`quantity`·`distributor`)이 `orders`/`order_items` 테이블에, 업로드한 원본 이미지는 `data/order_images/`에 `'(날짜_차수)'` 이름으로 함께 저장됩니다. 같은 (날짜, 차수) 주문이 이미 있으면 서버가 HTTP 409를 반환하고, 프론트가 사용자에게 덮어쓰기 동의를 받아 `overwrite=true`로 재요청하면 기존 주문을 교체합니다. (현재는 로컬 저장 전용입니다. 키 유출 방지를 위해 OCR 호출 자체는 배포 단계에서 서버 측(Supabase Edge Function 등)으로 이전할 예정입니다 — `docs/손글씨-주문지-OCR-기능-계획.md`.)
-- **키 미설정 처리**: SDK는 지연 임포트하며, `GEMINI_API_KEY`가 없으면 `/api/order-ocr/extract`가 503을 반환할 뿐 앱의 나머지 기능은 정상 동작합니다. 업로드는 JPEG/PNG/WebP/HEIC/HEIF, 최대 15MB로 제한됩니다.
-
-### 주문 기록 (Order History)
-
-저장된 주문지 내역을 달력 UI로 조회·관리하는 화면입니다(`/orders`, `templates/order_history.html`, `static/js/order-history.js`, `static/css/order-history.css`).
-
-- **진입 경로**: 홈 화면의 최상위 카드가 아니라 **주문지 OCR의 하위 화면**입니다. 주문지 OCR 페이지(`/order-ocr`) 상단 바의 "주문 기록" 버튼(시계 아이콘)으로만 진입하며, 화면 상단의 뒤로가기 버튼은 홈이 아니라 주문지 작성 화면(`/order-ocr`)으로 돌아갑니다.
-- **달력 조회**: `GET /api/orders`로 저장된 주문 요약을 받아 주문이 있는 날짜를 달력에 표시합니다. 날짜를 클릭하면 그날의 차수(1~3차)별 주문이 카드로 펼쳐집니다.
-- **상세 카드**: 각 카드는 `GET /api/orders/{id}`로 받은 품목 테이블(약품명·포장단위·수량·도매상)과 원본 주문지 이미지 썸네일(`GET /api/orders/{id}/image`), 삭제 버튼을 표시합니다.
-- **삭제**: `DELETE /api/orders/{id}`는 주문과 품목(FK CASCADE)을 지우고 `data/order_images/`의 원본 이미지 파일도 함께 정리합니다.
-
-### OCR 약품명 오타 보정 (Drug Matcher)
-
-OCR로 읽은 약품명을 등록된 약품 마스터와 대조해 오타를 잡아내는 기능입니다(`utils/drug_matcher.py`, 의존성 `rapidfuzz`). 마스터가 등록돼 있을 때만 동작하며, 자동 교정 없이 검수 화면에 후보를 제시하는 Human-in-the-loop 방식입니다.
-
-- **한글 자모 매칭**: 한글은 글자 단위 편집거리로는 부정확하므로 음절을 초/중/종성 자모로 분해한 뒤 유사도를 계산합니다. 마스터명은 길고 상세하므로(예: `가나칸정50밀리그램(이토프리드염산염)_(50mg/1정)`) 숫자·괄호 앞의 '핵심 이름'만 뽑아 비교하고, 제형 접미(`서방정`·`주`·`캡슐` 등)와 손글씨 약품명 앞의 제약사 접두(`일성)호이펜`→`호이펜`)는 떼어냅니다. 짧은 손글씨명이 긴 공식명의 접두인 경우는 부분일치로 보정합니다.
-- **용량 인식**: 브랜드는 같아도 용량(규격) 숫자가 다르면(600mg≠300mg) 점수를 제한해 '일치'가 아닌 '확인 필요'로 처리합니다.
-- **검수 화면 표시**: `/api/order-ocr/extract`가 각 항목에 매칭 결과(`match`)를 덧붙이며, 검수 테이블 각 행이 상태 배지를 보여줍니다 — `matched`(유사도 ≥90, "✓ 약품명 일치" 배지로 공식 전체명을 자동 적용하고 드롭다운으로 원본 복원 가능), `candidate`(70~90, 후보 드롭다운 제시), `none`(미등록), `skip`(마스터 미등록 → 표시 없음). 사용자가 드롭다운이나 "직접 검색"으로 약품을 직접 고르면 해당 행 배지가 "✓ 사용자 확인"으로 바뀌어 어디까지 검토·확정했는지 한눈에 보입니다.
-- **직접 검색**: 후보에 원하는 약이 없으면 행별 "직접 검색" 박스로 `GET /api/drug-master/search`를 호출해 마스터 DB를 이름 부분일치(우선) + 자모 fuzzy(보충)로 직접 조회·선택합니다. 매처는 `drug_master`만 인덱싱하므로, 자유입력 약품도 주문 저장 시 manual 행으로 자동 등록되어 곧바로 검색·매칭 대상에 포함됩니다.
-- **규격(포장단위) 자동 보정**: 매처는 같은 표시 핵심명을 가진 마스터 행들의 수집 규격(`unit`) + 직접추가 규격(`unit_manual`)을 합친 약품별 `known_units` 인덱스를 만들어 매칭/검색 결과에 함께 실어 보냅니다. 프론트엔드(`static/js/order-ocr.js`)는 규격을 (개수, 제형)으로 정규화해, 약품이 확정되면 규격칸을 검증·자동보정하고(자동 채움/정식 표기 교정/오인식 경고), 알려진 규격을 클릭 가능한 칩으로 노출하며, 같은 개수라도 포장이 다른 사용자 선택(예: `100정(PTP)` vs `100정(병)`)은 정확히 일치할 때만 강조하고 덮어쓰지 않습니다.
-- **인덱스 캐시**: 약품 마스터(DB `drug_master` 테이블)를 기준으로 자모 인덱스와 규격 인덱스를 캐싱하고, 마스터가 재임포트되면(DB의 등록 수·시각 기반 캐시 키 변경) 자동 재구축합니다. 캐시 키에는 규격 텍스트 총길이 시그니처가 포함돼, 규격 수집·직접추가로 `unit`/`unit_manual`만 바뀌어도 캐시가 갱신됩니다.
-
-### 약품 DB 관리 (Drug Master)
-
-약국이 취급하는 전체 약품 목록을 엑셀로 등록하는 기능입니다(`/drug-master`, `utils/drug_master.py`). 위의 OCR 약품명 오타 보정(`drug_matcher`)의 기준 데이터로 사용됩니다. (사용자에게는 "약품 DB"로 표기하지만, 내부 코드·DB 테이블·함수명은 일관성을 위해 `drug_master`를 그대로 유지합니다.)
-
-- **머리글 행 자동 추정**: 실제 약국 엑셀 export는 제목·조회일시 등이 머리글 위에 깔리는 경우가 많습니다. `_guess_header_row`가 `약품명`·`보험코드`·`제약사` 등 키워드가 든 행(또는 비어있지 않은 칸이 가장 많은 행)을 머리글로 추정하며, `/api/drug-master/preview`로 원본 상단 행과 함께 반환합니다. 사용자는 모달에서 머리글 행을 직접 바꿀 수 있습니다.
-- **컬럼 매핑**: 컬럼명이 약국마다 다르므로, 사용자가 약품명(필수)·보험코드(선택)·제약사(선택) 컬럼을 직접 지정해 `/api/drug-master/import`로 등록합니다. 빈 행은 건너뛰고 (약품명, 보험코드) 조합으로 중복을 제거합니다.
-- **제약사 정규화**: `normalize_maker`가 `대웅제약(주)`→`대웅`, `(주)보령`→`보령`처럼 법인/접미 토큰을 제거한 정규화 형태(`maker_norm`)를 함께 저장해, 표기 편차에도 매칭이 가능하게 합니다.
-- **병합(upsert) 저장**: 엑셀 업로드는 전체 교체가 아니라 병합입니다(`db.upsert_drug_master`). (약품명, 보험코드) 기준으로 일치하면 제약사 표기 등을 갱신하고 없으면 새로 추가하며, 새 파일에 없는 기존 약품은 삭제하지 않고 보존합니다. 따라서 아래에서 수집·직접추가한 규격(`unit`/`unit_manual`)과 기존 행 ID가 그대로 유지됩니다. 등록 현황(개수·출처 파일·포장단위 수집 현황)은 `/api/drug-master`로 조회합니다. (엑셀 업로드 UI는 현황 카드 안에 "엑셀 파일 올려서 갱신" 액션으로 통합되어 있습니다.)
-- **포장단위(규격) 수집**: 엑셀에는 규격 컬럼이 없으므로, `drug_master`의 `unit`이 비어 있고 보험코드가 있는 행을 기준 도매상(유팜몰/지오영)에 보험코드로 하나씩 검색해 규격을 채웁니다(`utils/unit_collector.py`). 같은 보험코드가 여러 규격을 가질 수 있어 검색 결과의 distinct 규격을 모두 모아 `", "`로 합쳐 저장하고, 같은 코드는 한 번만 검색하도록 캐싱합니다. `POST /api/drug-master/collect-units`로 백그라운드 배치를 시작하면 진행 상황을 WebSocket으로 브로드캐스트하고 터미널에도 로그를 남기며, `POST /api/drug-master/collect-units/stop`으로 다음 행 경계에서 중단합니다. (지오영 결과의 규격은 `td.standard`에서 추출합니다.)
-- **마스터 DB 뷰어 / 직접 규격 추가**: 화면 우측에 페이지 단위 마스터 테이블 뷰어가 있습니다(`GET /api/drug-master/rows`, 약품명·보험코드 검색 + 상태 필터 지원). 수집한 규격(`unit`)은 읽기 전용으로 보여주고, 사용자가 직접 입력한 규격은 별도의 `unit_manual` 컬럼에 append-only로 보관합니다(`POST /api/drug-master/manual-unit`, 중복·기존 규격은 추가하지 않으며 삭제는 되지 않음). 수집분과 직접추가분을 출처별로 분리해 관리합니다.
-- **자유입력 행 표시·편집**: 주문 저장 시 자동 등록된 자유입력 약품(`source='manual'`)은 뷰어에서 "자유입력" 배지로 구분되며, 전용 필터로 모아 볼 수 있습니다. 이런 행만 이름을 수정(`PUT /api/drug-master/rows/{id}`, 같은 이름의 `order_items.drug_name`도 함께 갱신)하거나 삭제(`DELETE /api/drug-master/rows/{id}`)할 수 있습니다. 엑셀 임포트분(`source='excel'`)은 안전상 수정·삭제 대상에서 제외되며 엑셀 재업로드로 관리합니다.
-- **규격 빈도 분석 스크립트**: 독립 실행 스크립트 `analyze_units.py`는 마스터 전체의 `unit` 토큰별 보유 약품 수를 세어 `unit_frequency.json`으로 출력합니다.
-
-### 자유입력 약품 정식 승격 (Order Reconcile / Promotion)
-
-주문서는 마스터에 없는 신약을 자유입력으로 먼저 작성할 수 있습니다. 이런 약품은 주문 저장 시 마스터에 `source='manual'` 행으로 자동 등록되어(`db.register_free_input_drugs`) 즉시 OCR 매칭·직접 검색에 활용됩니다. 이후 엑셀 업데이트로 같은 약의 공식(`source='excel'`) 행이 들어오면, 자유입력 행을 공식 행으로 **승격(병합)**하는 기능입니다(`utils/order_reconcile.py`).
-
-- **승격 후보 탐지**: 자유입력(manual) 마스터 행 각각을 매처의 `drug_matcher.top_candidates`로 매칭하되, 후보는 **공식(excel) 약품으로만 한정**합니다(`db.excel_master_names`). 소프트 플로어(`DROPDOWN_FLOOR`) 이상 후보만 남기고, 최상위 점수가 기준 미만이거나 후보가 없으면 그 행은 제외합니다.
-- **확인 모달(다중 후보 드롭다운)**: 엑셀 업로드(마스터 갱신) 직후 약품 DB 관리 화면이 `GET /api/drug-master/promotion-candidates`로 후보를 받아 확인 모달을 띄웁니다. manual 행마다 `<select>` 드롭다운으로 여러 공식명 후보(`공식명 (점수%)`)를 제시하며 기본값은 "승격 안 함"입니다. 최상위 후보가 고확신(≥`HIGH_SCORE`)인 경우에만 자동 선택하고, 그 외에는 오매칭을 막기 위해 비워 둡니다. 사용자가 고른 항목만 `POST /api/drug-master/promote`로 적용됩니다.
-- **승격(병합) 처리**: 승격 시 ① 자유입력 행의 규격(`unit_manual`)을 공식 행에 중복 없이 합치고, ② 그 자유입력 이름으로 저장된 모든 `order_items.drug_name`을 공식명으로 갱신한 뒤, ③ 자유입력 행을 삭제합니다(`db.promote_manual_drugs`).
-- **멱등성**: 승격된 약품은 manual 행이 사라지므로 다시 후보로 제시되지 않습니다.
+과거 이 앱에 있던 손글씨 주문지 OCR, 주문 기록(달력 조회), 약품 DB(약품 마스터) 관리, OCR 약품명 오타 보정 기능은 **자동 주문 솔루션**(클라우드 웹 `apps/cloud_web/` + 로컬 관리자 앱 `apps/local_app/`)으로 이전되었습니다. 상세 동작은 문서 앞부분의 "저장소 구성 — 두 개의 독립 앱" 섹션을 참고하세요. 당시 구현 코드(라우트·템플릿·유틸)는 `legacy_codes/`에 아카이브되어 있습니다. 품절앱의 로컬 SQLite에 남아 있던 약품 마스터는 `scripts/migrate_drug_master.py`로 Supabase `drug_master`에 이전할 수 있습니다.
 
 ### HMP몰: 통합 플랫폼 스크래퍼
 
@@ -496,7 +403,7 @@ DISTRIBUTOR_REGISTRY = {
 
 ```bash
 # 예시 파일을 복사하여 생성
-cp build_config.example.json build_config.json
+cp apps/soldout/build_config.example.json apps/soldout/build_config.json
 ```
 
 ```json
@@ -524,20 +431,18 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 
 ## 📊 데이터 저장 (SQLite)
 
-애플리케이션 데이터는 단일 SQLite 파일 `data/yak_soldout.db`에 통합 저장됩니다. DB 파일·스키마는 첫 실행 시 자동 생성되며, 데이터 액세스 레이어는 `db.py`가 담당합니다.
+애플리케이션 데이터는 단일 SQLite 파일 `data/yak_soldout.db`(`apps/soldout/data/`)에 통합 저장됩니다. DB 파일·스키마는 첫 실행 시 자동 생성되며, 데이터 액세스 레이어는 `apps/soldout/db.py`가 담당합니다.
 
 - **동시성**: FastAPI 라우트(asyncio)와 백그라운드 검색 스레드(ThreadPoolExecutor)가 동시에 접근하므로, WAL 저널 모드 + `busy_timeout` + 스레드별 연결(thread-local)로 read/write 충돌을 회피합니다.
-- **스키마 버전 관리**: `PRAGMA user_version` 값으로 스키마 버전을 추적하며, 구버전 DB는 시작 시 자동 마이그레이션합니다.
-- **JSON → DB 시딩**: 과거 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `data/drug_master.json`, `config.json`의 `distributors`)이 있으면 첫 실행 시 DB로 시딩합니다. 멱등(대상 테이블이 비어 있을 때만 시딩)이라 반복 실행해도 중복되지 않습니다.
+- **스키마 버전 관리**: `PRAGMA user_version` 값으로 스키마 버전을 추적하며, 구버전 DB는 시작 시 자동 마이그레이션합니다. (OCR 기능과 함께 쓰이던 `drug_master`/`orders` 테이블 관련 마이그레이션은 기능 이전 후에도 구버전 DB 호환을 위해 남아 있습니다.)
+- **JSON → DB 시딩**: 과거 JSON 파일(`geoweb-soldout-list.json`, `exclusion-list.json`, `config.json`의 `distributors`)이 있으면 첫 실행 시 DB로 시딩합니다. 멱등(대상 테이블이 비어 있을 때만 시딩)이라 반복 실행해도 중복되지 않습니다.
 
 ### 테이블
 
-- **drug_master**: 약품 마스터 (약품명·보험코드·제약사·정규화 제약사명·포장단위·출처). 엑셀 업로드는 (약품명, 보험코드) 기준 병합(upsert)으로 반영해 기존 행을 보존합니다. 포장단위는 엑셀에 없어 두 컬럼으로 나뉩니다 — `unit`(기준 도매상에서 일괄 수집한 규격, 읽기 전용)과 `unit_manual`(뷰어에서 사용자가 직접 추가한 규격, append-only). 한 행에 여러 규격은 `", "`로 합쳐 저장합니다. `source` 컬럼은 행 출처를 구분합니다 — `'excel'`(엑셀 임포트분, 기존 행은 마이그레이션 시 `'excel'`로 채움)과 `'manual'`(주문 저장 시 자유입력 약품을 자동 등록한 행). manual 행만 뷰어에서 이름 수정·삭제와 정식 승격 대상이 됩니다.
 - **watch_list**: 모니터링할 품절 약품 목록 (약품명·긴급 알림 여부·추가일시). 웹 UI로 관리.
 - **exclusion_list**: 결과 표시 제외 목록 — 도매상별로 독립 관리(`(drug_name, distributor)` 유니크). 웹에서 약품 카드의 눈 모양 아이콘(👁️‍🗨️)으로 추가하며, 백제약품은 규격 정보까지 포함해 정확히 매칭합니다.
 - **distributors**: 도매상 자격증명·활성화 여부·색상·지역. 웹 설정 모달로 관리.
 - **search_sessions / search_results**: 검색 사이클(시작 시각·소요·상태)과 그 결과(약품별 재고/품절·도매상별 행)를 영속화합니다.
-- **orders / order_items**: 주문지 OCR 검수 완료분. `orders`는 주문 1건(주문일자·차수·원본 이미지 파일명·저장 시각, `(order_date, order_round)` 유니크)이고 `order_items`는 그 품목(약품명·포장단위·수량·도매상 dist_key·표시 순서, `order_id` FK + ON DELETE CASCADE)입니다. `distributor`는 저장 직전 도매상 선택 단계에서 채워지며, 이력이 없던 기존 주문에는 NULL로 남습니다. 원본 이미지 파일은 `data/order_images/`에 별도 보관합니다.
 
 > **config.json**: 이제 도매상 자격증명이 아닌 `monitoring` 설정(`repeat_interval_minutes`, `alert_exclusion_days`)만 보관합니다. 도매상 자격증명·색상·지역은 `distributors` 테이블로 이전되었습니다.
 
@@ -546,28 +451,6 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 ### REST API
 - `GET /` - 홈 화면 (앱 런처)
 - `GET /checker` - 품절 약 서치앱 대시보드
-- `GET /order-ocr` - 손글씨 주문지 OCR 업로드·검수·저장 화면
-- `POST /api/order-ocr/extract` - 주문지 이미지 → Gemini OCR → 약품명·포장단위·수량 추출 (마스터 등록 시 항목별 오타 보정 매칭 결과 포함)
-- `POST /api/order-ocr/order-context` - 도매상 선택 단계용 컨텍스트 (표시 도매상 목록 + 기준 도매상 + 약품별 과거 주문 이력/마지막 주문 도매상)
-- `POST /api/order-ocr/save` - 검수 완료된 주문을 로컬 SQLite에 저장(품목별 도매상 포함, 원본 이미지 동봉, `(날짜,차수)` 중복 시 409 → `overwrite=true`로 덮어쓰기)
-- `GET /orders` - 주문 기록 달력 조회 화면
-- `GET /api/orders` - 저장된 주문 요약 목록 (달력 표시용)
-- `GET /api/orders/{id}` - 주문 1건 상세 (메타 + 품목 목록)
-- `GET /api/orders/{id}/image` - 주문에 저장된 원본 주문지 이미지 파일
-- `DELETE /api/orders/{id}` - 주문 1건 삭제 (품목 CASCADE + 원본 이미지 파일 정리)
-- `GET /drug-master` - 약품 DB 관리 화면 (UI 표기 "약품 DB")
-- `GET /api/drug-master` - 약품 마스터 등록 현황 조회 (포장단위 수집 현황 포함)
-- `GET /api/drug-master/search` - 약품 마스터 직접 검색 (OCR 검수 화면의 "직접 검색"용, `q` 파라미터)
-- `GET /api/drug-master/rows` - 마스터 DB 뷰어용 페이지 조회 (`offset`/`limit`/`q`/상태 필터 파라미터)
-- `PUT /api/drug-master/rows/{id}` - 자유입력(manual) 마스터 행 이름 수정 (같은 이름의 주문 항목도 함께 갱신)
-- `DELETE /api/drug-master/rows/{id}` - 자유입력(manual) 마스터 행 삭제 (엑셀 임포트분은 불가)
-- `POST /api/drug-master/preview` - 업로드 엑셀 미리보기 (머리글 행 추정 + 컬럼·샘플 반환)
-- `POST /api/drug-master/import` - 선택한 컬럼 매핑으로 약품 마스터 등록(병합/upsert)
-- `POST /api/drug-master/collect-units` - 빈 포장단위(규격) 일괄 수집 시작 (기준 도매상에 보험코드 검색, 진행상황 WebSocket 스트리밍)
-- `POST /api/drug-master/collect-units/stop` - 진행 중인 포장단위 수집 중단 요청
-- `POST /api/drug-master/manual-unit` - 뷰어에서 사용자가 직접 규격 추가 (append-only)
-- `GET /api/drug-master/promotion-candidates` - 엑셀 갱신 후 자유입력(manual) 약품의 정식(excel) 승격 후보 조회
-- `POST /api/drug-master/promote` - 선택한 자유입력 약품을 정식 약품으로 승격(병합)
 - `GET /api/status` - 현재 상태 조회
 - `POST /api/search/start` - 검색 시작
 - `POST /api/search/stop` - 검색 중단
@@ -580,6 +463,9 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 - `GET /api/exclusion-list` - 결과 표시 제외 목록 조회
 - `PUT /api/exclusion-list` - 결과 표시 제외 목록 업데이트
 - `POST /api/exclusion-add` - 개별 약품을 결과 표시 제외 목록에 추가
+- `PUT /api/drug-urgent-toggle` - 약품의 긴급 알림 여부 토글
+- `GET /api/system-settings` - 시스템 설정 조회 (검색 반복 간격 등)
+- `PUT /api/system-settings` - 시스템 설정 업데이트
 - `GET /api/build-info` - 빌드 정보 조회 (약국명, 기준 도매상명 등)
 - `POST /api/preview-search` - 약품 미리보기 검색 (기준 도매상에 실시간 질의)
 - `POST /api/preview-search/close` - 미리보기 검색 세션 브라우저 종료
@@ -589,27 +475,13 @@ PyInstaller로 빌드할 때 `build_config.json`이 번들에 포함되어, 약�
 ### WebSocket
 - `WS /ws` - 실시간 로그 스트리밍 및 검색 진행 상황 업데이트
 
-## 🧪 테스트
-
-```bash
-# 전체 테스트 실행
-python -m pytest
-
-# 특정 모듈 테스트
-python -m pytest tests/unit/
-python -m pytest tests/integration/
-
-# 커버리지 포함 테스트
-python -m pytest --cov=.
-```
-
 ## 🔄 개발 가이드
 
 ### 새로운 도매상 추가하기
 
 레지스트리 패턴 덕분에 새 도매상 추가 시 수정해야 할 파일이 최소화되어 있습니다.
 
-**1단계**: `DistributorType` enum에 추가 (`models/drug_data.py`)
+**1단계**: `DistributorType` enum에 추가 (`scrapers/drug_data.py`)
 
 ```python
 class DistributorType(Enum):
@@ -642,9 +514,9 @@ class DistributorType(Enum):
 이 단계만으로 웹 UI, 검색 엔진, 설정 파싱, API 응답이 모두 자동으로 신규 도매상을 지원합니다.
 
 ### 프론트엔드 수정하기
-- CSS: `static/css/` 디렉터리의 기능별 파일 수정
-- JavaScript: `static/js/` 디렉터리의 모듈별 파일 수정 (`home.js` = 홈 화면, `main.js` = 대시보드)
-- HTML: 홈 화면은 `templates/home.html`, 대시보드는 `templates/index.html` 수정
+- CSS: `apps/soldout/static/css/` 디렉터리의 기능별 파일 수정
+- JavaScript: `apps/soldout/static/js/` 디렉터리의 모듈별 파일 수정 (`home.js` = 홈 화면, `main.js` = 대시보드)
+- HTML: 홈 화면은 `apps/soldout/templates/home.html`, 대시보드는 `apps/soldout/templates/index.html` 수정
 
 ## 🐛 문제 해결
 

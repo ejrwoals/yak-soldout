@@ -7,8 +7,8 @@
 
 실행:  uv run python scripts/dev_smoke.py
 
-전제: cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY 가 채워져 있어야 함.
-      (cp cloud_web/.env.example cloud_web/.env 후 service_role 키 붙여넣기)
+전제: apps/cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY 가 채워져 있어야 함.
+      (cp apps/cloud_web/.env.example apps/cloud_web/.env 후 service_role 키 붙여넣기)
 
 주의: service_role 키는 RLS를 우회한다 → 이 스크립트는 개발 도구이며, 배포 앱(local_app)에는
       service 키를 넣지 않는다. 이 테스트는 '데이터 계층 동작' 확인용(연결·쿼리·시드·조회).
@@ -23,7 +23,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / "cloud_web" / ".env")
+load_dotenv(ROOT / "apps" / "cloud_web" / ".env")
 sys.path.insert(0, str(ROOT / "local_app"))
 
 from orders_repo import get_pending_orders  # noqa: E402
@@ -78,8 +78,8 @@ def main() -> None:
     service_key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not service_key:
         raise SystemExit(
-            "cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 가 필요합니다.\n"
-            "  cp cloud_web/.env.example cloud_web/.env  후 Project Settings → API 의 "
+            "apps/cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 가 필요합니다.\n"
+            "  cp apps/cloud_web/.env.example apps/cloud_web/.env  후 Project Settings → API 의 "
             "service_role key 를 SUPABASE_SERVICE_KEY 에 붙여넣으세요."
         )
 

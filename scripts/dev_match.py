@@ -4,7 +4,7 @@ service_role 키로 drug_master 를 전량 조회 → 매칭 인덱스 구축 �
 OCR 약품명 샘플들에 대해 매칭 상태를 출력한다. (login 연동 전, 로직 검증용)
 
 실행: uv run python scripts/dev_match.py
-전제: cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY + drug_master 이전 완료.
+전제: apps/cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY + drug_master 이전 완료.
 """
 
 import os
@@ -14,8 +14,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / "cloud_web" / ".env")
-sys.path.insert(0, str(ROOT / "cloud_web"))
+load_dotenv(ROOT / "apps" / "cloud_web" / ".env")
+sys.path.insert(0, str(ROOT / "apps" / "cloud_web"))
 
 from master_repo import fetch_drug_master  # noqa: E402
 import drug_matcher  # noqa: E402
@@ -29,7 +29,7 @@ def main() -> None:
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not key:
-        raise SystemExit("cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 필요")
+        raise SystemExit("apps/cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 필요")
 
     from supabase import create_client
 

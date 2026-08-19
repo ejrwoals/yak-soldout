@@ -7,7 +7,7 @@ Supabase drug_master 로 옮긴다. 재실행 안전(멱등): 대상 사용자�
 로컬 DB는 읽기 전용으로만 연다(품절앱 데이터 불변).
 service_role 키로 실행하므로 RLS를 우회한다(개발/관리 도구).
 
-전제: cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY.
+전제: apps/cloud_web/.env 에 SUPABASE_URL, SUPABASE_SERVICE_KEY.
 실행:
   uv run python scripts/migrate_drug_master.py                 # devtest 계정으로
   uv run python scripts/migrate_drug_master.py --email you@gmail.com
@@ -23,9 +23,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / "cloud_web" / ".env")
+load_dotenv(ROOT / "apps" / "cloud_web" / ".env")
 
-DB_PATH = ROOT / "data" / "yak_soldout.db"
+DB_PATH = ROOT / "apps" / "soldout" / "data" / "yak_soldout.db"
 DEFAULT_EMAIL = "devtest.yaksoldout@gmail.com"
 CHUNK = 500
 
@@ -72,7 +72,7 @@ def main() -> None:
     url = os.environ.get("SUPABASE_URL", "").strip()
     service_key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not service_key:
-        raise SystemExit("cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 가 필요합니다.")
+        raise SystemExit("apps/cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 가 필요합니다.")
 
     from supabase import create_client
 

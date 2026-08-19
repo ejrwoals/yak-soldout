@@ -13,8 +13,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / "cloud_web" / ".env")
-sys.path.insert(0, str(ROOT / "cloud_web"))
+load_dotenv(ROOT / "apps" / "cloud_web" / ".env")
+sys.path.insert(0, str(ROOT / "apps" / "cloud_web"))
 
 import orders_repo  # noqa: E402
 
@@ -34,7 +34,7 @@ def main() -> None:
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not url or not key:
-        raise SystemExit("cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 필요")
+        raise SystemExit("apps/cloud_web/.env 에 SUPABASE_URL / SUPABASE_SERVICE_KEY 필요")
 
     from supabase import create_client
     client = create_client(url, key)

@@ -2,7 +2,7 @@ import time
 from typing import List, Dict
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from .base_scraper import BaseScraper
-from models.drug_data import Drug, DistributorType
+from scrapers.drug_data import Drug, DistributorType
 
 
 class TjpharmScraper(BaseScraper):

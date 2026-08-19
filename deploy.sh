@@ -19,7 +19,7 @@ PROJECT_ID="gen-lang-client-0011046539"
 REGION="asia-northeast1"
 SERVICE="yak-order"
 DOMAIN="yak-order.chajjaem.dev"
-SRC_DIR="cloud_web"
+SRC_DIR="apps/cloud_web"
 ENV_FILE="$SRC_DIR/.env"
 # ================================================
 

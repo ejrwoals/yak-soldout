@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Tuple
 from urllib.parse import urlencode
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 from .base_scraper import BaseScraper
-from models.drug_data import Drug, DistributorType
+from scrapers.drug_data import Drug, DistributorType
 
 
 class HmpMallScraper(BaseScraper):
