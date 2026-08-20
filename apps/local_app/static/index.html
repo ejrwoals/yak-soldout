@@ -165,6 +165,16 @@
         <div class="card" id="dmStatus">불러오는 중…</div>
         <div class="card">
           <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
+            약국 조제 프로그램의 <b>월별 약품사용량</b> 데이터를 엑셀로 추출해서 업로드해 주세요.
+            <b>약품명·보험코드(청구코드)·제약사</b>에 더해 <b>1월~12월 사용량</b> 컬럼이 있으면
+            약품별 <b>월평균 사용량</b>도 자동 계산돼 주문 시 참고 자료로 표시됩니다.
+            (다른 컬럼이 섞여 있어도 괜찮아요 — 업로드 후 컬럼을 직접 선택합니다.)
+          </p>
+          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
+            월평균은 <b>최근 12개 완전월</b> 기준이라, <b>작년·올해 연도별 파일을 각각</b> 올려주시면
+            가장 정확해요. 올해 파일의 진행 중인 달(부분 데이터)은 자동으로 걸러냅니다.
+          </p>
+          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
             엑셀을 올리면 <b>기존 약품은 그대로 유지</b>되고, 목록에 없던 <b>신규 약품만 추가</b>됩니다.
             수집·직접추가한 규격도 보존돼요. (엑셀에 없는 기존 약품도 삭제되지 않습니다.)
           </p>
@@ -214,7 +224,7 @@
           </div>
           <div class="dm-tablewrap">
             <table class="dm-table">
-              <thead><tr><th class="c-idx">#</th><th>약품명</th><th>보험코드</th><th>제약사</th><th>수집 규격</th><th>직접 추가 규격</th></tr></thead>
+              <thead><tr><th class="c-idx">#</th><th>약품명</th><th>보험코드</th><th>제약사</th><th style="text-align:right">월평균</th><th>수집 규격</th><th>직접 추가 규격</th></tr></thead>
               <tbody id="dmBody"></tbody>
             </table>
           </div>
@@ -359,12 +369,12 @@
 
     async function loadDmRows() {
       const body = $('dmBody');
-      body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">불러오는 중…</td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" class="muted" style="padding:24px;text-align:center">불러오는 중…</td></tr>`;
       let data;
       try {
         const p = new URLSearchParams({ offset: dmOffset, limit: DM_LIMIT, q: dmQ, filter: dmFilter });
         data = await jget('/api/drug-master/rows?' + p);
-      } catch (e) { body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">조회 실패: ${esc(e.message)}</td></tr>`; return; }
+      } catch (e) { body.innerHTML = `<tr><td colspan="7" class="muted" style="padding:24px;text-align:center">조회 실패: ${esc(e.message)}</td></tr>`; return; }
       renderDmRows(data);
     }
     function chips(str, cls) {
@@ -373,7 +383,7 @@
     function renderDmRows(data) {
       const body = $('dmBody'); body.innerHTML = '';
       $('dmTotal').textContent = data.total ? `· 총 ${data.total.toLocaleString()}건` : '';
-      if (!data.rows.length) { body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">결과가 없습니다.</td></tr>`; }
+      if (!data.rows.length) { body.innerHTML = `<tr><td colspan="7" class="muted" style="padding:24px;text-align:center">결과가 없습니다.</td></tr>`; }
       data.rows.forEach((r, i) => body.appendChild(dmRow(r, dmOffset + i + 1)));
       const end = dmOffset + data.rows.length;
       $('dmPageInfo').textContent = data.total ? `${(dmOffset + 1).toLocaleString()}–${end.toLocaleString()} / ${data.total.toLocaleString()}` : '';
@@ -388,6 +398,7 @@
         <td class="name-cell">${isManual ? `<input class="dm-name-input" value="${esc(r.name)}"> <span class="src-badge">자유입력</span>` : esc(r.name)}</td>
         <td>${esc(r.insurance_code) || '<span class="muted">—</span>'}</td>
         <td>${esc(r.maker)}</td>
+        <td style="text-align:right">${r.monthly_avg != null ? fmtAvg(r.monthly_avg) : '<span class="muted">—</span>'}</td>
         <td>${chips(r.unit, 'scraped') || '<span class="muted">—</span>'}</td>
         <td class="manual-cell">${chips(r.unit_manual, 'manual')}<div class="uadd"><input placeholder="예: 30정" maxlength="20"><button title="추가">+</button></div></td>`;
       // 직접 추가 규격
@@ -439,10 +450,12 @@
     async function loadDmStatus() {
       try {
         const s = await jget('/api/drug-master/status');
+        const u = s.usage;
         $('dmStatus').innerHTML = s.count
           ? `현재 <b>${s.count.toLocaleString()}</b>개 등록됨`
             + (s.source_file ? ` · ${esc(s.source_file)}` : '')
             + (s.imported_at ? ` · ${esc(String(s.imported_at).slice(0, 10))}` : '')
+            + (u ? `<br><span class="muted">월평균 사용량: ${u.drugs.toLocaleString()}개 약품 · ${esc(u.window_start)} ~ ${esc(u.window_end)} 완전월 기준</span>` : '')
           : '아직 등록된 약품이 없습니다. 엑셀을 업로드하세요.';
       } catch (e) { $('dmStatus').textContent = '상태 조회 실패: ' + e.message; }
     }
@@ -463,6 +476,15 @@
     function colOpts(cols, sel) {
       return '<option value="">(없음)</option>' + cols.map((c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
     }
+    function usageNotice(u) {
+      if (!u || !u.detected) return '';
+      if (!u.year) return `<p class="muted" style="font-size:13px; margin:6px 0">📊 월별 사용량 컬럼을 감지했지만 <b>연도를 찾지 못해</b> 사용량은 저장되지 않습니다. 파일명에 연도(예: 2026)를 넣어 다시 올려주세요.</p>`;
+      return `<p style="font-size:13px; margin:6px 0; color:var(--green)">📊 <b>${u.year}년</b> 월별 사용량 데이터 감지 — 약품 추가 시 사용량도 함께 저장되고 월평균이 재계산됩니다. (보험코드 컬럼 선택 필요)</p>`;
+    }
+    function fmtAvg(v) {
+      if (v == null) return '';
+      return Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
+    }
     function renderPreview(file, pv) {
       const cols = pv.columns || [], sc = pv.suggested_cols || {};
       const sample = `<div class="dm-sample"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
@@ -476,6 +498,7 @@
           <label>보험코드 컬럼<select id="dmCode">${colOpts(cols, sc.code)}</select></label>
           <label>제약사 컬럼<select id="dmMaker">${colOpts(cols, sc.maker)}</select></label>
         </div>
+        ${usageNotice(pv.usage)}
         ${sample}
         <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
           <button class="btn-primary btn-sm" id="dmImport">신규 약품 추가</button>
@@ -497,6 +520,16 @@
         const r = await fetch('/api/drug-master/import', { method: 'POST', body: fd });
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || '임포트 실패');
         let msg = `✓ 신규 ${(d.inserted ?? 0).toLocaleString()}개 추가 (총 ${(d.count ?? 0).toLocaleString()}개)`;
+        if (d.usage) {
+          if (d.usage.skipped === 'code_col') msg += ' · 사용량은 보험코드 컬럼 미선택으로 저장 안 됨';
+          else if (d.usage.skipped === 'year') msg += ' · 사용량은 연도 미확인으로 저장 안 됨';
+          else {
+            const st = d.usage.stats || {};
+            msg += ` · 📊 ${d.usage.year}년 사용량 ${d.usage.months}개월 저장`;
+            if (st.window_start) msg += ` — 월평균 재계산 (${st.window_start}~${st.window_end}, ${st.window_months}개월 기준${st.partial_excluded ? `, ${st.partial_excluded}은 진행 중이라 제외` : ''})`;
+          }
+        }
+        if (d.usage_error) msg += ` · 사용량 저장 실패: ${d.usage_error}`;
         if ((d.conflicts || []).length) msg += ` · 자유입력 중복 의심 ${d.conflicts.length}건 확인 필요`;
         $('dmImportMsg').textContent = msg;
         loadDmStatus(); loadDmRows();
@@ -698,6 +731,7 @@
       const rows = items.map((it) => `<tr class="item-row" data-item="${esc(it.id)}" data-name="${esc(it.drug_name)}">
         <td>${esc(it.drug_name)}</td><td>${esc(it.package_unit)}</td>
         <td style="text-align:center">${esc(it.quantity)}</td>
+        <td class="avg-cell muted" style="text-align:right">—</td>
         <td><select class="dist-sel" data-item="${esc(it.id)}">${distOptions(it.distributor || '')}</select></td></tr>`).join('');
       el.innerHTML = `
         <div class="order-head">
@@ -708,7 +742,7 @@
         <div class="items">
           <div class="items-flex">
             <div class="items-table">
-              <table><thead><tr><th>약품명</th><th>포장단위</th><th style="text-align:center">수량</th><th>도매상</th></tr></thead>
+              <table><thead><tr><th>약품명</th><th>포장단위</th><th style="text-align:center">수량</th><th style="text-align:right" title="최근 12개 완전월 기준 월평균 사용량">월평균</th><th>도매상</th></tr></thead>
               <tbody>${rows}</tbody></table>
               <p class="dist-hint">도매상은 가장 최근 주문 이력으로 자동 선택되고, 바꾸면 바로 저장됩니다. 행을 클릭하면 과거 주문 이력이 표시돼요.</p>
             </div>
@@ -746,6 +780,11 @@
       try {
         el._ctx = await postJson('/api/order-context', { drug_names: names, exclude_order_id: o.id });
       } catch (e) { return; }
+      // 월평균 사용량 채우기 (참고 자료)
+      el.querySelectorAll('.item-row').forEach((tr) => {
+        const avg = (el._ctx.usage || {})[tr.dataset.name];
+        if (avg != null) { const td = tr.querySelector('.avg-cell'); td.textContent = fmtAvg(avg); td.classList.remove('muted'); }
+      });
       for (const it of (o.order_items || [])) {
         if (it.distributor) continue;   // 이미 지정된 품목은 그대로
         const last = (el._ctx.drugs[it.drug_name] || {}).last_distributor;
@@ -762,8 +801,10 @@
     function renderHistPanel(el, name) {
       const panel = el.querySelector('.hist-panel');
       const info = ((el._ctx || {}).drugs || {})[name];
+      const avg = ((el._ctx || {}).usage || {})[name];
+      const avgLine = avg != null ? `<div class="muted" style="margin:-6px 0 10px">월평균 사용량 <b style="color:var(--text)">${fmtAvg(avg)}</b> <span style="font-size:11px">(최근 12개 완전월)</span></div>` : '';
       if (!info || !info.history.length) {
-        panel.innerHTML = `<h4>${esc(name)}</h4><div class="hist-empty2">과거 주문 이력이<br>없습니다.</div>`;
+        panel.innerHTML = `<h4>${esc(name)}</h4>${avgLine}<div class="hist-empty2">과거 주문 이력이<br>없습니다.</div>`;
         return;
       }
       const groups = {};
@@ -771,7 +812,7 @@
         const u = h.package_unit || '(규격 없음)';
         (groups[u] = groups[u] || []).push(h);
       });
-      panel.innerHTML = `<h4>${esc(name)}</h4>` + Object.entries(groups).map(([u, list]) => `
+      panel.innerHTML = `<h4>${esc(name)}</h4>` + avgLine + Object.entries(groups).map(([u, list]) => `
         <div class="hp-group">
           <div class="hp-unit">${esc(u)}</div>
           ${list.map((h) => `<div class="hp-row">

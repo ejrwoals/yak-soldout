@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+import drug_usage
 import master_db
 import master_import
 import orders_repo
@@ -230,7 +231,8 @@ def api_order_context(body: dict):
     b = body or {}
     names = [str(n) for n in (b.get("drug_names") or [])]
     ctx = orders_repo.get_order_context(c, names, (b.get("exclude_order_id") or None))
-    return {"drugs": ctx}
+    usage = drug_usage.avg_by_names(c, names)   # 약품명 → 월평균 사용량 (참고 자료)
+    return {"drugs": ctx, "usage": usage}
 
 
 @app.post("/api/order-items/distributor")
@@ -271,7 +273,12 @@ def dm_status():
         .eq("pharmacy_id", pid).order("imported_at", desc=True).limit(1).execute()
     )
     info = meta.data[0] if meta.data else {}
-    return {"count": cnt.count or 0, "imported_at": info.get("imported_at"), "source_file": info.get("source_file")}
+    return {
+        "count": cnt.count or 0,
+        "imported_at": info.get("imported_at"),
+        "source_file": info.get("source_file"),
+        "usage": drug_usage.usage_status(c, pid),
+    }
 
 
 @app.post("/api/drug-master/preview")
@@ -280,7 +287,9 @@ async def dm_preview(file: UploadFile = File(...), header_row: str = Form("")):
     data = await file.read()
     hr = int(header_row) if header_row.strip().isdigit() else None
     try:
-        return await asyncio.to_thread(master_import.preview, data, file.filename, hr)
+        pv = await asyncio.to_thread(master_import.preview, data, file.filename, hr)
+        pv["usage"] = await asyncio.to_thread(drug_usage.detect, data, file.filename, pv["columns"])
+        return pv
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -310,6 +319,29 @@ async def dm_import(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"임포트 실패: {e}")
+
+    # 월별 사용량(1월~12월) 컬럼이 있으면 사용량도 함께 저장하고 월평균을 재계산한다.
+    # 사용량 처리 실패가 약품 임포트 자체를 되돌리진 않는다 (에러만 결과에 담아 안내).
+    def _usage_import():
+        cols = [str(cname).strip() for cname in master_import._read_excel(data, file.filename, hr).columns]
+        det = drug_usage.detect(data, file.filename, cols)
+        if not det["detected"]:
+            return None
+        if not (code_col or "").strip():
+            return {"skipped": "code_col"}   # 청구코드 없이는 사용량을 조인할 수 없다
+        if not det["year"]:
+            return {"skipped": "year"}
+        rows = drug_usage.extract_usage(data, file.filename, hr, code_col, name_col)
+        saved = drug_usage.save_usage(c, m["pharmacy_id"], det["year"], rows, file.filename)
+        stats = drug_usage.recompute_stats(c, m["pharmacy_id"])
+        return {"year": det["year"], **saved, "stats": stats}
+
+    try:
+        usage = await asyncio.to_thread(_usage_import)
+        if usage is not None:
+            result["usage"] = usage
+    except Exception as e:
+        result["usage_error"] = str(e)
     return result
 
 
@@ -335,7 +367,11 @@ async def dm_resolve_conflict(body: dict):
 @app.get("/api/drug-master/rows")
 def dm_rows(offset: int = 0, limit: int = 50, q: str = "", filter: str = ""):
     c, _ = _require_admin()
-    return master_db.list_rows(c, offset, min(limit, 200), q, filter)
+    data = master_db.list_rows(c, offset, min(limit, 200), q, filter)
+    avgs = drug_usage.avg_by_codes(c, [r["insurance_code"] for r in data["rows"] if r["insurance_code"]])
+    for r in data["rows"]:
+        r["monthly_avg"] = avgs.get(r["insurance_code"])
+    return data
 
 
 @app.post("/api/drug-master/manual-unit")
