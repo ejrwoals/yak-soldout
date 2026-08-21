@@ -27,14 +27,15 @@ import master_db
 import master_import
 import orders_repo
 import settings
+from runtime_paths import DATA_DIR, RESOURCE_DIR
 from unit_collector import UnitCollector
 
-BASE = Path(__file__).parent
-load_dotenv(BASE / ".env")
+BASE = RESOURCE_DIR                     # static/ 등 번들 리소스 (동결 시 _MEIPASS)
+load_dotenv(DATA_DIR / ".env")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
-SESSION_FILE = BASE / ".session.json"   # refresh token 보관 (gitignore)
+SESSION_FILE = DATA_DIR / ".session.json"   # refresh token 보관 (gitignore)
 
 app = FastAPI(title="자동주문 로컬 앱")
 

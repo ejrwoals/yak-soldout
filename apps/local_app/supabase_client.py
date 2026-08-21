@@ -6,12 +6,13 @@ service_role key는 로컬 앱에 두지 않는다(RLS 우회 방지).
 """
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
-# local_app/.env 로드 (실행 위치와 무관하게 이 파일 옆의 .env를 읽는다)
-load_dotenv(Path(__file__).with_name(".env"))
+from runtime_paths import DATA_DIR
+
+# .env 로드 (실행 위치와 무관). 소스 실행이면 local_app/.env, 동결이면 exe 옆의 .env
+load_dotenv(DATA_DIR / ".env")
 
 
 def get_config() -> tuple[str, str]:

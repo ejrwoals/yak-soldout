@@ -13,9 +13,10 @@
 """
 
 import json
-from pathlib import Path
 
-SETTINGS_FILE = Path(__file__).with_name(".settings.json")
+from runtime_paths import DATA_DIR
+
+SETTINGS_FILE = DATA_DIR / ".settings.json"
 
 # 텍스트/보험코드 검색을 지원해 기준 도매상이 될 수 있는 도매상
 # (레거시 models/build_config.py 의 _VALID_PRIMARY_DISTRIBUTORS 와 동일)

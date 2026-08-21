@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 품절약 서치앱 dev 환경 실행 스크립트 (모노레포: apps/soldout/)
-# 사용법: ./dev_soldout.sh
+# 사용법: ./dev_soldout_mac.sh
 
 set -e
 

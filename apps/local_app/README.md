@@ -27,6 +27,35 @@ uv run python apps/local_app/main.py               # PyWebView 창
 # 브라우저로만 테스트: cd local_app && uv run uvicorn app:app --port 8770
 ```
 
+리포지토리 루트에 실행 스크립트가 있습니다.
+
+- macOS — `./dev_local_app_mac.sh` : `.venv` 확인 → 포트 8770 좀비 정리 → `main.py` 실행
+- Windows — `dev_local_app.bat` : 위에 더해 `.venv`·의존성·Chromium 을 **없을 때만** 자동 설치
+  (PowerShell 에서는 `.\dev_local_app.bat`, cmd 에서는 `dev_local_app.bat`, 탐색기 더블클릭도 가능)
+
+## 배포 빌드
+
+리포지토리 루트에서 `.\build_local_app.bat` 하나면 끝난다 (Windows 전용).
+준비 단계(venv·의존성·PyInstaller·Chromium)는 없을 때만 하고, 빌드는 매번 새로 한다.
+
+- 산출물 : `apps/local_app/dist/자동주문/자동주문.exe` (+ 배포용 ZIP)
+- spec   : `yak_order.spec` — `static/`, 루트 `scrapers/`, Playwright 브라우저를 통째로 번들
+- 크기   : 폴더 약 914MB / ZIP 약 396MB (대부분 Chromium)
+
+동결 실행 시 경로는 `runtime_paths.py` 가 갈라준다.
+
+| | 소스 실행 | 동결(exe) |
+|---|---|---|
+| `RESOURCE_DIR` (static 등) | `apps/local_app/` | 번들 폴더(`_MEIPASS`) |
+| `DATA_DIR` (`.env`, `.session.json`, `.settings.json`) | `apps/local_app/` | **exe 가 있는 폴더** |
+
+그래서 배포본은 **exe 옆에 `.env`** 를 두어야 한다. 빌드 시 `apps/local_app/.env` 가 있으면
+자동으로 복사하고, 없으면 `.env.example` 을 대신 넣는다.
+
+> 창은 뜨는데 화면이 비어 있으면 exe 옆 `.local_app.log` 를 확인한다. 윈도우 모드로
+> 동결하면 `sys.stdout` 이 `None` 이라 서버 스레드가 조용히 죽을 수 있어, `main.py` 가
+> 표준 스트림을 이 파일로 돌려놓는다.
+
 Google 로그인은 시스템 브라우저로 열리고(`/auth/start`), loopback 콜백으로 세션을 받아
 refresh token 만 `.session.json` 에 보관한다. 로컬 앱은 **관리자(admin) 계정 전용**이다.
 

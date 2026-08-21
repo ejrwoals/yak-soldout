@@ -4,6 +4,12 @@
 이 가이드는 Python 웹 애플리케이션을 PyInstaller를 사용하여 **Playwright 브라우저가 내장된** 독립 실행형 .exe 파일로 빌드하고 배포하는 전체 과정을 다룹니다.
 
 ### 요약
+
+> **자동화 스크립트**: 아래 과정 전체는 리포 루트의 `build_soldout.bat` 하나로 끝납니다.
+> 준비 단계(venv·의존성·Chromium·`yak_soldout.spec`·`build_config.json`)는 없을 때만 수행하고,
+> 빌드는 매번 `build/`·`dist/`를 지우고 새로 합니다. 아래 수동 절차는 내부 동작 참고용입니다.
+> (`build_config.json`을 새로 만든 경우, 약국 설정을 확인하라며 빌드를 멈춥니다.)
+
 먼저 yak_soldout.spec 파일을 생성하고 아래 내리면 있는 코드를 복붙한다.
 그리고 playwright install chromium 를 통해 크롬 브라우저를 설치후, ~~브라우저 설치 경로를 아래 명령어를 이용해 확인한다. 그후 yak_soldout.spec 에서 기본 설정된 브라우저 경로를 출력된 경로로 수정해준다.~~ (설치 경로를 자동으로 찾아주는 코드가 추가되어서 불필요함)
 

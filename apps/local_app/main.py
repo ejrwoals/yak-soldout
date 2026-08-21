@@ -8,6 +8,8 @@
 (브라우저에서만 테스트하려면:  uv run uvicorn app:app --port 8770  후 localhost:8770)
 """
 
+import os
+import sys
 import threading
 import time
 import webbrowser
@@ -15,8 +17,28 @@ import webbrowser
 import uvicorn
 
 from app import app
+from runtime_paths import DATA_DIR
 
 PORT = 8770
+
+
+def _ensure_std_streams():
+    """윈도우 모드(console=False)로 동결하면 sys.stdout/stderr 가 None 이다.
+
+    그 상태로 uvicorn 을 띄우면 로깅 설정이 ValueError 로 죽는데, 서버는 데몬
+    스레드라 조용히 사라지고 창만 빈 화면으로 남는다. 로그 파일로 돌려 살린다.
+    (소스로 실행할 때는 스트림이 멀쩡하므로 아무 일도 하지 않는다.)
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        stream = open(DATA_DIR / ".local_app.log", "w", encoding="utf-8", buffering=1)
+    except OSError:
+        stream = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
 
 
 class Api:
@@ -32,6 +54,7 @@ def _run_server():
 
 
 def main():
+    _ensure_std_streams()
     threading.Thread(target=_run_server, daemon=True).start()
     time.sleep(1.0)
     import webview  # 지연 임포트 — 브라우저 테스트 시 pywebview 불필요

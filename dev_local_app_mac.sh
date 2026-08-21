@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 약국 주문 Agent — 로컬 관리자 앱 실행 스크립트 (apps/local_app/)
 # FastAPI 서버(포트 8770)를 띄우고 PyWebView 데스크톱 창을 연다.
-# 사용법: ./dev.sh
+# 사용법: ./dev_local_app_mac.sh   (Windows 는 dev_local_app.bat)
 
 set -e
 

@@ -11,7 +11,10 @@ drug_data 데이터 모델)를 그대로 쓴다. 이 패키지는 품절약 서�
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# 동결(PyInstaller) 시에는 scrapers 가 번들 폴더에 함께 들어가고 그 폴더는 이미
+# sys.path 에 있다. 리포 루트라는 개념도 없으므로 아무것도 하지 않는다.
+if not getattr(sys, "frozen", False):
+    REPO_ROOT = Path(__file__).resolve().parents[2]
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.append(str(REPO_ROOT))
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.append(str(REPO_ROOT))

@@ -229,11 +229,11 @@ python -m playwright install chromium
 
 #### 🌐 웹 인터페이스 실행 (권장)
 
-개발 환경에서는 `./dev_soldout.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, `PORT=8002`를 export하고 좀비 프로세스를 정리한 뒤 **`apps/soldout/`에서** `python web_server.py`를 실행합니다. (기본 포트는 **8002**입니다. 8000/8001은 다른 로컬 프로젝트와 충돌하기 때문입니다.)
+개발 환경에서는 `./dev_soldout_mac.sh` 한 줄로 실행하는 것을 권장합니다. 이 스크립트는 프로젝트 루트의 `.venv` 가상환경 파이썬을 사용하며, `PORT=8002`를 export하고 좀비 프로세스를 정리한 뒤 **`apps/soldout/`에서** `python web_server.py`를 실행합니다. (기본 포트는 **8002**입니다. 8000/8001은 다른 로컬 프로젝트와 충돌하기 때문입니다.)
 
 ```bash
 # 개발 서버 시작 (권장)
-./dev_soldout.sh
+./dev_soldout_mac.sh
 
 # 또는 직접 실행
 cd apps/soldout && python web_server.py
@@ -245,7 +245,7 @@ cd apps/soldout && python web_server.py
 cd apps/soldout && PORT=3000 python web_server.py
 ```
 
-> `run_app.py`는 PyInstaller 패키지 빌드용 진입점이며, 개발 시에는 위의 `./dev_soldout.sh` 또는 `python web_server.py`를 사용하세요.
+> `run_app.py`는 PyInstaller 패키지 빌드용 진입점이며, 개발 시에는 위의 `./dev_soldout_mac.sh` 또는 `python web_server.py`를 사용하세요.
 
 #### 🔍 디버그 모드 (브라우저 화면 보기)
 
@@ -266,12 +266,15 @@ PORT=3000 HEADLESS=false python web_server.py
 
 ```
 yak-soldout/                   # 모노레포 — 앱은 apps/ 아래, 공유 크롤러는 루트 scrapers/
-├── dev.sh                     # 약국 주문 Agent 로컬 앱 실행 (apps/local_app, 포트 8770)
-├── dev_soldout.sh             # 품절약 서치앱 개발 실행 스크립트 (apps/soldout, 포트 8002)
+├── dev_local_app_mac.sh       # 약국 주문 Agent 로컬 앱 실행 — macOS (apps/local_app, 포트 8770)
+├── dev_local_app.bat          # └ 같은 앱 Windows용 — venv·의존성·Chromium 자동 설치
+├── build_local_app.bat        # └ 같은 앱 배포 빌드 (PyInstaller → dist + ZIP, Windows 전용)
+├── dev_soldout_mac.sh         # 품절약 서치앱 개발 실행 — macOS (apps/soldout, 포트 8002)
+├── build_soldout.bat          # └ 품절약 서치앱 배포 빌드 (PyInstaller → dist + ZIP, Windows 전용)
 ├── deploy.sh                  # 약국 주문 Agent 웹(apps/cloud_web) Cloud Run 배포
 │
 ├── apps/soldout/              # 품절약 서치앱 (로컬 SQLite)
-│   ├── web_server.py          #   FastAPI 웹 서버 (개발 실행: ./dev_soldout.sh)
+│   ├── web_server.py          #   FastAPI 웹 서버 (개발 실행: ./dev_soldout_mac.sh)
 │   ├── run_app.py             #   PyInstaller 배포 빌드용 진입점
 │   ├── db.py                  #   SQLite 데이터 액세스 레이어 (data/yak_soldout.db)
 │   ├── config.json            #   monitoring 설정 · build_config.json — 약국별 빌드 설정
