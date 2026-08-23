@@ -7,9 +7,9 @@
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-  <link href="/static/css/main.css" rel="stylesheet">
-  <link href="/static/css/home.css" rel="stylesheet">
-  <link href="/static/css/order-ocr.css" rel="stylesheet">
+  <link href="/static/css/main.css?v=20260823" rel="stylesheet">
+  <link href="/static/css/home.css?v=20260823" rel="stylesheet">
+  <link href="/static/css/order-ocr.css?v=20260823" rel="stylesheet">
 
   <script>
     (function () {
@@ -43,7 +43,7 @@
     .hist-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; margin-left: auto; }
     .hist-badge.pending { color: #b7791f; background: #fdf3e0; }
     .hist-badge.ordered { color: #1f9d63; background: #e7f7ee; }
-    .hist-items { border-top: 1px solid var(--border-color); display: none; }
+    .hist-items { border-top: 1px solid var(--border-color); display: none; overflow-x: auto; }
     .hist-order.open .hist-items { display: block; }
     .hist-items table { width: 100%; border-collapse: collapse; }
     .hist-items td, .hist-items th { padding: 7px 18px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--border-color); }
@@ -92,9 +92,11 @@
     /* 원본 이미지 모달 */
     .img-modal-card { max-width: min(920px, 92vw); }
     .img-modal-card img { display: block; max-width: 100%; max-height: 74vh; margin: 0 auto; border-radius: 10px; }
-    .user-email { color: var(--text-secondary); font-size: 13px; margin-right: 4px; }
+    .user-email { color: var(--text-secondary); font-size: 13px; margin-right: 4px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
     .pharmacy-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600;
-                      color: var(--text-primary); margin-right: 8px; }
+                      color: var(--text-primary); margin-right: 8px; white-space: nowrap; min-width: 0; }
+    .pharmacy-badge #pharmacyName { overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
     .pharmacy-badge .bi-shop { color: var(--primary); }
     .role-badge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
     .role-badge.role-admin { color: var(--primary); background: rgba(124, 58, 237, 0.13); }
@@ -122,6 +124,8 @@
     .drugs-search:focus-within { border-color: var(--primary); background: var(--bg-primary); }
     .drugs-count { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
     .drugs-footer { display: flex; justify-content: center; margin-top: 14px; }
+    /* 컬럼이 좁아지면 글자가 세로로 꺾이므로 최소 폭을 확보하고 table-wrap 가로 스크롤에 맡긴다 */
+    #drugsView .review-table { min-width: 760px; }
     #drugsView .review-table td { font-size: 14px; }
     #drugsView .review-table .cell-code { color: var(--text-muted); font-size: 13px; }
     /* 약 목록: 필터 칩 · 규격 칩 · 행 클릭 */
@@ -164,6 +168,30 @@
     .usage-table tr:last-child td { border-bottom: none; }
     .usage-empty { text-align: center; color: var(--text-muted); padding: 40px 12px; line-height: 1.7; }
     .usage-toggle { color: var(--text-muted); font-size: 12px; cursor: pointer; margin-top: 10px; }
+    /* ============= 모바일 반응형 ============= */
+    @media (max-width: 640px) {
+      /* 상단 네비: 이메일 숨김, 버튼은 아이콘만 표시해 한 줄로 압축 */
+      .user-email { display: none; }
+      .pharmacy-badge { margin-right: 0; }
+      .pharmacy-badge #pharmacyName { max-width: 40vw; }
+      .nav-label-btn span { display: none; }
+      .nav-label-btn { padding: 0.5rem 0.65rem; }
+      .nav-label-btn i { font-size: 1.05rem; }
+      /* 툴바·리스트 헤더는 줄넘김 허용 */
+      .drugs-toolbar { flex-wrap: wrap; }
+      .drug-filters { gap: 5px; }
+      .hist-head { flex-wrap: wrap; gap: 8px 10px; padding: 12px 14px; }
+      .hist-items td, .hist-items th { padding: 7px 12px; }
+      .hist-actions { padding: 10px 14px; }
+      /* 달력: 칸 높이 축소 */
+      .cal-card { padding: 12px; }
+      .cal-day { min-height: 46px; padding: 3px 4px; }
+      /* 모달 여백 축소 */
+      .modal-overlay { padding: 12px; }
+      .modal-card { padding: 20px 16px; }
+      .login-card { padding: 30px 22px; }
+      .usage-stat-value { font-size: 22px; }
+    }
   </style>
 </head>
 <body class="home-mode">
@@ -475,6 +503,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/js/order-ocr.js"></script>
+  <script src="/static/js/order-ocr.js?v=20260823"></script>
 </body>
 </html>
