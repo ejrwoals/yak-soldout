@@ -62,7 +62,9 @@
     @media (max-width: 720px) { #homeView .app-launcher { grid-template-columns: 1fr; } }
     /* 주문 기록: 좌(달력) / 우(카드 목록) 2단 */
     body.history-mode .ocr-container { max-width: 1320px; }
-    .hist-layout { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 18px; align-items: start; }
+    /* 약 목록 조회: 컬럼이 많아 주문 기록과 같은 와이드 레이아웃 */
+    body.drugs-mode .ocr-container { max-width: 1320px; }
+    .hist-layout { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 4fr); gap: 18px; align-items: start; }
     .hist-list-pane { position: relative; max-height: calc(100vh - 150px); overflow-y: auto; padding-right: 4px; }
     @media (max-width: 920px) {
       .hist-layout { grid-template-columns: 1fr; }
@@ -122,6 +124,46 @@
     .drugs-footer { display: flex; justify-content: center; margin-top: 14px; }
     #drugsView .review-table td { font-size: 14px; }
     #drugsView .review-table .cell-code { color: var(--text-muted); font-size: 13px; }
+    /* 약 목록: 필터 칩 · 규격 칩 · 행 클릭 */
+    .drug-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .drug-filter { border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary);
+                   border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .drug-filter.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .unit-chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 14px;
+                 margin: 1px 3px 1px 0; white-space: nowrap; }
+    .unit-chip.scraped { background: rgba(124, 58, 237, 0.10); color: var(--primary); }
+    .unit-chip.manual { background: #fdf3e0; color: #b7791f; }
+    [data-theme="dark"] .unit-chip.manual { background: rgba(183, 121, 31, 0.18); }
+    .manual-badge { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px;
+                    background: #fdf3e0; color: #b7791f; margin-left: 6px; white-space: nowrap; }
+    [data-theme="dark"] .manual-badge { background: rgba(183, 121, 31, 0.18); }
+    #drugsView .review-table tbody tr { cursor: pointer; }
+    #drugsView .review-table tbody tr:hover td { background: rgba(124, 58, 237, 0.05); }
+    #drugsView .review-table .cell-avg { text-align: right; font-variant-numeric: tabular-nums; }
+    /* 월별 사용량 이력 모달 */
+    .usage-modal-card { max-width: 720px; }
+    .usage-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .usage-head h3 { margin-bottom: 3px; }
+    .usage-stat-label { color: var(--text-muted); font-size: 12px; }
+    .usage-stat-value { font-size: 28px; font-weight: 700; line-height: 1.25; color: var(--text-primary); }
+    .usage-stat-caption { color: var(--text-muted); font-size: 11px; }
+    .usage-chart { position: relative; margin-top: 8px; }
+    .usage-chart svg { display: block; width: 100%; height: auto; }
+    .usage-tip { position: absolute; pointer-events: none; background: var(--bg-primary); color: var(--text-primary);
+                 border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 9px; font-size: 12px;
+                 box-shadow: var(--shadow-md); white-space: nowrap; display: none; }
+    .usage-tip b { font-size: 13px; }
+    .usage-tip .dim { color: var(--text-muted); }
+    .usage-table { max-height: 200px; overflow: auto; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 8px; }
+    .usage-table table { width: 100%; border-collapse: collapse; }
+    .usage-table td, .usage-table th { font-size: 12px; padding: 4px 8px; white-space: nowrap; text-align: right;
+                                       font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border-color);
+                                       color: var(--text-primary); }
+    .usage-table th { color: var(--text-muted); font-weight: 600; }
+    .usage-table td:first-child, .usage-table th:first-child { text-align: left; }
+    .usage-table tr:last-child td { border-bottom: none; }
+    .usage-empty { text-align: center; color: var(--text-muted); padding: 40px 12px; line-height: 1.7; }
+    .usage-toggle { color: var(--text-muted); font-size: 12px; cursor: pointer; margin-top: 10px; }
   </style>
 </head>
 <body class="home-mode">
@@ -375,15 +417,22 @@
    <section id="drugsView" hidden>
      <section class="home-header">
        <h1>약 목록 조회</h1>
-       <p class="subtitle">현재 등록되어 있는 약품 DB입니다. 약품명으로 검색할 수 있습니다.</p>
+       <p class="subtitle">현재 등록되어 있는 약품 DB입니다. 약품명·보험코드로 검색하고, 행을 클릭하면 월별 사용량 추이를 볼 수 있습니다.</p>
      </section>
      <section class="ocr-card">
        <div class="drugs-toolbar">
          <div class="drugs-search">
            <i class="bi bi-search"></i>
-           <input id="drugSearchInput" placeholder="약품명으로 검색" autocomplete="off">
+           <input id="drugSearchInput" placeholder="약품명·보험코드 검색" autocomplete="off">
          </div>
          <span id="drugCount" class="drugs-count"></span>
+       </div>
+       <div class="drug-filters" id="drugFilters">
+         <button class="drug-filter active" data-filter="">전체</button>
+         <button class="drug-filter" data-filter="filled">규격수집됨</button>
+         <button class="drug-filter" data-filter="missing">규격미수집</button>
+         <button class="drug-filter" data-filter="nocode">보험코드없음</button>
+         <button class="drug-filter" data-filter="manual">자유입력</button>
        </div>
        <div class="table-wrap">
          <table class="review-table">
@@ -391,9 +440,10 @@
              <tr>
                <th class="col-idx">#</th>
                <th>약품명</th>
-               <th>제약사</th>
-               <th>포장단위</th>
                <th>보험코드</th>
+               <th>제약사</th>
+               <th style="text-align:right" title="최근 12개 완전월 기준 월평균 사용량">월평균</th>
+               <th>규격</th>
              </tr>
            </thead>
            <tbody id="drugRows"></tbody>
@@ -408,6 +458,21 @@
      </section>
    </section>
   </main>
+
+  <!-- 약품 월별 사용량 이력 모달 (약 목록 행 클릭) -->
+  <div id="usageModal" class="modal-overlay" hidden>
+    <div class="modal-card usage-modal-card">
+      <div class="usage-head">
+        <div style="min-width:0">
+          <h3 id="usageName"></h3>
+          <p class="modal-desc" id="usageMeta" style="margin-bottom:0"></p>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="closeUsageBtn" style="flex-shrink:0">닫기</button>
+      </div>
+      <div id="usageStat" style="margin:14px 0 4px"></div>
+      <div id="usageBody"></div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/static/js/order-ocr.js"></script>

@@ -9,7 +9,7 @@ Supabase는 한 쿼리에 기본 1000행까지만 주므로 페이지네이션�
 from datetime import datetime
 
 _PAGE = 1000
-_COLS = "name, insurance_code, maker, maker_norm, unit, unit_manual"
+_COLS = "name, insurance_code, maker, maker_norm, unit, unit_manual, source"
 
 
 def register_free_input_drugs(client, pharmacy_id: str, items: list[dict]) -> dict:
@@ -57,12 +57,27 @@ def register_free_input_drugs(client, pharmacy_id: str, items: list[dict]) -> di
     return {"added": len(rows), "names": [r["name"] for r in rows]}
 
 
-def search_drug_master(client, q: str = "", limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
-    """약품 DB 조회(읽기 전용) — 이름 부분일치 검색 + 페이지네이션. (rows, 전체 개수) 반환."""
-    query = client.table("drug_master").select(_COLS, count="exact").order("name")
+def search_drug_master(client, q: str = "", limit: int = 50, offset: int = 0,
+                       unit_filter: str = "") -> tuple[list[dict], int]:
+    """약품 DB 조회(읽기 전용) — 약품명·보험코드 검색 + 필터 + 페이지네이션. (rows, 전체 개수).
+
+    필터 의미는 로컬 앱 master_db.list_rows 와 동일:
+    filled(규격수집됨) / missing(규격미수집) / nocode(보험코드없음) / manual(자유입력)
+    """
+    query = client.table("drug_master").select(_COLS, count="exact")
+    uf = (unit_filter or "").strip()
+    if uf == "filled":
+        query = query.not_.is_("unit", "null")
+    elif uf == "missing":
+        query = query.is_("unit", "null").not_.is_("insurance_code", "null")
+    elif uf == "nocode":
+        query = query.is_("unit", "null").is_("insurance_code", "null")
+    elif uf == "manual":
+        query = query.eq("source", "manual")
     if q:
-        query = query.ilike("name", f"%{q}%")
-    res = query.range(offset, offset + limit - 1).execute()
+        pat = f"*{q}*"
+        query = query.or_(f"name.ilike.{pat},insurance_code.ilike.{pat}")
+    res = query.order("name").range(offset, offset + limit - 1).execute()
     return (res.data or []), (res.count or 0)
 
 

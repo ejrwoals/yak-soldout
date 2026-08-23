@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 import drug_matcher
 import master_repo
+import usage_repo
 import ocr_service
 import orders_repo
 import tenant_repo
@@ -231,17 +232,43 @@ async def api_drug_search(q: str = "", authorization: str = Header(None)):
 
 @app.get("/api/drug-master")
 async def api_drug_master(
-    q: str = "", limit: int = 50, offset: int = 0, authorization: str = Header(None)
+    q: str = "", limit: int = 50, offset: int = 0, filter: str = "",
+    authorization: str = Header(None),
 ):
-    """약품 DB 목록 조회(읽기 전용) — 약 목록 조회 화면용. 이름 검색 + 페이지네이션."""
+    """약품 DB 목록 조회(읽기 전용) — 약 목록 조회 화면용.
+
+    약품명·보험코드 검색 + 필터(filled/missing/nocode/manual) + 페이지네이션.
+    각 행에 월평균 사용량(monthly_avg)을 붙여준다 (없으면 None).
+    """
     client = _user_client(authorization)
     _require_membership(_token_sub(authorization))
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    rows, total = await asyncio.to_thread(
-        master_repo.search_drug_master, client, (q or "").strip(), limit, offset
-    )
+
+    def _search():
+        rows, total = master_repo.search_drug_master(
+            client, (q or "").strip(), limit, offset, (filter or "").strip()
+        )
+        avgs = usage_repo.avg_by_codes(
+            client, [r["insurance_code"] for r in rows if r.get("insurance_code")]
+        )
+        for r in rows:
+            r["monthly_avg"] = avgs.get(r.get("insurance_code"))
+        return rows, total
+
+    rows, total = await asyncio.to_thread(_search)
     return {"rows": rows, "total": total, "count": len(rows)}
+
+
+@app.get("/api/drug-usage-history")
+async def api_drug_usage_history(code: str = "", authorization: str = Header(None)):
+    """약품 1건의 월별 사용량 이력 — 약 목록 행 클릭 모달의 line chart 용."""
+    client = _user_client(authorization)
+    _require_membership(_token_sub(authorization))
+    code = (code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="보험코드가 필요합니다.")
+    return await asyncio.to_thread(usage_repo.history_by_code, client, code)
 
 
 @app.get("/api/me")
