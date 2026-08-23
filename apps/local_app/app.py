@@ -419,8 +419,11 @@ def dm_unit_stats():
 
 
 @app.post("/api/drug-master/collect-units")
-async def dm_collect_units():
-    """규격 일괄 수집 실행. 진행 상황은 SSE(/collect-units/stream), 응답은 완료 요약."""
+async def dm_collect_units(body: dict = None):
+    """규격 일괄 수집 실행. 진행 상황은 SSE(/collect-units/stream), 응답은 완료 요약.
+
+    body.include_notfound=True 면 미발견 보류 약품도 다시 검색한다.
+    """
     _, m = _require_admin()
     if unit_collector.is_running:
         raise HTTPException(status_code=409, detail="이미 규격 수집이 진행 중입니다.")
@@ -432,7 +435,10 @@ async def dm_collect_units():
             detail=f"{creds['name']} 계정이 설정되지 않았습니다. 설정 탭에서 입력하세요.",
         )
     try:
-        return await unit_collector.run(_require_client, m["pharmacy_id"], creds)
+        return await unit_collector.run(
+            _require_client, m["pharmacy_id"], creds,
+            include_notfound=bool((body or {}).get("include_notfound")),
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:

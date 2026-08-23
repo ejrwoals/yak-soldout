@@ -104,7 +104,7 @@ def delete_row(client, row_id: str) -> bool:
 # 보험코드가 없으면 검색할 수 없으므로 수집 대상에서 제외한다(레거시 db.py 와 동일한 기준).
 
 def unit_stats(client, pharmacy_id: str) -> dict:
-    """규격 수집 현황 — total / filled(수집됨) / missing_with_code(수집 가능)."""
+    """규격 수집 현황 — total / filled(수집됨) / missing_with_code(수집 대상) / notfound_held(미발견 보류)."""
     def counter():
         """이 약국 행을 세는 쿼리 빌더 (뒤에 필터를 더 붙일 수 있다)."""
         return (
@@ -117,30 +117,35 @@ def unit_stats(client, pharmacy_id: str) -> dict:
     def count(query) -> int:
         return query.execute().count or 0
 
+    def missing():
+        return counter().is_("unit", "null").not_.is_("insurance_code", "null").neq("insurance_code", "")
+
     return {
         "total": count(counter()),
         "filled": count(counter().not_.is_("unit", "null")),
-        "missing_with_code": count(
-            counter().is_("unit", "null").not_.is_("insurance_code", "null").neq("insurance_code", "")
-        ),
+        "missing_with_code": count(missing().is_("unit_notfound_at", "null")),
+        "notfound_held": count(missing().not_.is_("unit_notfound_at", "null")),
     }
 
 
-def rows_missing_unit(client, pharmacy_id: str) -> list[dict]:
-    """규격 수집 대상 행(id, name, insurance_code) 전체. 페이지네이션으로 모두 가져온다."""
+def rows_missing_unit(client, pharmacy_id: str, include_notfound: bool = False) -> list[dict]:
+    """규격 수집 대상 행(id, name, insurance_code) 전체. 페이지네이션으로 모두 가져온다.
+
+    미발견 보류(unit_notfound_at 기록됨) 행은 기본 제외 — include_notfound=True 면 포함.
+    """
     rows, start, page = [], 0, 1000
     while True:
-        res = (
+        query = (
             client.table("drug_master")
             .select("id, name, insurance_code")
             .eq("pharmacy_id", pharmacy_id)
             .is_("unit", "null")
             .not_.is_("insurance_code", "null")
             .neq("insurance_code", "")
-            .order("name")
-            .range(start, start + page - 1)
-            .execute()
         )
+        if not include_notfound:
+            query = query.is_("unit_notfound_at", "null")
+        res = query.order("name").range(start, start + page - 1).execute()
         batch = res.data or []
         rows.extend(batch)
         if len(batch) < page:
@@ -150,5 +155,15 @@ def rows_missing_unit(client, pharmacy_id: str) -> list[dict]:
 
 
 def set_unit(client, row_id: str, unit: str) -> None:
-    """수집한 규격 저장. 빈 값은 NULL 로 둬서 다음 수집 대상으로 남긴다."""
-    client.table("drug_master").update({"unit": (unit or "").strip() or None}).eq("id", row_id).execute()
+    """수집한 규격 저장 (미발견 보류도 해제). 빈 값은 NULL 로 둬서 다음 수집 대상으로 남긴다."""
+    client.table("drug_master").update({
+        "unit": (unit or "").strip() or None,
+        "unit_notfound_at": None,
+    }).eq("id", row_id).execute()
+
+
+def mark_unit_notfound(client, row_id: str) -> None:
+    """기준 도매상에서 규격 미발견 — 기본 수집 대상에서 보류 처리."""
+    from datetime import datetime
+    ts = datetime.now().astimezone().isoformat(timespec="seconds")
+    client.table("drug_master").update({"unit_notfound_at": ts}).eq("id", row_id).execute()

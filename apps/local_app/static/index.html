@@ -69,13 +69,40 @@
     .tab.active { color:var(--primary); border-bottom-color:var(--primary); }
     /* 약품 DB */
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:12px; }
+    .dm-cards { display:flex; gap:12px; align-items:stretch; }
+    .dm-cards .card { flex:3; min-width:0; display:flex; flex-direction:column; }
+    .dm-cards .card:first-child { flex:4; display:block; }   /* 상태(타일) 카드 — 더 넓게(4:3:3), 텍스트가 flex 로 쪼개지지 않게 block */
+    .dm-cards h3 { margin:0 0 8px; font-size:15px; }
+    @media (max-width:900px) { .dm-cards { flex-direction:column; } .dm-cards .card { display:block; } }
     .dm-uploadrow { display:flex; align-items:center; gap:12px; }
     .dm-map { display:flex; gap:14px; flex-wrap:wrap; margin:14px 0; }
     .dm-map label { font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
-    .dm-map select, .dm-hdr input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#fafafe; }
-    .dm-hdr { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; }
+    .dm-map select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:#fafafe; }
+    /* 머리글 행 직접 선택 (원본 상위 행을 보여주고 클릭으로 선택) */
+    .hdr-pick tr { cursor:pointer; }
+    .hdr-pick tr:hover td { background:rgba(108,92,231,.05); }
+    .hdr-pick tr.cur td { background:rgba(108,92,231,.12); }
+    .hdr-pick .hp-idx { color:var(--muted); font-size:11px; white-space:nowrap; }
+    .hdr-pick tr.cur .hp-idx { color:var(--primary); font-weight:700; }
+    .link-btn { background:none; border:none; padding:0; color:var(--primary); font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline; }
     .dm-sample { overflow-x:auto; margin-top:10px; border:1px solid var(--line); border-radius:8px; }
     .dm-sample table td, .dm-sample table th { font-size:12px; padding:5px 9px; white-space:nowrap; }
+    /* 미리보기: 선택된 컬럼 강조 (드롭다운과 같은 색) */
+    .dm-sample .colsel-name  { background:rgba(108,92,231,.12); }
+    .dm-sample .colsel-code  { background:rgba(31,157,99,.12); }
+    .dm-sample .colsel-maker { background:rgba(183,121,31,.13); }
+    .dm-sample .colsel-usage { background:rgba(41,128,185,.08); }
+    .coldot { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
+    .coldot.dn { background:rgba(108,92,231,.55); }
+    .coldot.dc { background:rgba(31,157,99,.55); }
+    .coldot.dm { background:rgba(183,121,31,.55); }
+    /* 월별 사용량 타일 (약품 DB 상태 카드) — 연도별 한 행, 저장된 달 초록, 빈 달 회색 */
+    .ut-wrap { margin-top:12px; display:flex; flex-direction:column; gap:3px; }
+    .ut-row { display:flex; align-items:center; gap:2px; }
+    .ut { width:18px; height:18px; border-radius:4px; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center;
+          font-size:9px; font-weight:700; font-style:normal; background:var(--green); color:#fff; }
+    .ut.miss { background:var(--grey-bg); color:var(--muted); }
+    .ut-year { width:30px; font-size:11px; color:var(--muted); font-weight:700; margin-right:4px; }
     /* 약품 DB 뷰어 */
     .dm-viewer-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
     .dm-viewer-head h3 { margin:0; font-size:15px; }
@@ -162,46 +189,37 @@
       </section>
 
       <section id="masterView" class="tabview hidden">
-        <div class="card" id="dmStatus">불러오는 중…</div>
-        <div class="card">
-          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
-            약국 조제 프로그램의 <b>월별 약품사용량</b> 데이터를 엑셀로 추출해서 업로드해 주세요.
-            <b>약품명·보험코드(청구코드)·제약사</b>에 더해 <b>1월~12월 사용량</b> 컬럼이 있으면
-            약품별 <b>월평균 사용량</b>도 자동 계산돼 주문 시 참고 자료로 표시됩니다.
-            (다른 컬럼이 섞여 있어도 괜찮아요 — 업로드 후 컬럼을 직접 선택합니다.)
-          </p>
-          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
-            월평균은 <b>최근 12개 완전월</b> 기준이라, <b>작년·올해 연도별 파일을 각각</b> 올려주시면
-            가장 정확해요. 올해 파일의 진행 중인 달(부분 데이터)은 자동으로 걸러냅니다.
-          </p>
-          <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
-            엑셀을 올리면 <b>기존 약품은 그대로 유지</b>되고, 목록에 없던 <b>신규 약품만 추가</b>됩니다.
-            수집·직접추가한 규격도 보존돼요. (엑셀에 없는 기존 약품도 삭제되지 않습니다.)
-          </p>
-          <div class="dm-uploadrow">
-            <label class="btn-primary btn-sm" for="dmFile" style="cursor:pointer">엑셀 파일 올려서 갱신</label>
-            <input type="file" id="dmFile" accept=".xlsx,.xls" style="display:none" />
-            <span class="muted" id="dmFileName"></span>
-          </div>
-          <div id="dmPreview"></div>
+        <div class="toolbar">
+          <h2>약품 DB</h2>
+          <button class="btn-ghost btn-sm" id="dmRefreshBtn">새로고침</button>
         </div>
-
-        <!-- 규격 수집 -->
-        <div class="card">
-          <div class="dm-viewer-head">
-            <h3>규격 수집 <span class="muted" id="ucDist" style="font-size:13px"></span></h3>
-            <div style="display:flex; gap:8px">
+        <!-- 상태 · 약품 DB 갱신 · 규격 수집 — 3열 요약 카드 (자세한 설명은 버튼 클릭 시 모달) -->
+        <div class="dm-cards">
+          <div class="card" id="dmStatus">불러오는 중…</div>
+          <div class="card">
+            <h3>약품 DB 갱신</h3>
+            <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
+              월별 약품사용량 엑셀로 신규 약품을 추가하고 월평균 사용량을 갱신합니다.
+            </p>
+            <div class="dm-uploadrow" style="margin-top:auto">
+              <button class="btn-primary btn-sm" id="dmUploadBtn">엑셀 파일 올려서 갱신</button>
+              <input type="file" id="dmFile" accept=".xlsx,.xls" style="display:none" />
+              <span class="muted" id="dmFileName" style="font-size:12px"></span>
+            </div>
+          </div>
+          <div class="card">
+            <h3>규격 수집 <span class="muted" id="ucDist" style="font-size:12px; font-weight:400"></span></h3>
+            <p class="muted" style="font-size:13px; margin:0 0 12px; line-height:1.55">
+              규격이 비어 있는 약품을 기준 도매상에서 검색해 채웁니다.
+            </p>
+            <div id="ucStats" class="muted" style="font-size:13px">불러오는 중…</div>
+            <div class="pbar hidden" id="ucBarWrap"><i id="ucBar"></i></div>
+            <div class="muted" id="ucMsg" style="font-size:13px; margin-top:6px"></div>
+            <div style="display:flex; gap:8px; margin-top:auto; padding-top:12px">
               <button class="btn-primary btn-sm" id="ucStart">규격 수집 시작</button>
               <button class="btn-ghost btn-sm hidden" id="ucStop">중단</button>
             </div>
           </div>
-          <p class="muted" style="font-size:13px; margin:0 0 10px; line-height:1.55">
-            엑셀에는 규격 컬럼이 없어서, <b>보험코드가 있고 규격이 비어 있는 약품</b>을 기준 도매상에서
-            검색해 채웁니다. 크롤링은 <b>이 PC</b>에서 돌고 결과만 클라우드에 저장돼요.
-          </p>
-          <div id="ucStats" class="muted" style="font-size:13px">불러오는 중…</div>
-          <div class="pbar hidden" id="ucBarWrap"><i id="ucBar"></i></div>
-          <div class="muted" id="ucMsg" style="font-size:13px; margin-top:8px"></div>
         </div>
 
         <!-- 약품 DB 뷰어 -->
@@ -256,6 +274,25 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- 업로드 미리보기 모달 -->
+  <div id="pvModal" class="cf-overlay hidden">
+    <div class="cf-card" style="max-width:980px; width:100%; max-height:88vh; overflow-y:auto">
+      <div id="dmPreview"></div>
+    </div>
+  </div>
+
+  <!-- 공용 알림/확인 모달 (네이티브 alert/confirm 대체) -->
+  <div id="msgModal" class="cf-overlay hidden">
+    <div class="cf-card" style="max-width:400px">
+      <h3 id="msgTitle"></h3>
+      <div class="muted" id="msgBody" style="font-size:13px; line-height:1.65; margin:8px 0 20px; white-space:pre-line"></div>
+      <div class="cf-actions">
+        <button class="btn-ghost btn-sm" id="msgCancel">취소</button>
+        <button class="btn-primary btn-sm" id="msgOk">확인</button>
+      </div>
+    </div>
   </div>
 
   <!-- 자유입력-엑셀 중복 확인 모달 -->
@@ -363,6 +400,33 @@
     }
     function debounce2(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+    // ---- 공용 알림/확인 모달 (네이티브 alert/confirm 은 OS 창이라 쓰지 않는다) ----
+    function showModal(title, body, { confirm = false, ok = '확인', html = false } = {}) {
+      return new Promise((resolve) => {
+        $('msgTitle').textContent = title;
+        if (html) $('msgBody').innerHTML = body || '';
+        else $('msgBody').textContent = body || '';
+        $('msgBody').classList.toggle('hidden', !body);
+        $('msgOk').textContent = ok;
+        $('msgCancel').classList.toggle('hidden', !confirm);
+        $('msgModal').classList.remove('hidden');
+        const onKey = (e) => { if (e.key === 'Escape') done(false); if (e.key === 'Enter') done(true); };
+        const done = (v) => {
+          $('msgModal').classList.add('hidden');
+          $('msgOk').onclick = $('msgCancel').onclick = $('msgModal').onclick = null;
+          document.removeEventListener('keydown', onKey);
+          resolve(v);
+        };
+        $('msgOk').onclick = () => done(true);
+        $('msgCancel').onclick = () => done(false);
+        $('msgModal').onclick = (e) => { if (e.target === $('msgModal')) done(false); };
+        document.addEventListener('keydown', onKey);
+        $('msgOk').focus();
+      });
+    }
+    const appAlert = (title, body = '') => showModal(title, body);
+    const appConfirm = (title, body = '', ok = '확인') => showModal(title, body, { confirm: true, ok });
+
     // ---- 약품 DB 뷰어 ----
     let dmOffset = 0, dmQ = '', dmFilter = '';
     const DM_LIMIT = 50;
@@ -414,7 +478,7 @@
             const sp = document.createElement('span'); sp.className = 'uchip manual'; sp.textContent = uu; cell.insertBefore(sp, addWrap);
           });
           addInput.value = '';
-        } catch (e) { alert(e.message); } finally { addBtn.disabled = false; }
+        } catch (e) { appAlert('규격 추가 실패', e.message); } finally { addBtn.disabled = false; }
       };
       addBtn.addEventListener('click', doAdd);
       addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
@@ -426,13 +490,13 @@
           const nn = nameInput.value.trim();
           if (nn === orig || !nn) { nameInput.value = orig; return; }
           try { await postJson('/api/drug-master/rename', { row_id: r.id, name: nn }); r.name = nn; }
-          catch (e) { alert(e.message); nameInput.value = orig; }
+          catch (e) { appAlert('이름 수정 실패', e.message); nameInput.value = orig; }
         });
         const del = document.createElement('button');
         del.className = 'dm-del'; del.title = '삭제'; del.textContent = '🗑';
         del.addEventListener('click', async () => {
-          if (!confirm(`'${r.name}' 자유입력 약품을 삭제할까요?`)) return;
-          try { await postJson('/api/drug-master/delete', { row_id: r.id }); loadDmRows(); } catch (e) { alert(e.message); }
+          if (!await appConfirm('자유입력 약품을 삭제할까요?', `'${r.name}' 을(를) 약품 DB에서 삭제합니다.`, '삭제')) return;
+          try { await postJson('/api/drug-master/delete', { row_id: r.id }); loadDmRows(); } catch (e) { appAlert('삭제 실패', e.message); }
         });
         tr.querySelector('.name-cell').appendChild(del);
       }
@@ -447,31 +511,73 @@
     $('dmNext').addEventListener('click', () => { dmOffset += DM_LIMIT; loadDmRows(); });
 
     // ---- 약품 DB 엑셀 임포트 ----
+    let dmHeaderRow = 0;   // 현재 미리보기의 머리글 행 (임포트 시 함께 전송)
+    let dmLastResult = ''; // 마지막 임포트 상세 결과 (모달 다시 열기용)
+
+    // 월별 사용량 타일 — 연도마다 한 행(1~12월), 저장된 달 초록·빈 달 회색
+    function usageTiles(months) {
+      if (!months || !months.length) return '';
+      const map = {};
+      months.forEach((m) => { map[`${m.year}-${m.month}`] = m; });
+      const y0 = months[0].year, y1 = months[months.length - 1].year;
+      let html = '';
+      for (let y = y0; y <= y1; y++) {
+        html += `<div class="ut-row"><span class="ut-year">${y}</span>`;
+        for (let mo = 1; mo <= 12; mo++) {
+          const m = map[`${y}-${mo}`], ym = `${y}-${String(mo).padStart(2, '0')}`;
+          const tip = m ? `${ym} · 사용량 있는 약품 ${m.drugs.toLocaleString()}개` : `${ym} · 데이터 없음`;
+          html += `<i class="ut${m ? '' : ' miss'}" title="${tip}">${mo}</i>`;
+        }
+        html += '</div>';
+      }
+      return `<div class="ut-wrap">${html}</div>`;
+    }
     async function loadDmStatus() {
       try {
         const s = await jget('/api/drug-master/status');
         const u = s.usage;
         $('dmStatus').innerHTML = s.count
-          ? `현재 <b>${s.count.toLocaleString()}</b>개 등록됨`
-            + (s.source_file ? ` · ${esc(s.source_file)}` : '')
-            + (s.imported_at ? ` · ${esc(String(s.imported_at).slice(0, 10))}` : '')
-            + (u ? `<br><span class="muted">월평균 사용량: ${u.drugs.toLocaleString()}개 약품 · ${esc(u.window_start)} ~ ${esc(u.window_end)} 완전월 기준</span>` : '')
+          ? `현재 <b>${s.count.toLocaleString()}</b>개 약품 등록됨.`
+            + (u && u.data_start ? `<br><span class="muted">월평균 사용량 데이터 : ${esc(u.data_start)} ~ ${esc(u.data_end)} 등록</span>` : '')
+            + (u ? usageTiles(u.months) : '')
           : '아직 등록된 약품이 없습니다. 엑셀을 업로드하세요.';
       } catch (e) { $('dmStatus').textContent = '상태 조회 실패: ' + e.message; }
     }
+    // 업로드 버튼 → 자세한 안내 모달 → 파일 선택 (약품 DB 페이지는 간략하게 유지)
+    const UPLOAD_INFO = `
+      <ul style="margin:0; padding-left:20px; line-height:1.8">
+        <li>약국 조제 프로그램의 <b>월별 약품사용량</b> 데이터를 엑셀로 추출해 올려주세요.</li>
+        <li><b>약품명·보험코드(청구코드)·제약사</b>에 더해 <b>1월~12월 사용량</b> 컬럼이 있으면
+            약품별 <b>월평균 사용량</b>도 자동 계산됩니다. 다른 컬럼이 섞여 있어도 괜찮아요 —
+            업로드 후 컬럼을 직접 선택합니다.</li>
+        <li>월평균은 <b>최근 12개 완전월</b> 기준이라 <b>작년·올해 연도별 파일을 각각</b> 올리면
+            가장 정확해요. 진행 중인 달(부분 데이터)은 자동으로 걸러냅니다.</li>
+        <li><b>기존 약품은 그대로 유지</b>되고 목록에 없던 신규 약품만 추가됩니다.
+            수집·직접추가한 규격도 보존돼요. (엑셀에 없는 기존 약품도 삭제되지 않습니다)</li>
+      </ul>`;
+    $('dmUploadBtn').addEventListener('click', async () => {
+      if (await showModal('약품 DB 갱신', UPLOAD_INFO, { html: true, confirm: true, ok: '파일 선택' }))
+        $('dmFile').click();
+    });
+    // 업로드 미리보기 모달
+    function pvOpen() { $('pvModal').classList.remove('hidden'); }
+    function pvClose() { $('pvModal').classList.add('hidden'); }
+    $('pvModal').addEventListener('click', (e) => { if (e.target === $('pvModal')) pvClose(); });
     $('dmFile').addEventListener('change', (e) => {
       const f = e.target.files[0]; if (!f) return;
+      e.target.value = '';   // 같은 파일을 다시 선택해도 change 가 뜨도록 리셋
       $('dmFileName').textContent = f.name;
       previewFile(f, null);
     });
     async function previewFile(file, headerRow) {
-      $('dmPreview').innerHTML = '<div class="muted" style="margin-top:12px">미리보기 준비 중…</div>';
+      pvOpen();
+      $('dmPreview').innerHTML = '<div class="muted">미리보기 준비 중…</div>';
       const fd = new FormData(); fd.append('file', file);
       if (headerRow != null) fd.append('header_row', headerRow);
       let pv;
       try { const r = await fetch('/api/drug-master/preview', { method: 'POST', body: fd }); pv = await r.json(); if (!r.ok) throw new Error(pv.detail); }
-      catch (e) { $('dmPreview').innerHTML = `<div class="muted" style="margin-top:12px">미리보기 실패: ${esc(e.message)}</div>`; return; }
-      renderPreview(file, pv);
+      catch (e) { $('dmPreview').innerHTML = `<div class="muted">미리보기 실패: ${esc(e.message)}</div>`; return; }
+      renderPreview(file, pv, headerRow != null);
     }
     function colOpts(cols, sel) {
       return '<option value="">(없음)</option>' + cols.map((c) => `<option value="${esc(c)}"${c === sel ? ' selected' : ''}>${esc(c)}</option>`).join('');
@@ -479,63 +585,128 @@
     function usageNotice(u) {
       if (!u || !u.detected) return '';
       if (!u.year) return `<p class="muted" style="font-size:13px; margin:6px 0">📊 월별 사용량 컬럼을 감지했지만 <b>연도를 찾지 못해</b> 사용량은 저장되지 않습니다. 파일명에 연도(예: 2026)를 넣어 다시 올려주세요.</p>`;
-      return `<p style="font-size:13px; margin:6px 0; color:var(--green)">📊 <b>${u.year}년</b> 월별 사용량 데이터 감지 — 약품 추가 시 사용량도 함께 저장되고 월평균이 재계산됩니다. (보험코드 컬럼 선택 필요)</p>`;
+      return `<p style="font-size:13px; margin:6px 0; color:var(--green)">📊 <b>${u.year}년</b> 월별 사용량 데이터 감지 — 약품 추가 시 사용량도 함께 저장되고 월평균이 재계산됩니다. (보험코드 컬럼 선택 필요 · 파란 배경 = 사용량 컬럼)</p>`;
     }
     function fmtAvg(v) {
       if (v == null) return '';
       return Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
     }
-    function renderPreview(file, pv) {
+    function headerPickHtml(pv, manual) {
+      const rows = pv.raw_rows || [];
+      if (!rows.length) return '';
+      // 뒤쪽이 전부 빈 셀이면 잘라내서 표를 컴팩트하게
+      const maxCols = Math.max(1, ...rows.map((r) => { let n = r.length; while (n > 0 && !r[n - 1]) n--; return n; }));
+      const open = manual || !pv.header_confident;
+      const intro = pv.header_confident
+        ? `<p class="muted" style="font-size:12px; margin:10px 0 4px">컬럼 이름이 있는 행을 클릭해 머리글로 지정하세요.</p>`
+        : `<p style="font-size:13px; margin:10px 0 4px; color:var(--amber)">⚠️ 머리글 행(컬럼 이름이 있는 행)을 자동으로 찾지 못했어요. 아래 파일 원본에서 <b>컬럼 이름이 있는 행을 클릭</b>해 주세요.</p>`;
+      const toggle = pv.header_confident
+        ? `<button class="link-btn" id="hdrToggle" style="margin-top:8px">${open ? '머리글 행 선택 닫기' : '컬럼명이 이상한가요? 머리글 행 직접 선택'}</button>`
+        : '';
+      const tbl = `<div class="dm-sample hdr-pick"><table><tbody>${rows.map((r, i) => `
+        <tr class="${i === pv.used_header_row ? 'cur' : ''}" data-row="${i}" title="이 행을 머리글로 지정">
+          <td class="hp-idx">${i === pv.used_header_row ? '✓ 머리글' : `${i + 1}행`}</td>
+          ${r.slice(0, maxCols).map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      return `${toggle}<div id="hdrPick" class="${open ? '' : 'hidden'}">${intro}${tbl}</div>`;
+    }
+    function renderPreview(file, pv, manual) {
       const cols = pv.columns || [], sc = pv.suggested_cols || {};
-      const sample = `<div class="dm-sample"><table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-        <tbody>${(pv.sample_rows || []).map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-      $('dmPreview').innerHTML = `
-        <div class="dm-hdr">머리글 행 <input type="number" id="dmHeader" value="${pv.used_header_row}" min="0" style="width:56px">
-          <button class="btn-ghost btn-sm" id="dmReHdr">적용</button>
-          <span class="muted">· 총 ${pv.total_rows}행</span></div>
+      const sample = `<div class="dm-sample"><table><thead><tr>${cols.map((c) => `<th data-c="${esc(c)}">${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${(pv.sample_rows || []).map((r) => `<tr>${cols.map((c) => `<td data-c="${esc(c)}">${esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      dmHeaderRow = pv.used_header_row;
+      const confident = !!pv.header_confident;
+      $('dmPreview').innerHTML = `<div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px">
+          <h3 style="margin:0; font-size:16px">업로드 미리보기 <span class="muted" style="font-size:12px; font-weight:400">${esc(file.name)}</span></h3>
+          <button class="btn-ghost btn-sm" id="pvClose">닫기</button>
+        </div>
+        ${confident ? '' : headerPickHtml(pv, manual)}
         <div class="dm-map">
-          <label>약품명 컬럼 *<select id="dmName">${colOpts(cols, sc.name)}</select></label>
-          <label>보험코드 컬럼<select id="dmCode">${colOpts(cols, sc.code)}</select></label>
-          <label>제약사 컬럼<select id="dmMaker">${colOpts(cols, sc.maker)}</select></label>
+          <label><span><i class="coldot dn"></i>약품명 컬럼 *</span><select id="dmName">${colOpts(cols, sc.name)}</select></label>
+          <label><span><i class="coldot dc"></i>보험코드 컬럼</span><select id="dmCode">${colOpts(cols, sc.code)}</select></label>
+          <label><span><i class="coldot dm"></i>제약사 컬럼</span><select id="dmMaker">${colOpts(cols, sc.maker)}</select></label>
         </div>
         ${usageNotice(pv.usage)}
         ${sample}
+        <p class="muted" style="font-size:12px; margin:6px 0 0">총 ${pv.total_rows}행</p>
+        ${confident ? headerPickHtml(pv, manual) : ''}
         <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
           <button class="btn-primary btn-sm" id="dmImport">신규 약품 추가</button>
           <span class="muted" id="dmImportMsg"></span>
-        </div>`;
-      $('dmReHdr').addEventListener('click', () => previewFile(file, $('dmHeader').value));
+        </div></div>`;
+      $('pvClose').addEventListener('click', pvClose);
       $('dmImport').addEventListener('click', () => doImport(file));
+      // 머리글 행 직접 선택: 원본 행 클릭 → 그 행을 머리글로 다시 미리보기
+      const hdrToggle = $('hdrToggle');
+      if (hdrToggle) hdrToggle.addEventListener('click', () => {
+        $('hdrPick').classList.toggle('hidden');
+        hdrToggle.textContent = $('hdrPick').classList.contains('hidden') ? '컬럼명이 이상한가요? 머리글 행 직접 선택' : '머리글 행 선택 닫기';
+      });
+      document.querySelectorAll('#hdrPick .hdr-pick tr').forEach((tr) =>
+        tr.addEventListener('click', () => previewFile(file, tr.dataset.row)));
+      // 선택된 컬럼을 미리보기에서 색으로 강조 (드롭다운 변경 시 즉시 반영)
+      const paint = () => {
+        const sel = {};
+        if (pv.usage && pv.usage.detected && pv.usage.year)
+          for (let m = 1; m <= 12; m++) sel[`${m}월`] = 'colsel-usage';
+        if ($('dmMaker').value) sel[$('dmMaker').value] = 'colsel-maker';
+        if ($('dmCode').value) sel[$('dmCode').value] = 'colsel-code';
+        if ($('dmName').value) sel[$('dmName').value] = 'colsel-name';
+        document.querySelectorAll('#dmPreview .dm-sample [data-c]').forEach((cell) => {
+          cell.classList.remove('colsel-name', 'colsel-code', 'colsel-maker', 'colsel-usage');
+          const cls = sel[cell.dataset.c];
+          if (cls) cell.classList.add(cls);
+        });
+      };
+      ['dmName', 'dmCode', 'dmMaker'].forEach((id) => $(id).addEventListener('change', paint));
+      paint();
     }
     async function doImport(file) {
       const name = $('dmName').value;
       if (!name) { $('dmImportMsg').textContent = '약품명 컬럼을 선택하세요.'; return; }
-      if (!confirm('엑셀의 신규 약품을 추가합니다.\n기존 약품·규격은 그대로 유지되고, 없던 약품만 추가돼요.\n계속할까요?')) return;
+      if (!await appConfirm('신규 약품을 추가할까요?', '기존 약품·규격은 그대로 유지되고, 목록에 없던 약품만 추가돼요.', '추가')) return;
       const btn = $('dmImport'); btn.disabled = true; $('dmImportMsg').textContent = '추가 중… (수 초)';
       const fd = new FormData();
       fd.append('file', file); fd.append('name_col', name);
       fd.append('code_col', $('dmCode').value); fd.append('maker_col', $('dmMaker').value);
-      fd.append('header_row', $('dmHeader').value);
+      fd.append('header_row', String(dmHeaderRow));
       try {
         const r = await fetch('/api/drug-master/import', { method: 'POST', body: fd });
         const d = await r.json(); if (!r.ok) throw new Error(d.detail || '임포트 실패');
-        let msg = `✓ 신규 ${(d.inserted ?? 0).toLocaleString()}개 추가 (총 ${(d.count ?? 0).toLocaleString()}개)`;
-        if (d.usage) {
-          if (d.usage.skipped === 'code_col') msg += ' · 사용량은 보험코드 컬럼 미선택으로 저장 안 됨';
-          else if (d.usage.skipped === 'year') msg += ' · 사용량은 연도 미확인으로 저장 안 됨';
-          else {
-            const st = d.usage.stats || {};
-            msg += ` · 📊 ${d.usage.year}년 사용량 ${d.usage.months}개월 저장`;
-            if (st.window_start) msg += ` — 월평균 재계산 (${st.window_start}~${st.window_end}, ${st.window_months}개월 기준${st.partial_excluded ? `, ${st.partial_excluded}은 진행 중이라 제외` : ''})`;
-          }
-        }
-        if (d.usage_error) msg += ` · 사용량 저장 실패: ${d.usage_error}`;
-        if ((d.conflicts || []).length) msg += ` · 자유입력 중복 의심 ${d.conflicts.length}건 확인 필요`;
-        $('dmImportMsg').textContent = msg;
+        dmLastResult = importResultHtml(d);
+        pvClose();   // 미리보기 모달을 닫고 결과 모달을 띄운다
+        $('dmFileName').innerHTML = `✓ 갱신 완료 · <button class="link-btn" id="dmResultAgain">자세한 결과 보기</button>`;
+        $('dmResultAgain').onclick = () => showModal('임포트 결과', dmLastResult, { html: true });
+        await showModal('임포트 결과', dmLastResult, { html: true });
         loadDmStatus(); loadDmRows();
         if ((d.conflicts || []).length) await runConflictQueue(d.conflicts, d.source_file || file.name);
       } catch (e) { $('dmImportMsg').textContent = '실패: ' + e.message; }
       finally { btn.disabled = false; }
+    }
+    // 임포트 상세 결과 — "약품 추가"와 "사용량 저장"은 별개 숫자라 항목을 나눠 보여준다.
+    function importResultHtml(d) {
+      const fmt = (n) => (n ?? 0).toLocaleString();
+      const sec = (icon, title, lines) => lines.length
+        ? `<div style="margin:12px 0 0"><b style="font-size:13px; color:var(--text)">${icon} ${title}</b>
+           <ul style="margin:6px 0 0; padding-left:20px; line-height:1.8">${lines.map((l) => `<li>${l}</li>`).join('')}</ul></div>`
+        : '';
+      const drug = [`신규 약품 <b>${fmt(d.inserted)}개</b> 추가 → 현재 총 <b>${fmt(d.count)}개</b>`];
+      if ((d.conflicts || []).length) drug.push(`자유입력 중복 의심 <b>${d.conflicts.length}건</b> — 이어서 확인 창이 떠요`);
+      const u = d.usage, st = (u || {}).stats || {};
+      const usage = [];
+      if (u) {
+        if (u.skipped === 'code_col') usage.push('보험코드 컬럼을 선택하지 않아 사용량은 저장되지 않았어요');
+        else if (u.skipped === 'year') usage.push('연도를 확인할 수 없어 사용량은 저장되지 않았어요 (파일명에 연도를 넣어주세요)');
+        else {
+          usage.push(`<b>${u.year}년</b> 파일에서 약품 <b>${fmt(u.drugs)}개</b>의 사용량 저장 (데이터가 있는 달: ${u.months}개월)`);
+          if (st.window_start) {
+            usage.push(`월평균 재계산: 약품 <b>${fmt(st.drugs)}개</b> — <b>${st.window_start} ~ ${st.window_end}</b> 완전월 ${st.window_months}개월 기준`);
+            if (st.partial_excluded) usage.push(`${st.partial_excluded}은 진행 중인 달(부분 데이터)이라 계산에서 제외했어요`);
+          }
+        }
+      }
+      if (d.usage_error) usage.push(`⚠️ 사용량 저장 실패: ${esc(d.usage_error)}`);
+      return sec('💊', '약품 DB', drug) + sec('📊', '월별 사용량 · 월평균', usage);
     }
 
     // ---- 자유입력-엑셀 중복 확인 ----
@@ -571,25 +742,41 @@
             row_id: conflicts[i].row_id, same, excel: conflicts[i].excel, source_file: sourceFile,
           });
           if (same) merged++; else added++;
-        } catch (e) { alert('처리 실패: ' + e.message); skipped++; }
+        } catch (e) { await appAlert('처리 실패', e.message); skipped++; }
       }
       const parts = [];
       if (merged) parts.push(`병합 ${merged}건`);
       if (added) parts.push(`신규 추가 ${added}건`);
       if (skipped) parts.push(`보류 ${skipped}건 (다음 임포트 때 다시 확인)`);
-      if (parts.length) $('dmImportMsg').textContent += ` — ${parts.join(' · ')}`;
+      if (parts.length) $('dmFileName').append(` — 중복 확인: ${parts.join(' · ')}`);
       loadDmStatus(); loadDmRows();
     }
 
     // ---- 규격 수집 ----
     let ucStream = null;
+    let ucLastResult = '';   // 마지막 수집 상세 결과 (모달 다시 열기용)
 
+    function ucResultHtml(d) {
+      const fmt = (n) => (n ?? 0).toLocaleString();
+      const lines = [
+        `검색 대상 <b>${fmt(d.total)}건</b> 중 규격을 찾아 채움 <b>${fmt(d.updated)}건</b>`,
+        `미발견 <b>${fmt(d.notfound)}건</b> — 기준 도매상에 규격 정보가 없는 약품이에요. 보류 처리돼 다음 수집에선 기본 제외되고, 수집 시작 시 체크박스로 다시 포함할 수 있어요`,
+      ];
+      if (d.failed) lines.push(`검색 실패 <b>${fmt(d.failed)}건</b> — 일시적 오류일 수 있어요. 다음 수집 때 다시 시도됩니다`);
+      if (d.stopped) lines.push('중간에 중단됨 — 남은 약품은 다음 수집 때 이어서 진행돼요');
+      return `<ul style="margin:0; padding-left:20px; line-height:1.8">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
+    }
+
+    let ucStatsData = null;   // 수집 시작 모달의 체크박스 안내에 사용
     async function loadUnitStats() {
       try {
         const s = await jget('/api/drug-master/unit-stats');
+        ucStatsData = s;
         $('ucDist').textContent = `· 기준 도매상 ${s.distributor}` + (s.configured ? '' : ' (계정 미설정)');
-        $('ucStats').innerHTML = `총 <b>${s.total.toLocaleString()}</b>건 · 수집됨 <b>${s.filled.toLocaleString()}</b>건`
-          + ` · 수집 대상 <b>${s.missing_with_code.toLocaleString()}</b>건`;
+        $('ucStats').innerHTML =
+          `<div style="color:var(--text); font-size:14px; margin-bottom:4px">수집 대상 <b style="color:var(--primary)">${s.missing_with_code.toLocaleString()}</b>건</div>`
+          + `<div>수집됨 ${s.filled.toLocaleString()}건`
+          + ((s.notfound_held ?? 0) ? ` · 미발견 보류 ${s.notfound_held.toLocaleString()}건` : '') + '</div>';
         ucRunning(s.running);
       } catch (e) { $('ucStats').textContent = '현황 조회 실패: ' + e.message; }
     }
@@ -634,15 +821,29 @@
       }
     }
     $('ucStart').addEventListener('click', async () => {
-      if (!confirm('규격 수집을 시작할까요?\n기준 도매상에 로그인해 보험코드로 하나씩 검색합니다.\n건수가 많으면 오래 걸릴 수 있어요 (중간에 중단 가능).')) return;
+      const held = ucStatsData?.notfound_held ?? 0;
+      const body = `<p style="margin:0; line-height:1.65">엑셀에는 규격 컬럼이 없어서, 보험코드가 있고 규격이 비어 있는 약품을
+        기준 도매상에서 검색해 채웁니다. 크롤링은 이 PC에서 돌고 결과만 클라우드에 저장돼요.<br><br>
+        기준 도매상에 로그인해 보험코드로 하나씩 검색하며, 건수가 많으면 오래 걸릴 수 있어요 (중간에 중단 가능).</p>`
+        + (held ? `<label style="display:flex; gap:8px; align-items:flex-start; margin-top:14px; cursor:pointer; color:var(--text)">
+            <input type="checkbox" id="ucInc" style="margin-top:3px">
+            <span>이전에 <b>미발견</b>으로 보류된 <b>${held.toLocaleString()}건</b>도 이번 수집에 포함하기<br>
+            <span class="muted" style="font-size:12px">체크하지 않으면 새로 수집 대상이 된 약품만 검색해서 빨리 끝나요.</span></span>
+          </label>` : '');
+      if (!await showModal('규격 수집을 시작할까요?', body, { html: true, confirm: true, ok: '시작' })) return;
+      const includeNotfound = !!document.getElementById('ucInc')?.checked;
       ucRunning(true); ucBar(0, 0); $('ucMsg').textContent = '기준 도매상 로그인 중…';
       ucOpenStream();
       try {
-        const d = await postJson('/api/drug-master/collect-units', {});
-        const head = d.stopped ? '중단됨' : '수집 완료';
-        $('ucMsg').textContent = d.error
-          ? `실패: ${d.error}`
-          : `${head} — 채움 ${d.updated}건 · 미발견 ${d.notfound}건` + (d.failed ? ` · 실패 ${d.failed}건` : '');
+        const d = await postJson('/api/drug-master/collect-units', { include_notfound: includeNotfound });
+        if (d.error) {
+          $('ucMsg').textContent = `실패: ${d.error}`;
+        } else {
+          ucLastResult = ucResultHtml(d);
+          $('ucMsg').innerHTML = `✓ ${d.stopped ? '중단됨' : '수집 완료'} · <button class="link-btn" id="ucResultAgain">자세한 결과 보기</button>`;
+          $('ucResultAgain').onclick = () => showModal('규격 수집 결과', ucLastResult, { html: true });
+          await showModal('규격 수집 결과', ucLastResult, { html: true });
+        }
       } catch (e) {
         $('ucMsg').textContent = '실패: ' + e.message;
       } finally {
@@ -708,7 +909,7 @@
       try {
         await postJson('/api/order-items/distributor', { item_id: sel.dataset.item, distributor: sel.value });
         sel.classList.add('saved'); setTimeout(() => sel.classList.remove('saved'), 1200);
-      } catch (e) { alert('도매상 저장 실패: ' + e.message); }
+      } catch (e) { appAlert('도매상 저장 실패', e.message); }
     }
 
     async function loadOrders() {
@@ -767,7 +968,7 @@
       }));
       el.querySelector('.crawl-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        alert('크롤링 기능은 준비 중입니다.\n(도매상 확정 후 구현 예정)');
+        appAlert('크롤링 기능은 준비 중입니다', '도매상 확정 후 구현 예정이에요.');
       });
       return el;
     }
@@ -824,6 +1025,7 @@
     }
 
     $('refreshBtn').addEventListener('click', loadOrders);
+    $('dmRefreshBtn').addEventListener('click', () => { loadDmStatus(); loadDmRows(); loadUnitStats(); });
     boot();
   </script>
 </body>

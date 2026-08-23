@@ -117,9 +117,9 @@ class UnitCollector:
 
     # --- 동기 배치 (executor 스레드) ---
     def _run_sync(self, get_client: Callable, pharmacy_id: str, creds: dict,
-                  loop: asyncio.AbstractEventLoop) -> dict:
+                  loop: asyncio.AbstractEventLoop, include_notfound: bool) -> dict:
         dist_name = creds["name"]
-        rows = master_db.rows_missing_unit(get_client(), pharmacy_id)
+        rows = master_db.rows_missing_unit(get_client(), pharmacy_id, include_notfound)
         total = len(rows)
         self._emit(loop, {
             "type": "unit_collect_started", "total": total, "distributor": dist_name,
@@ -178,6 +178,7 @@ class UnitCollector:
                         result = "ok"
                         print(f"  ✓ {prefix}{tag} → 규격 {unit}  [검색 {hit}건]")
                     else:
+                        master_db.mark_unit_notfound(get_client(), row["id"])  # 다음 수집에선 기본 제외
                         notfound += 1
                         result = "notfound"
                         print(f"  · {prefix}{tag} → 규격 없음  [검색 {hit}건]")
@@ -207,11 +208,13 @@ class UnitCollector:
         }
 
     # --- 비동기 공개 메서드 ---
-    async def run(self, get_client: Callable, pharmacy_id: str, creds: dict) -> dict:
+    async def run(self, get_client: Callable, pharmacy_id: str, creds: dict,
+                  include_notfound: bool = False) -> dict:
         """규격 일괄 수집 실행. 완료 시 요약 dict 반환.
 
         get_client 는 호출할 때마다 **유효한** Supabase 클라이언트를 돌려주는 함수여야 한다
         (수집이 길어져 access token 이 만료되면 갱신된 세션으로 계속 쓰기 위함).
+        include_notfound=True 면 미발견 보류 약품도 다시 검색한다.
         """
         if self._running:
             raise RuntimeError("이미 규격 수집이 진행 중입니다")
@@ -220,7 +223,7 @@ class UnitCollector:
         loop = asyncio.get_running_loop()
         try:
             summary = await loop.run_in_executor(
-                self._executor, self._run_sync, get_client, pharmacy_id, creds, loop
+                self._executor, self._run_sync, get_client, pharmacy_id, creds, loop, include_notfound
             )
             self._emit(loop, summary)
             return summary

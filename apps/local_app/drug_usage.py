@@ -105,7 +105,11 @@ def save_usage(client, pharmacy_id: str, year: int, rows: list[dict], filename: 
     } for r in rows]
     for i in range(0, len(payload), 500):
         client.table("drug_usage").insert(payload[i:i + 500]).execute()
-    return {"rows": len(payload), "months": len({r["month"] for r in rows})}
+    return {
+        "rows": len(payload),
+        "months": len({r["month"] for r in rows}),
+        "drugs": len({r["code"] for r in rows}),
+    }
 
 
 # ===================== 월평균 재계산 =====================
@@ -123,7 +127,7 @@ def compute_stats(rows: list[dict]) -> tuple[list[dict], dict]:
     순수 계산 함수 (Supabase 접근 없음) — 테스트/검증용으로 분리.
     """
     if not rows:
-        return [], {"drugs": 0, "window_months": 0}
+        return [], {"drugs": 0, "window_months": 0, "months_detail": []}
 
     by_month: dict[tuple[int, int], list[float]] = {}   # (y,m) -> [총합, 약품수]
     for r in rows:
@@ -146,8 +150,16 @@ def compute_stats(rows: list[dict]) -> tuple[list[dict], dict]:
     valid = [m for m in months if m != partial]
     window = valid[-_WINDOW:]
     if not window:
-        return [], {"drugs": 0, "window_months": 0}
+        return [], {"drugs": 0, "window_months": 0, "months_detail": []}
     window_set = set(window)
+
+    # 월별 타일 시각화용 요약 (임포트 시 drug_usage_months 로 저장된다)
+    months_detail = [{
+        "year": y, "month": m,
+        "drugs": int(by_month[(y, m)][1]),
+        "total": round(by_month[(y, m)][0], 1),
+        "status": "partial" if (y, m) == partial else ("window" if (y, m) in window_set else "stored"),
+    } for (y, m) in months]
 
     per_drug: dict[str, dict] = {}   # code -> {name, first, last, total}
     for r in rows:
@@ -182,6 +194,7 @@ def compute_stats(rows: list[dict]) -> tuple[list[dict], dict]:
         "window_start": _ym(*window[0]),
         "window_end": _ym(*window[-1]),
         "partial_excluded": _ym(*partial) if partial else None,
+        "months_detail": months_detail,
     }
     return stats, summary
 
@@ -209,20 +222,29 @@ def _fetch_usage(client, pharmacy_id: str) -> list[dict]:
 
 
 def recompute_stats(client, pharmacy_id: str) -> dict:
-    """저장된 전체 사용량으로 drug_usage_stats 를 전체 재계산(교체)."""
+    """저장된 전체 사용량으로 drug_usage_stats·drug_usage_months 를 전체 재계산(교체)."""
     stats, summary = compute_stats(_fetch_usage(client, pharmacy_id))
     computed_at = datetime.now().astimezone().isoformat(timespec="seconds")
     client.table("drug_usage_stats").delete().eq("pharmacy_id", pharmacy_id).execute()
     payload = [{"pharmacy_id": pharmacy_id, "computed_at": computed_at, **s} for s in stats]
     for i in range(0, len(payload), 500):
         client.table("drug_usage_stats").insert(payload[i:i + 500]).execute()
+
+    client.table("drug_usage_months").delete().eq("pharmacy_id", pharmacy_id).execute()
+    month_rows = [{"pharmacy_id": pharmacy_id, **m} for m in summary["months_detail"]]
+    for i in range(0, len(month_rows), 500):
+        client.table("drug_usage_months").insert(month_rows[i:i + 500]).execute()
     return summary
 
 
 # ===================== 조회 (표시용) =====================
 
 def usage_status(client, pharmacy_id: str) -> dict | None:
-    """상태 카드용 요약 — 통계가 없으면 None."""
+    """상태 카드용 요약 — 통계가 없으면 None.
+
+    계산 구간(최근 12개 완전월)과 별개로 저장된 원본 범위도 함께 알려줘
+    '옛날 연도 데이터가 사라졌나?' 하는 오해를 막는다.
+    """
     res = (
         client.table("drug_usage_stats")
         .select("window_start, window_end", count="exact")
@@ -232,10 +254,35 @@ def usage_status(client, pharmacy_id: str) -> dict | None:
     )
     if not res.data:
         return None
+
+    mres = (
+        client.table("drug_usage_months")
+        .select("year, month, drugs, status")
+        .eq("pharmacy_id", pharmacy_id)
+        .order("year").order("month")
+        .execute()
+    )
+    months = mres.data or []
+
+    def _edge(desc: bool) -> str | None:
+        r = (
+            client.table("drug_usage")
+            .select("year, month")
+            .eq("pharmacy_id", pharmacy_id)
+            .order("year", desc=desc).order("month", desc=desc)
+            .limit(1)
+            .execute()
+        )
+        return _ym(r.data[0]["year"], r.data[0]["month"]) if r.data else None
+
     return {
         "drugs": res.count or 0,
         "window_start": res.data[0].get("window_start"),
         "window_end": res.data[0].get("window_end"),
+        # 월별 요약이 있으면 그걸로 범위 계산, 없으면(0006 이전 데이터) 원본에서 조회
+        "data_start": _ym(months[0]["year"], months[0]["month"]) if months else _edge(desc=False),
+        "data_end": _ym(months[-1]["year"], months[-1]["month"]) if months else _edge(desc=True),
+        "months": months,
     }
 
 

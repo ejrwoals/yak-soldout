@@ -64,16 +64,17 @@ def _read_raw(file_bytes: bytes, filename: str, nrows: int) -> list[list[str]]:
     return [[_clean(v) for v in raw.iloc[i].tolist()] for i in range(len(raw))]
 
 
-def _guess_header_row(raw_rows: list[list[str]]) -> int:
+def _guess_header_row(raw_rows: list[list[str]]) -> tuple[int, bool]:
+    """머리글 행 추정 — (행 번호, 확신 여부). 힌트 단어가 있으면 확신, 없으면 최다 셀 행 추정."""
     best_idx, best_nonempty = 0, -1
     for i, cells in enumerate(raw_rows):
         joined = " ".join(c for c in cells if c)
         if any(h in joined for h in _HEADER_HINTS):
-            return i
+            return i, True
         nonempty = sum(1 for c in cells if c)
         if nonempty > best_nonempty:
             best_idx, best_nonempty = i, nonempty
-    return best_idx
+    return best_idx, False
 
 
 def _guess_col(columns: list[str], hints: tuple) -> str | None:
@@ -89,7 +90,7 @@ def preview(file_bytes: bytes, filename: str, header_row: int | None = None) -> 
     raw_rows = _read_raw(file_bytes, filename, RAW_PREVIEW_ROWS)
     if not raw_rows:
         raise ValueError("엑셀에서 데이터를 찾을 수 없습니다.")
-    suggested = _guess_header_row(raw_rows)
+    suggested, confident = _guess_header_row(raw_rows)
     used = suggested if header_row is None else max(0, int(header_row))
     used = min(used, len(raw_rows) - 1)
 
@@ -99,6 +100,8 @@ def preview(file_bytes: bytes, filename: str, header_row: int | None = None) -> 
     sample_rows = [{col: _clean(row[col]) for col in columns} for _, row in sample.iterrows()]
     return {
         "suggested_header_row": suggested,
+        "header_confident": confident,
+        "raw_rows": raw_rows,          # 머리글 행 직접 선택 UI 용 (파일 상단 원본)
         "used_header_row": used,
         "columns": columns,
         "sample_rows": sample_rows,
