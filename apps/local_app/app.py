@@ -375,6 +375,16 @@ def dm_rows(offset: int = 0, limit: int = 50, q: str = "", filter: str = ""):
     return data
 
 
+@app.get("/api/drug-master/usage-history")
+def dm_usage_history(code: str = ""):
+    """약품 1건의 월별 사용량 이력 (뷰어 행 클릭 모달의 line chart 용)."""
+    c, m = _require_admin()
+    code = code.strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="보험코드가 필요합니다.")
+    return drug_usage.history_by_code(c, m["pharmacy_id"], code)
+
+
 @app.post("/api/drug-master/manual-unit")
 async def dm_manual_unit(body: dict):
     c, _ = _require_admin()

@@ -86,8 +86,13 @@ def _query_core(name: str) -> str:
     return _CORE_CUT.sub("", s).strip()
 
 
+_THOUSANDS_COMMA = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
 def _unit_tokens(s: str) -> list[str]:
-    return [u.strip() for u in (s or "").split(",") if u.strip()]
+    # 천 단위 콤마('1,000정')는 구분자가 아니다 — 제거 후 분리
+    s = _THOUSANDS_COMMA.sub("", s or "")
+    return [u.strip() for u in s.split(",") if u.strip()]
 
 
 def build_index(drugs: list[dict]) -> dict:

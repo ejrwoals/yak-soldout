@@ -129,6 +129,16 @@
     .dm-pager { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:14px; }
     .dm-pager button { background:transparent; border:1px solid var(--line); color:var(--primary); border-radius:8px; padding:6px 14px; cursor:pointer; font-weight:600; }
     .dm-pager button:disabled { color:var(--muted); cursor:default; opacity:.6; }
+    /* 약품 월별 사용량 이력 모달 (뷰어 행 클릭) */
+    .dm-table tbody tr.dm-clickrow { cursor:pointer; }
+    .dm-table tbody tr.dm-clickrow:hover td { background:rgba(108,92,231,.04); }
+    .uh-chart { position:relative; margin-top:8px; }
+    .uh-chart svg { display:block; width:100%; height:auto; }
+    .uh-tip { position:absolute; pointer-events:none; background:#fff; border:1px solid var(--line); border-radius:8px;
+              padding:5px 9px; font-size:12px; box-shadow:0 2px 10px rgba(0,0,0,.10); white-space:nowrap; display:none; }
+    .uh-tip b { font-size:13px; }
+    .uh-table { max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-top:8px; }
+    .uh-table td, .uh-table th { font-size:12px; padding:4px 8px; white-space:nowrap; font-variant-numeric:tabular-nums; }
     /* 규격 수집 진행바 */
     .pbar { height:8px; background:var(--grey-bg); border-radius:6px; overflow:hidden; margin-top:12px; }
     .pbar i { display:block; height:100%; width:0; background:var(--primary); transition:width .25s ease; }
@@ -232,6 +242,7 @@
             <span class="uchip scraped">수집 규격</span>은 읽기 전용,
             <span class="uchip manual">직접 추가</span>만 가능(삭제 불가).
             <span class="src-badge">자유입력</span> 약품만 수정·삭제됩니다.
+            행을 클릭하면 월별 사용량 추이를 볼 수 있어요.
           </p>
           <div class="dm-filters" id="dmFilters">
             <button class="dm-filter active" data-filter="">전체</button>
@@ -292,6 +303,21 @@
         <button class="btn-ghost btn-sm" id="msgCancel">취소</button>
         <button class="btn-primary btn-sm" id="msgOk">확인</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 약품 월별 사용량 이력 모달 (약품 DB 뷰어 행 클릭) -->
+  <div id="uhModal" class="cf-overlay hidden">
+    <div class="cf-card" style="max-width:720px">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px">
+        <div style="min-width:0">
+          <h3 id="uhName" style="margin:0 0 3px"></h3>
+          <div class="muted" id="uhMeta" style="font-size:12px"></div>
+        </div>
+        <button class="btn-ghost btn-sm" id="uhClose" style="flex-shrink:0">닫기</button>
+      </div>
+      <div id="uhStat" style="margin:14px 0 4px"></div>
+      <div id="uhBody"></div>
     </div>
   </div>
 
@@ -442,7 +468,9 @@
       renderDmRows(data);
     }
     function chips(str, cls) {
-      return (str || '').split(',').map((s) => s.trim()).filter(Boolean).map((u) => `<span class="uchip ${cls}">${esc(u)}</span>`).join('');
+      // 천 단위 콤마('1,000정')는 구분자가 아니다 — 제거 후 분리 (기존 저장 데이터 호환)
+      return (str || '').replace(/(\d),(?=\d{3}(?!\d))/g, '$1')
+        .split(',').map((s) => s.trim()).filter(Boolean).map((u) => `<span class="uchip ${cls}">${esc(u)}</span>`).join('');
     }
     function renderDmRows(data) {
       const body = $('dmBody'); body.innerHTML = '';
@@ -500,7 +528,151 @@
         });
         tr.querySelector('.name-cell').appendChild(del);
       }
+      // 행 클릭 → 월별 사용량 이력 모달 (입력·버튼·셀렉트 클릭은 제외)
+      tr.classList.add('dm-clickrow');
+      tr.addEventListener('click', (e) => { if (e.target.closest('input,button,select')) return; openUsageModal(r); });
       return tr;
+    }
+
+    // ---- 약품 월별 사용량 이력 모달 ----
+    function openUsageModal(r) {
+      $('uhName').textContent = r.name;
+      $('uhMeta').textContent = [r.insurance_code ? `보험코드 ${r.insurance_code}` : null, r.maker || null].filter(Boolean).join(' · ');
+      $('uhStat').innerHTML = '';
+      $('uhBody').innerHTML = '<div class="hist-empty2">불러오는 중…</div>';
+      $('uhModal').classList.remove('hidden');
+      const onKey = (e) => { if (e.key === 'Escape') close(); };
+      const close = () => {
+        $('uhModal').classList.add('hidden');
+        $('uhClose').onclick = $('uhModal').onclick = null;
+        document.removeEventListener('keydown', onKey);
+      };
+      $('uhClose').onclick = close;
+      $('uhModal').onclick = (e) => { if (e.target === $('uhModal')) close(); };
+      document.addEventListener('keydown', onKey);
+      if (!r.insurance_code) {
+        $('uhBody').innerHTML = '<div class="hist-empty2">보험코드가 없는 약품이라<br>사용량 데이터를 연결할 수 없습니다.</div>';
+        return;
+      }
+      jget('/api/drug-master/usage-history?code=' + encodeURIComponent(r.insurance_code))
+        .then(renderUsageHistory)
+        .catch((e) => { $('uhBody').innerHTML = `<div class="hist-empty2">조회 실패: ${esc(e.message)}</div>`; });
+    }
+    function renderUsageHistory(d) {
+      const months = d.months || [], st = d.stats;
+      $('uhStat').innerHTML = st
+        ? `<span class="muted" style="font-size:12px">직전 12개월 평균 사용량</span>
+           <div style="font-size:28px; font-weight:700; line-height:1.25">${fmtAvg(st.monthly_avg)}</div>
+           <div class="muted" style="font-size:11px">${esc(st.window_start)} ~ ${esc(st.window_end)} · 완전월 ${st.months_used}개월 기준</div>`
+        : `<span class="muted" style="font-size:12px">최근 12개 완전월 내 사용 기록이 없어 월평균이 계산되지 않았어요.</span>`;
+      if (!months.length) {
+        $('uhBody').innerHTML = '<div class="hist-empty2">저장된 월별 사용량 데이터가 없습니다.<br>약품 DB 갱신에서 사용량 엑셀을 올리면 표시돼요.</div>';
+        return;
+      }
+      $('uhBody').innerHTML = '';
+      $('uhBody').appendChild(usageChart(months, st ? Number(st.monthly_avg) : null));
+      // 표로 보기 — 연도 × 1~12월 피벗 (툴팁 없이도 모든 값에 접근 가능하게)
+      const byYear = {};
+      months.forEach((m) => {
+        const [y, mo] = m.ym.split('-');
+        (byYear[y] = byYear[y] || {})[Number(mo)] = m.qty;
+      });
+      const det = document.createElement('details');
+      det.innerHTML = `<summary class="muted" style="font-size:12px; cursor:pointer; margin-top:10px">표로 보기</summary>
+        <div class="uh-table"><table>
+        <thead><tr><th>연도</th>${Array.from({ length: 12 }, (_, i) => `<th style="text-align:right">${i + 1}월</th>`).join('')}</tr></thead>
+        <tbody>${Object.keys(byYear).sort().map((y) => `<tr><td style="font-weight:600">${esc(y)}년</td>
+          ${Array.from({ length: 12 }, (_, i) => {
+            const v = byYear[y][i + 1];
+            return `<td style="text-align:right">${v != null ? fmtAvg(v) : '<span class="muted">—</span>'}</td>`;
+          }).join('')}</tr>`).join('')}</tbody></table></div>`;
+      $('uhBody').appendChild(det);
+    }
+    function niceStep(raw) {
+      const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))));
+      const f = raw / p;
+      return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+    }
+    // 단일 시리즈 line chart (SVG 직접 생성) — 완전한 달 데이터만 들어온다
+    function usageChart(months, avg) {
+      const W = 640, H = 246, ML = 48, MR = 16, MT = 26, MB = 26;
+      const iw = W - ML - MR, ih = H - MT - MB, n = months.length;
+      const maxV = Math.max(...months.map((m) => m.qty), avg || 0);
+      const step = niceStep((maxV || 1) / 4);
+      const yMax = Math.max(step, Math.ceil((maxV || 1) / step) * step);
+      const X = (i) => ML + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
+      const Y = (v) => MT + ih * (1 - v / yMax);
+      let grid = '';
+      for (let v = 0; v <= yMax + 1e-9; v += step)
+        grid += `<line x1="${ML}" y1="${Y(v)}" x2="${W - MR}" y2="${Y(v)}" stroke="#ececf4" stroke-width="1"/>
+                 <text x="${ML - 7}" y="${Y(v) + 3.5}" text-anchor="end" font-size="10" fill="#8a8a9a">${v.toLocaleString()}</text>`;
+      const k = Math.ceil(n / 8);
+      let xticks = '';
+      for (let i = 0; i < n; i += k)
+        xticks += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="#8a8a9a">${esc(months[i].ym.slice(2).replace('-', '.'))}</text>`;
+      // 평균 라벨은 플롯 밖 우측 상단에 점선 키와 함께 — 숫자는 강조색 (키 위치는 렌더 후 실측 배치)
+      let ref = '';
+      if (avg != null && avg <= yMax)
+        ref = `<line x1="${ML}" y1="${Y(avg)}" x2="${W - MR}" y2="${Y(avg)}" stroke="#8a8a9a" stroke-width="1" stroke-dasharray="4 3"/>
+               <line class="uh-avgkey" x1="0" x2="0" y1="9" y2="9" stroke="#8a8a9a" stroke-width="1" stroke-dasharray="4 3"/>
+               <text class="uh-avgtext" x="${W - MR}" y="12.5" text-anchor="end" font-size="10" fill="#8a8a9a">12개월 평균 <tspan fill="var(--primary)" font-weight="700" font-size="11">${fmtAvg(avg)}</tspan></text>`;
+      const pts = months.map((m, i) => [X(i), Y(m.qty)]);
+      const path = (arr) => arr.map((p, i) => `${i ? 'L' : 'M'}${p[0]},${p[1]}`).join(' ');
+      let line = '';
+      if (n > 1)
+        line = `<path d="${path(pts)} L${pts[n - 1][0]},${Y(0)} L${pts[0][0]},${Y(0)} Z" fill="var(--primary)" opacity=".08"/>`
+          + `<path d="${path(pts)}" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      const dotEvery = n > 30 ? n - 1 : 1;   // 점이 너무 많으면 끝점만
+      let dots = '';
+      pts.forEach((p, i) => {
+        if (i % dotEvery && i !== n - 1) return;
+        dots += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="var(--primary)" stroke="#fff" stroke-width="2"/>`;
+      });
+      const endLabel = `<text x="${pts[n - 1][0] + 4}" y="${pts[n - 1][1] - 9}" text-anchor="end" font-size="11" font-weight="600" fill="#22222c">${fmtAvg(months[n - 1].qty)}</text>`;
+      // 최대는 포인트 위·최소는 포인트 아래 직접 라벨 (끝점 라벨과 겹치면 생략, 가장자리 클램프)
+      const vals = months.map((m) => m.qty);
+      const iMax = vals.indexOf(Math.max(...vals)), iMin = vals.indexOf(Math.min(...vals));
+      const clampX = (x) => Math.max(ML + 14, Math.min(x, W - MR - 14));
+      let extremes = '';
+      if (n > 1 && iMax !== n - 1)
+        extremes += `<text x="${clampX(pts[iMax][0])}" y="${Math.max(pts[iMax][1] - 9, 20)}" text-anchor="middle" font-size="11" font-weight="600" fill="#22222c">${fmtAvg(vals[iMax])}</text>`;
+      if (n > 1 && iMin !== n - 1 && iMin !== iMax)
+        extremes += `<text x="${clampX(pts[iMin][0])}" y="${Math.min(pts[iMin][1] + 17, H - MB + 14)}" text-anchor="middle" font-size="11" font-weight="600" fill="#22222c">${fmtAvg(vals[iMin])}</text>`;
+      const wrap = document.createElement('div');
+      wrap.className = 'uh-chart';
+      wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 사용량 추이">
+        ${grid}${xticks}<line class="uh-cross" y1="${MT}" y2="${MT + ih}" stroke="#c9c9d6" stroke-width="1" style="display:none"/>
+        ${ref}${line}${dots}${endLabel}${extremes}</svg>`;
+      const tip = document.createElement('div');
+      tip.className = 'uh-tip';
+      wrap.appendChild(tip);
+      const svg = wrap.querySelector('svg'), cross = wrap.querySelector('.uh-cross');
+      // 평균 라벨 텍스트 폭을 실측해 점선 키를 그 왼쪽에 붙인다 (DOM 삽입 후에만 측정 가능)
+      const avgText = svg.querySelector('.uh-avgtext');
+      if (avgText) requestAnimationFrame(() => {
+        try {
+          const bb = avgText.getBBox(), key = svg.querySelector('.uh-avgkey');
+          key.setAttribute('x1', bb.x - 24); key.setAttribute('x2', bb.x - 6);
+        } catch (e) { /* 미표시 상태면 측정 불가 — 키 생략 */ }
+      });
+      // 크로스헤어 + 툴팁 — 포인터 X에 가장 가까운 달로 스냅
+      svg.addEventListener('pointermove', (e) => {
+        const rect = svg.getBoundingClientRect();
+        const sx = (e.clientX - rect.left) * (W / rect.width);
+        const i = Math.max(0, Math.min(n - 1, Math.round((sx - ML) / (n === 1 ? iw : iw / (n - 1)))));
+        cross.setAttribute('x1', X(i)); cross.setAttribute('x2', X(i)); cross.style.display = '';
+        tip.textContent = '';
+        const b = document.createElement('b'); b.textContent = fmtAvg(months[i].qty);
+        const s = document.createElement('span'); s.className = 'muted';
+        s.textContent = ` · ${months[i].ym}`;
+        tip.append(b, s);
+        tip.style.display = 'block';
+        const px = X(i) * (rect.width / W);
+        tip.style.left = Math.max(0, Math.min(px + 10, rect.width - tip.offsetWidth - 4)) + 'px';
+        tip.style.top = Math.max(0, Y(months[i].qty) * (rect.height / H) - 36) + 'px';
+      });
+      svg.addEventListener('pointerleave', () => { cross.style.display = 'none'; tip.style.display = 'none'; });
+      return wrap;
     }
     $('dmSearch').addEventListener('input', debounce2(() => { dmQ = $('dmSearch').value; dmOffset = 0; loadDmRows(); }, 250));
     document.querySelectorAll('.dm-filter').forEach((b) => b.addEventListener('click', () => {
@@ -701,7 +873,7 @@
           usage.push(`<b>${u.year}년</b> 파일에서 약품 <b>${fmt(u.drugs)}개</b>의 사용량 저장 (데이터가 있는 달: ${u.months}개월)`);
           if (st.window_start) {
             usage.push(`월평균 재계산: 약품 <b>${fmt(st.drugs)}개</b> — <b>${st.window_start} ~ ${st.window_end}</b> 완전월 ${st.window_months}개월 기준`);
-            if (st.partial_excluded) usage.push(`${st.partial_excluded}은 진행 중인 달(부분 데이터)이라 계산에서 제외했어요`);
+            if (st.partial_excluded) usage.push(`${st.partial_excluded}은 진행 중인 달(부분 데이터)이라 저장하지 않았어요 — 그 달이 끝난 뒤 엑셀을 다시 올리면 반영돼요`);
           }
         }
       }

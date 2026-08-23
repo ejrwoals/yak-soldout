@@ -38,7 +38,8 @@ def _collect_units(row_code: str, candidates: List[Dict[str, str]]) -> str:
 
     units: List[str] = []
     for c in pool:
-        u = (c.get("unit") or "").strip()
+        # 천 단위 콤마 제거 ('1,000정(병)' → '1000정(병)') — 콤마는 다중 규격 구분자와 충돌한다
+        u = master_db.clean_unit(c.get("unit") or "")
         if u and u not in units:
             units.append(u)
     return UNIT_SEP.join(units)

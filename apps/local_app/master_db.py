@@ -7,12 +7,22 @@
 - 규격수집(unit_collector)이 쓰는 조회/갱신도 여기에 둔다 (unit_stats / rows_missing_unit / set_unit)
 """
 
+import re
+
 _COLS = "id, name, insurance_code, maker, unit, unit_manual, source"
+
+# 규격 값 안의 천 단위 콤마 ('1,000정') — 콤마는 다중 규격 구분자라 값에 남으면 쪼개진다
+_THOUSANDS_COMMA = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
+def clean_unit(u: str) -> str:
+    """규격 문자열 정규화 — 천 단위 콤마 제거 ('1,000정(병)' → '1000정(병)')."""
+    return _THOUSANDS_COMMA.sub("", (u or "").strip())
 
 
 def _split_units(s: str) -> list[str]:
     out, seen = [], set()
-    for u in (s or "").split(","):
+    for u in clean_unit(s).split(","):
         u = u.strip()
         if u and u not in seen:
             seen.add(u)
@@ -52,7 +62,7 @@ def list_rows(client, offset: int, limit: int, q: str = "", unit_filter: str = "
 
 def add_manual_unit(client, row_id: str, unit: str) -> dict | None:
     """직접 입력 규격 1건을 unit_manual 에 append(중복 스킵). 없는 행이면 None."""
-    unit = (unit or "").strip()
+    unit = clean_unit(unit)
     r = client.table("drug_master").select("unit, unit_manual").eq("id", row_id).limit(1).execute()
     if not r.data:
         return None
