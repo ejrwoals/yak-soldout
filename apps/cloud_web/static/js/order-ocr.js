@@ -226,6 +226,7 @@
             histImgUrl = URL.createObjectURL(await r.blob());
             document.getElementById('histImg').src = histImgUrl;
             document.getElementById('histImgTitle').textContent = `원본 주문지 — ${o.order_date} ${o.order_round}차`;
+            histZoom?.reset();
             document.getElementById('imageModal').hidden = false;
         } catch (e) { alert('이미지를 불러올 수 없습니다: ' + e.message); }
     }
@@ -866,7 +867,7 @@
         if (!manual) {
             if (previewUrl) reviewImg.src = previewUrl;
             else reviewImg.removeAttribute('src');
-            resetZoom();
+            reviewZoom?.reset();
         }
         const hint = document.getElementById('reviewHint');
         if (hint) {
@@ -912,44 +913,36 @@
     }
 
     // =================== 원본 사진 확대 / 이동 ===================
-    const Z = { scale: 1, tx: 0, ty: 0, min: 1, max: 6 };
     function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
-    function applyTransform() {
-        reviewImg.style.transform = `translate(${Z.tx}px, ${Z.ty}px) scale(${Z.scale})`;
-        if (zoomLevel) zoomLevel.textContent = Math.round(Z.scale * 100) + '%';
-    }
-    function resetZoom() { Z.scale = 1; Z.tx = 0; Z.ty = 0; applyTransform(); }
-    function zoomAt(factor, clientX, clientY) {
-        const rect = imageViewport.getBoundingClientRect();
-        const ox = (clientX == null ? 0 : clientX - (rect.left + rect.width / 2));
-        const oy = (clientY == null ? 0 : clientY - (rect.top + rect.height / 2));
-        const newScale = clamp(Z.scale * factor, Z.min, Z.max);
-        const bx = (ox - Z.tx) / Z.scale;
-        const by = (oy - Z.ty) / Z.scale;
-        Z.tx = ox - bx * newScale;
-        Z.ty = oy - by * newScale;
-        Z.scale = newScale;
-        if (Z.scale === 1) { Z.tx = 0; Z.ty = 0; }
-        applyTransform();
-    }
-    function bindImageViewer() {
-        document.getElementById('zoomInBtn').addEventListener('click', () => zoomAt(1.25, null, null));
-        document.getElementById('zoomOutBtn').addEventListener('click', () => zoomAt(1 / 1.25, null, null));
-        document.getElementById('zoomResetBtn').addEventListener('click', resetZoom);
-        document.getElementById('reuploadBtn').addEventListener('click', () => {
-            if (window.confirm('지금까지 입력·검수한 내용이 모두 사라지고 처음부터 다시 시작합니다.\n\n계속할까요?')) {
-                exitReview();
-            }
-        });
-        imageViewport.addEventListener('dblclick', resetZoom);
-        imageViewport.addEventListener('wheel', (e) => {
+    function createZoomViewer(viewport, img, levelEl) {
+        const Z = { scale: 1, tx: 0, ty: 0, min: 1, max: 6 };
+        function applyTransform() {
+            img.style.transform = `translate(${Z.tx}px, ${Z.ty}px) scale(${Z.scale})`;
+            if (levelEl) levelEl.textContent = Math.round(Z.scale * 100) + '%';
+        }
+        function reset() { Z.scale = 1; Z.tx = 0; Z.ty = 0; applyTransform(); }
+        function zoomAt(factor, clientX, clientY) {
+            const rect = viewport.getBoundingClientRect();
+            const ox = (clientX == null ? 0 : clientX - (rect.left + rect.width / 2));
+            const oy = (clientY == null ? 0 : clientY - (rect.top + rect.height / 2));
+            const newScale = clamp(Z.scale * factor, Z.min, Z.max);
+            const bx = (ox - Z.tx) / Z.scale;
+            const by = (oy - Z.ty) / Z.scale;
+            Z.tx = ox - bx * newScale;
+            Z.ty = oy - by * newScale;
+            Z.scale = newScale;
+            if (Z.scale === 1) { Z.tx = 0; Z.ty = 0; }
+            applyTransform();
+        }
+        viewport.addEventListener('dblclick', reset);
+        viewport.addEventListener('wheel', (e) => {
             e.preventDefault();
             zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
         }, { passive: false });
         let dragging = false, lastX = 0, lastY = 0;
-        imageViewport.addEventListener('mousedown', (e) => {
+        viewport.addEventListener('mousedown', (e) => {
             dragging = true; lastX = e.clientX; lastY = e.clientY;
-            imageViewport.classList.add('panning'); e.preventDefault();
+            viewport.classList.add('panning'); e.preventDefault();
         });
         window.addEventListener('mousemove', (e) => {
             if (!dragging) return;
@@ -957,10 +950,10 @@
             lastX = e.clientX; lastY = e.clientY;
             applyTransform();
         });
-        window.addEventListener('mouseup', () => { dragging = false; imageViewport.classList.remove('panning'); });
+        window.addEventListener('mouseup', () => { dragging = false; viewport.classList.remove('panning'); });
         let touchMode = null, tLastX = 0, tLastY = 0, startDist = 0, startScale = 1, pinchX = 0, pinchY = 0;
         const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-        imageViewport.addEventListener('touchstart', (e) => {
+        viewport.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) { touchMode = 'pan'; tLastX = e.touches[0].clientX; tLastY = e.touches[0].clientY; }
             else if (e.touches.length === 2) {
                 touchMode = 'pinch'; startDist = dist(e.touches); startScale = Z.scale;
@@ -968,7 +961,7 @@
                 pinchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
             }
         }, { passive: false });
-        imageViewport.addEventListener('touchmove', (e) => {
+        viewport.addEventListener('touchmove', (e) => {
             e.preventDefault();
             if (touchMode === 'pan' && e.touches.length === 1) {
                 Z.tx += e.touches[0].clientX - tLastX; Z.ty += e.touches[0].clientY - tLastY;
@@ -979,10 +972,31 @@
                 zoomAt(clamp(target, Z.min, Z.max) / Z.scale, pinchX, pinchY);
             }
         }, { passive: false });
-        imageViewport.addEventListener('touchend', (e) => {
+        viewport.addEventListener('touchend', (e) => {
             if (e.touches.length === 0) touchMode = null;
             else if (e.touches.length === 1) { touchMode = 'pan'; tLastX = e.touches[0].clientX; tLastY = e.touches[0].clientY; }
         });
+        return { reset, zoomAt };
+    }
+    let reviewZoom = null, histZoom = null;
+    function bindImageViewer() {
+        reviewZoom = createZoomViewer(imageViewport, reviewImg, zoomLevel);
+        document.getElementById('zoomInBtn').addEventListener('click', () => reviewZoom.zoomAt(1.25, null, null));
+        document.getElementById('zoomOutBtn').addEventListener('click', () => reviewZoom.zoomAt(1 / 1.25, null, null));
+        document.getElementById('zoomResetBtn').addEventListener('click', () => reviewZoom.reset());
+        document.getElementById('reuploadBtn').addEventListener('click', () => {
+            if (window.confirm('지금까지 입력·검수한 내용이 모두 사라지고 처음부터 다시 시작합니다.\n\n계속할까요?')) {
+                exitReview();
+            }
+        });
+        histZoom = createZoomViewer(
+            document.getElementById('histViewport'),
+            document.getElementById('histImg'),
+            document.getElementById('histZoomLevel'),
+        );
+        document.getElementById('histZoomInBtn').addEventListener('click', () => histZoom.zoomAt(1.25, null, null));
+        document.getElementById('histZoomOutBtn').addEventListener('click', () => histZoom.zoomAt(1 / 1.25, null, null));
+        document.getElementById('histZoomResetBtn').addEventListener('click', () => histZoom.reset());
     }
 
     // =================== 이벤트 바인딩 ===================
@@ -1048,7 +1062,11 @@
         document.getElementById('calPrev')?.addEventListener('click', () => shiftCalendar(-1));
         document.getElementById('calNext')?.addEventListener('click', () => shiftCalendar(1));
         document.getElementById('closeImageBtn')?.addEventListener('click', () => { document.getElementById('imageModal').hidden = true; });
-        document.getElementById('imageModal')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.hidden = true; });
+        const imageModal = document.getElementById('imageModal');
+        // 뷰포트에서 드래그하다 오버레이 위에서 놓아도 닫히지 않도록, 오버레이에서 시작한 클릭만 닫기 처리
+        let imgOverlayDown = false;
+        imageModal?.addEventListener('mousedown', (e) => { imgOverlayDown = (e.target === e.currentTarget); });
+        imageModal?.addEventListener('click', (e) => { if (imgOverlayDown && e.target === e.currentTarget) e.currentTarget.hidden = true; });
         if (orderDate) {
             const d = new Date();
             const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);

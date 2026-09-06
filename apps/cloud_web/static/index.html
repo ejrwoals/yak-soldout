@@ -90,8 +90,10 @@
     .cal-chip.pending { color: #b7791f; background: #fdf3e0; }
     .cal-chip.ordered { color: #1f9d63; background: #e7f7ee; }
     /* 원본 이미지 모달 */
-    .img-modal-card { max-width: min(920px, 92vw); }
-    .img-modal-card img { display: block; max-width: 100%; max-height: 74vh; margin: 0 auto; border-radius: 10px; }
+    .modal-card.img-modal-card { max-width: min(1400px, 96vw); width: 100%; padding: 18px 20px; }
+    .img-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .img-modal-head h3 { margin: 0; }
+    .image-viewport.hist-viewport { height: calc(100vh - 230px); min-height: 300px; border: 1px solid var(--border-color); border-radius: 10px; }
     .user-email { color: var(--text-secondary); font-size: 13px; margin-right: 4px;
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
     .pharmacy-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600;
@@ -268,9 +270,20 @@
   <!-- 원본 주문지 이미지 모달 -->
   <div id="imageModal" class="modal-overlay" hidden>
     <div class="modal-card img-modal-card">
-      <h3 id="histImgTitle">원본 주문지</h3>
-      <img id="histImg" alt="원본 주문지">
-      <button class="btn btn-ghost" id="closeImageBtn" style="margin-top:14px;">닫기</button>
+      <div class="img-modal-head">
+        <h3 id="histImgTitle">원본 주문지</h3>
+        <div class="zoom-controls">
+          <button id="histZoomOutBtn" class="zoom-btn" title="축소"><i class="bi bi-zoom-out"></i></button>
+          <span id="histZoomLevel" class="zoom-level">100%</span>
+          <button id="histZoomInBtn" class="zoom-btn" title="확대"><i class="bi bi-zoom-in"></i></button>
+          <button id="histZoomResetBtn" class="zoom-btn" title="원래대로"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button id="closeImageBtn" class="zoom-btn" title="닫기"><i class="bi bi-x-lg"></i></button>
+        </div>
+      </div>
+      <div id="histViewport" class="image-viewport hist-viewport">
+        <img id="histImg" class="review-img" alt="원본 주문지" draggable="false">
+      </div>
+      <p class="image-hint">휠로 확대 · 드래그로 이동 · 더블클릭하면 원래대로</p>
     </div>
   </div>
 
@@ -503,6 +516,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/static/js/order-ocr.js?v=20260823"></script>
+  <script src="/static/js/order-ocr.js?v=20260904"></script>
 </body>
 </html>
